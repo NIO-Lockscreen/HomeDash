@@ -120,13 +120,218 @@
       font-size: clamp(14px, 1.1vw, 18px);
     }
 
+    .week-view {
+      display: none;
+      width: min(820px, 100%);
+      margin: clamp(22px, 3vmin, 44px) auto 0;
+      gap: clamp(10px, 1.2vmin, 16px);
+    }
+
+    .kiosk-shell.no-daily .week-view { display: grid; }
+
+    .week-view-title {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: clamp(12px, 0.95vw, 17px);
+      font-weight: 950;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .week-strip {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: clamp(7px, 0.8vmin, 12px);
+    }
+
+    .week-day {
+      min-width: 0;
+      position: relative;
+      display: grid;
+      place-items: center;
+      gap: 4px;
+      padding: clamp(8px, 1vmin, 14px) 5px;
+      border: 1px solid var(--line);
+      border-radius: clamp(14px, 1.35vmin, 20px);
+      background: rgba(255,255,255,0.58);
+      color: var(--muted);
+      box-shadow: 0 8px 18px rgba(70, 58, 44, 0.05);
+    }
+
+    .week-day-name {
+      font-size: clamp(10px, 0.82vw, 13px);
+      font-weight: 950;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .week-day-number {
+      color: var(--ink);
+      font-family: var(--serif);
+      font-size: clamp(20px, min(2vw, 3.2vh), 38px);
+      line-height: 0.95;
+      letter-spacing: -0.06em;
+    }
+
+    .week-day.today {
+      background: rgba(47,43,39,0.9);
+      color: rgba(255,255,255,0.72);
+      border-color: rgba(47,43,39,0.18);
+    }
+
+    .week-day.today .week-day-number { color: white; }
+
+    .week-event-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0;
+    }
+
+    .week-day.has-event .week-event-dot { opacity: 0.75; }
+
     .weather-card {
+      position: relative;
       padding: clamp(16px, 1.8vmin, 28px);
       display: grid;
       gap: clamp(12px, 1.4vmin, 20px);
       align-content: center;
       min-height: 0;
       overflow: hidden;
+      isolation: isolate;
+    }
+
+    .weather-card > :not(.weather-effect) {
+      position: relative;
+      z-index: 2;
+    }
+
+    .weather-effect {
+      pointer-events: none;
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      opacity: 0;
+      overflow: hidden;
+      transition: opacity 450ms ease;
+    }
+
+    .kiosk-shell.no-daily .weather-effect { opacity: 0.82; }
+    .kiosk-shell.no-daily .weather-card {
+      background:
+        radial-gradient(circle at 30% 18%, rgba(255,255,255,0.98), rgba(255,255,255,0.66) 45%, rgba(255,255,255,0.48) 100%);
+    }
+
+    .kiosk-shell.no-daily .current-weather { gap: clamp(16px, 1.9vmin, 28px); }
+    .kiosk-shell.no-daily .weather-icon { font-size: clamp(56px, min(4.8vw, 8vh), 92px); }
+    .kiosk-shell.no-daily .weather-temp { font-size: clamp(66px, min(5.5vw, 9vh), 112px); }
+    .kiosk-shell.no-daily .weather-desc { font-size: clamp(13px, 1.05vw, 18px); }
+    .kiosk-shell.no-daily .forecast-row { padding-top: clamp(14px, 1.8vmin, 24px); }
+
+    .weather-effect.rain {
+      background:
+        repeating-linear-gradient(112deg, transparent 0 22px, rgba(83, 101, 122, 0.28) 23px 25px, transparent 26px 46px);
+      background-size: 170px 170px;
+      animation: rainFall 850ms linear infinite;
+      filter: blur(0.2px);
+    }
+
+    .weather-effect.drizzle {
+      background:
+        repeating-linear-gradient(112deg, transparent 0 34px, rgba(83, 101, 122, 0.18) 35px 36px, transparent 37px 70px);
+      background-size: 180px 180px;
+      animation: rainFall 1500ms linear infinite;
+    }
+
+    .weather-effect.snow {
+      background-image:
+        radial-gradient(circle, rgba(255,255,255,0.95) 0 2px, transparent 2.5px),
+        radial-gradient(circle, rgba(255,255,255,0.72) 0 1.5px, transparent 2px),
+        radial-gradient(circle, rgba(255,255,255,0.6) 0 2.2px, transparent 2.8px);
+      background-size: 78px 78px, 112px 112px, 150px 150px;
+      background-position: 0 0, 30px 20px, 70px 30px;
+      animation: snowFall 7s linear infinite;
+    }
+
+    .weather-effect.clouds::before,
+    .weather-effect.fog::before {
+      content: '';
+      position: absolute;
+      width: 140%;
+      height: 140%;
+      left: -20%;
+      top: -20%;
+      background:
+        radial-gradient(ellipse at 22% 28%, rgba(203, 197, 187, 0.34) 0 13%, transparent 28%),
+        radial-gradient(ellipse at 72% 35%, rgba(218, 213, 205, 0.36) 0 12%, transparent 30%),
+        radial-gradient(ellipse at 48% 76%, rgba(198, 190, 178, 0.22) 0 11%, transparent 28%);
+      animation: cloudDrift 16s ease-in-out infinite alternate;
+    }
+
+    .weather-effect.fog::after {
+      content: '';
+      position: absolute;
+      inset: 20% -20%;
+      background: repeating-linear-gradient(180deg, transparent 0 28px, rgba(178, 170, 160, 0.16) 30px 42px, transparent 45px 78px);
+      filter: blur(6px);
+      animation: fogDrift 12s linear infinite;
+    }
+
+    .weather-effect.clear::before,
+    .weather-effect.partly::before {
+      content: '';
+      position: absolute;
+      width: 62%;
+      aspect-ratio: 1;
+      right: -18%;
+      top: -24%;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 230, 170, 0.48), rgba(255, 230, 170, 0.16) 42%, transparent 68%);
+      animation: sunBreathe 5s ease-in-out infinite;
+    }
+
+    .weather-effect.thunder {
+      background:
+        repeating-linear-gradient(112deg, transparent 0 24px, rgba(83, 101, 122, 0.22) 25px 27px, transparent 28px 50px),
+        radial-gradient(circle at 80% 12%, rgba(255,255,255,0.0), rgba(255,255,255,0.0));
+      background-size: 160px 160px, 100% 100%;
+      animation: rainFall 800ms linear infinite, thunderFlash 5s linear infinite;
+    }
+
+    @keyframes rainFall {
+      from { background-position: 0 -120px; }
+      to { background-position: -70px 120px; }
+    }
+
+    @keyframes snowFall {
+      from { background-position: 0 -120px, 30px -80px, 70px -160px; }
+      to { background-position: 0 120px, 30px 160px, 70px 80px; }
+    }
+
+    @keyframes cloudDrift {
+      from { transform: translateX(-2%) translateY(0) scale(1); }
+      to { transform: translateX(3%) translateY(1%) scale(1.03); }
+    }
+
+    @keyframes fogDrift {
+      from { transform: translateX(-8%); }
+      to { transform: translateX(8%); }
+    }
+
+    @keyframes sunBreathe {
+      0%, 100% { transform: scale(1); opacity: .78; }
+      50% { transform: scale(1.08); opacity: .95; }
+    }
+
+    @keyframes thunderFlash {
+      0%, 87%, 100% { box-shadow: inset 0 0 0 999px rgba(255,255,255,0); }
+      89% { box-shadow: inset 0 0 0 999px rgba(255,255,255,0.35); }
+      91% { box-shadow: inset 0 0 0 999px rgba(255,255,255,0.03); }
+      93% { box-shadow: inset 0 0 0 999px rgba(255,255,255,0.22); }
     }
 
     .current-weather {
@@ -313,7 +518,7 @@
       grid-column: 1 / -1;
       grid-row: 1;
       display: grid;
-      grid-template-columns: minmax(0, 1.64fr) minmax(280px, 0.86fr);
+      grid-template-columns: minmax(0, 1.48fr) minmax(320px, 1fr);
       grid-template-rows: minmax(0, 1fr);
       gap: clamp(16px, 2.1vmin, 30px);
       min-width: 0;
@@ -500,10 +705,12 @@
         <div>
           <div class="time-line"><span id="timeDisplay">10:42</span><span id="ampmDisplay" class="ampm">AM</span></div>
           <div id="dateDisplay" class="date-line">Monday, May 12</div>
+          <div id="weekView" class="week-view" aria-label="Week overview"></div>
         </div>
       </article>
 
-      <article class="weather-card">
+      <article id="weatherCard" class="weather-card">
+        <div id="weatherEffect" class="weather-effect partly" aria-hidden="true"></div>
         <div class="current-weather">
           <div id="weatherIcon" class="weather-icon">🌤️</div>
           <div>
@@ -628,10 +835,13 @@
       timeDisplay: document.getElementById('timeDisplay'),
       ampmDisplay: document.getElementById('ampmDisplay'),
       dateDisplay: document.getElementById('dateDisplay'),
+      weatherCard: document.getElementById('weatherCard'),
+      weatherEffect: document.getElementById('weatherEffect'),
       weatherIcon: document.getElementById('weatherIcon'),
       weatherTemp: document.getElementById('weatherTemp'),
       weatherDesc: document.getElementById('weatherDesc'),
       forecastRow: document.getElementById('forecastRow'),
+      weekView: document.getElementById('weekView'),
       heroEvent: document.getElementById('heroEvent'),
       heroImage: document.getElementById('heroImage'),
       heroKicker: document.getElementById('heroKicker'),
@@ -788,6 +998,69 @@
       return 'Mixed weather';
     }
 
+
+    function weatherCodeToEffect(code) {
+      if ([0].includes(code)) return 'clear';
+      if ([1, 2].includes(code)) return 'partly';
+      if ([3].includes(code)) return 'clouds';
+      if ([45, 48].includes(code)) return 'fog';
+      if ([51, 53, 55, 56, 57].includes(code)) return 'drizzle';
+      if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return 'rain';
+      if ([71, 73, 75, 77, 85, 86].includes(code)) return 'snow';
+      if ([95, 96, 99].includes(code)) return 'thunder';
+      return 'partly';
+    }
+
+    function getISOWeek(date) {
+      const copy = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const dayNumber = copy.getUTCDay() || 7;
+      copy.setUTCDate(copy.getUTCDate() + 4 - dayNumber);
+      const yearStart = new Date(Date.UTC(copy.getUTCFullYear(), 0, 1));
+      return Math.ceil((((copy - yearStart) / 86400000) + 1) / 7);
+    }
+
+    function mondayOfWeek(date) {
+      const copy = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const day = copy.getDay() || 7;
+      copy.setDate(copy.getDate() - day + 1);
+      copy.setHours(0, 0, 0, 0);
+      return copy;
+    }
+
+    function renderWeekView() {
+      if (!els.weekView) return;
+      const now = new Date();
+      const monday = mondayOfWeek(now);
+      const days = Array.from({ length: 7 }, (_, index) => {
+        const date = new Date(monday);
+        date.setDate(monday.getDate() + index);
+        return date;
+      });
+
+      const eventsByDay = days.map(day => state.events.some(event => {
+        const eventDate = new Date(event.start);
+        return !Number.isNaN(eventDate) && sameDay(eventDate, day);
+      }));
+
+      els.weekView.innerHTML = `
+        <div class="week-view-title">Week ${getISOWeek(now)}</div>
+        <div class="week-strip">
+          ${days.map((day, index) => {
+            const isToday = sameDay(day, now);
+            const hasEvent = eventsByDay[index];
+            const dayName = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(day);
+            return `
+              <div class="week-day${isToday ? ' today' : ''}${hasEvent ? ' has-event' : ''}">
+                <div class="week-day-name">${htmlEscape(dayName)}</div>
+                <div class="week-day-number">${day.getDate()}</div>
+                <div class="week-event-dot"></div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
     function setMode() {
       els.adminView.classList.toggle('hidden', !adminMode);
       els.displayView.classList.toggle('hidden', adminMode);
@@ -802,6 +1075,7 @@
       els.ampmDisplay.textContent = split.ampm;
       els.dateDisplay.textContent = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(now);
       els.adminClock.textContent = formatTime(now, false);
+      if (!adminMode && els.displayView.classList.contains('no-daily')) renderWeekView();
     }
 
     async function fetchEvents() {
@@ -836,6 +1110,7 @@
       if (adminMode) return;
       const { daily, upcoming } = getDisplayEvents();
       els.displayView.classList.toggle('no-daily', !daily);
+      if (!daily) renderWeekView();
       fitKioskToScreen();
 
       if (daily) {
@@ -902,6 +1177,9 @@
       els.weatherIcon.textContent = weatherCodeToIcon(code);
       els.weatherTemp.textContent = `${temp}°`;
       els.weatherDesc.textContent = `${weatherCodeToText(code)} · ${WEATHER_CONFIG.name}`;
+      if (els.weatherEffect) {
+        els.weatherEffect.className = `weather-effect ${weatherCodeToEffect(code)}`;
+      }
 
       const rows = (weather.daily?.time || []).slice(1, 5).map((day, index) => {
         const dayDate = new Date(`${day}T12:00:00`);
