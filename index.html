@@ -3388,12 +3388,13 @@
     function selectEventPreview(instanceId) {
       const event = occurrenceByInstanceId(instanceId);
       if (!event) return;
-      stopSelectedDayCycle();
+      const dayKey = dateKey(event.date || new Date(event.start));
       state.selectedInstanceId = instanceId;
-      state.selectedDayKey = dateKey(event.date || new Date(event.start));
+      state.selectedDayKey = dayKey;
       state.selectedEventFlipped = false;
       state.heroEventFlipped = false;
       startSelectionReturnTimer();
+      startSelectedDayCycle(dayKey);
       renderDisplay();
     }
 
@@ -4389,15 +4390,15 @@ Cancel = choose whether to delete the whole series.`);
       els.showFrequentRepeatingInput.checked = Boolean(state.showFrequentRepeatingTasks);
       if (els.repeatVisibilityText) {
         els.repeatVisibilityText.textContent = state.showFrequentRepeatingTasks
-          ? 'Hide repeating tasks'
-          : 'Show repeating tasks';
+          ? 'Limit repeating tasks'
+          : 'Show more repeating tasks';
       }
       if (els.repeatVisibilityHelp) {
         els.repeatVisibilityHelp.textContent = state.showFrequentRepeatingTasks
-          ? 'Showing repeats only for this and next month.'
+          ? 'Showing frequent repeats several months ahead.'
           : hiddenCount
-            ? `${hiddenCount} frequent repeat${hiddenCount === 1 ? '' : 's'} hidden.`
-            : 'Frequent repeats are hidden by default.';
+            ? `Showing this month + next month. ${hiddenCount} later repeat${hiddenCount === 1 ? '' : 's'} hidden.`
+            : 'Showing frequent repeats for this month + next month.';
       }
     }
 
@@ -4414,26 +4415,30 @@ Cancel = choose whether to delete the whole series.`);
       const rangeEnd = new Date(nowStart.getTime() + 365 * 86400000);
       const repeatVisibleThrough = endOfNextMonth(nowStart);
       const allFutureEvents = expandEventsInRange(nowStart, rangeEnd, { includeCompleted: true });
-      const hiddenFrequentRepeats = allFutureEvents.filter(event => isFrequentRepeatingEvent(event) && event.date <= repeatVisibleThrough).length;
+
+      // Default/off: show frequent repeats, but only through the end of next month.
+      // Toggle/on: show frequent repeats for the whole loaded future range.
+      const hiddenFrequentRepeats = allFutureEvents.filter(event =>
+        isFrequentRepeatingEvent(event) && event.date > repeatVisibleThrough
+      ).length;
       const futureEvents = allFutureEvents
         .filter(event => {
           if (!isFrequentRepeatingEvent(event)) return true;
-          if (!state.showFrequentRepeatingTasks) return false;
-          return event.date <= repeatVisibleThrough;
+          return state.showFrequentRepeatingTasks || event.date <= repeatVisibleThrough;
         })
-        .slice(0, 80);
+        .slice(0, state.showFrequentRepeatingTasks ? 180 : 100);
 
       updateRepeatVisibilityControl(state.showFrequentRepeatingTasks ? 0 : hiddenFrequentRepeats);
 
       if (els.adminListSubtitle) {
         const repeatNote = state.showFrequentRepeatingTasks
-          ? ' Frequent repeats are limited to this and next month.'
+          ? ' Frequent repeats are shown several months ahead.'
           : hiddenFrequentRepeats
-            ? ` ${hiddenFrequentRepeats} frequent repeat${hiddenFrequentRepeats === 1 ? '' : 's'} hidden.`
-            : '';
+            ? ` Frequent repeats are limited to this month and next month. ${hiddenFrequentRepeats} later repeat${hiddenFrequentRepeats === 1 ? '' : 's'} hidden.`
+            : ' Frequent repeats are limited to this month and next month.';
         els.adminListSubtitle.textContent = futureEvents.length
           ? `${futureEvents.length} upcoming saved task${futureEvents.length === 1 ? '' : 's'} across your shared calendar.${repeatNote}`
-          : `No upcoming tasks shown. Create your first task/event or show repeating tasks.${repeatNote}`;
+          : `No upcoming tasks shown. Create your first task/event.${repeatNote}`;
       }
 
       if (!futureEvents.length) {
@@ -4644,6 +4649,9 @@ Cancel = choose whether to delete the whole series.`);
 
       const handleClockPress = event => {
         if (adminMode) return;
+        // Do not let the day buttons inside the clock card trigger "return to today".
+        // Only the actual clock/date area should use this shortcut.
+        if (event.target?.closest?.('.week-view, .week-day')) return;
         const now = Date.now();
         const isDoublePress = now - lastPress < 420;
 
@@ -4660,6 +4668,7 @@ Cancel = choose whether to delete the whole series.`);
         if (singlePressTimer) clearTimeout(singlePressTimer);
         singlePressTimer = setTimeout(() => {
           singlePressTimer = null;
+          lastPress = 0;
           returnToToday();
         }, 260);
       };
@@ -4886,9 +4895,14 @@ Cancel = choose whether to delete the whole series.`);
       }, true);
       loadConfig();
       if (els.weekView) {
+        els.weekView.addEventListener('pointerup', event => {
+          // Keep date taps from bubbling to the clock-card shortcut.
+          if (event.target.closest('.week-day')) event.stopPropagation();
+        });
         els.weekView.addEventListener('click', event => {
           const dayButton = event.target.closest('.week-day.has-event');
           if (!dayButton) return;
+          event.stopPropagation();
           selectDayPreview(dayButton.dataset.day);
         });
       }
