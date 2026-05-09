@@ -1,0 +1,1186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f5f1eb" />
+  <title>Home Organizer</title>
+  <style>
+    :root {
+      --bg: #f5f1eb;
+      --panel: rgba(255, 255, 255, 0.78);
+      --panel-strong: rgba(255, 255, 255, 0.92);
+      --ink: #2f2b27;
+      --muted: #81786e;
+      --line: rgba(87, 78, 67, 0.12);
+      --shadow: 0 18px 45px rgba(78, 68, 56, 0.12);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --serif: Georgia, 'Times New Roman', serif;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(255,255,255,0.92), transparent 32%),
+        linear-gradient(135deg, #f7f1e9 0%, #ede4d8 100%);
+      color: var(--ink);
+      font-family: var(--sans);
+    }
+
+    body {
+      min-height: 100svh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    button, input, textarea, select { font: inherit; }
+
+    .hidden { display: none !important; }
+
+    .kiosk-shell {
+      width: min(1180px, 100%);
+      aspect-ratio: 16 / 10;
+      max-height: calc(100svh - 48px);
+      background: rgba(255, 255, 255, 0.46);
+      border: 1px solid rgba(255, 255, 255, 0.65);
+      border-radius: 34px;
+      box-shadow: var(--shadow);
+      padding: clamp(18px, 2.4vw, 34px);
+      display: grid;
+      grid-template-columns: minmax(270px, 0.95fr) minmax(430px, 1.45fr);
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: clamp(18px, 2vw, 28px);
+      backdrop-filter: blur(18px);
+      overflow: hidden;
+    }
+
+    .left-stack {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .clock-card,
+    .weather-card,
+    .event-hero,
+    .upcoming-card {
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      box-shadow: 0 12px 28px rgba(70, 58, 44, 0.08);
+      border-radius: var(--radius-xl);
+    }
+
+    .clock-card {
+      padding: clamp(20px, 2.2vw, 32px);
+      min-height: 225px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+    }
+
+    .time-line {
+      font-family: var(--serif);
+      font-size: clamp(72px, 9vw, 138px);
+      line-height: 0.86;
+      letter-spacing: -0.08em;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ampm {
+      font-family: var(--sans);
+      font-size: clamp(14px, 1.2vw, 20px);
+      letter-spacing: 0.12em;
+      margin-left: 8px;
+      vertical-align: 40%;
+      color: #3b352f;
+      font-weight: 700;
+    }
+
+    .date-line {
+      margin-top: 18px;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: clamp(14px, 1.1vw, 18px);
+    }
+
+    .weather-card {
+      padding: clamp(16px, 1.6vw, 24px);
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+
+    .current-weather {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      justify-content: center;
+      min-height: 95px;
+    }
+
+    .weather-icon {
+      font-size: clamp(38px, 4vw, 54px);
+      filter: drop-shadow(0 8px 12px rgba(97, 72, 35, 0.12));
+    }
+
+    .weather-temp {
+      font-family: var(--serif);
+      font-size: clamp(42px, 4.4vw, 68px);
+      line-height: 0.9;
+      letter-spacing: -0.06em;
+    }
+
+    .weather-desc {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .forecast-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      border-top: 1px solid var(--line);
+      padding-top: 15px;
+    }
+
+    .forecast-day {
+      text-align: center;
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .forecast-day .small-icon { font-size: 22px; text-transform: none; }
+    .forecast-day strong { color: var(--ink); font-size: 15px; }
+    .forecast-day span:last-child { font-size: 12px; opacity: 0.82; }
+
+    .event-hero {
+      position: relative;
+      overflow: hidden;
+      min-height: 0;
+      isolation: isolate;
+    }
+
+    .event-hero::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.04) 15%, rgba(0,0,0,0.52) 100%);
+      z-index: 1;
+    }
+
+    .event-hero img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      filter: saturate(0.9) contrast(0.95);
+      transform: scale(1.01);
+    }
+
+    .event-copy {
+      position: absolute;
+      left: clamp(24px, 2.2vw, 38px);
+      right: clamp(24px, 2.2vw, 38px);
+      bottom: clamp(24px, 2.2vw, 38px);
+      color: white;
+      z-index: 2;
+      text-shadow: 0 2px 16px rgba(0,0,0,0.25);
+    }
+
+    .event-kicker {
+      font-size: clamp(12px, 1vw, 15px);
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.9;
+      margin-bottom: 10px;
+    }
+
+    .event-title {
+      font-family: var(--serif);
+      font-size: clamp(34px, 4.2vw, 72px);
+      line-height: 0.95;
+      letter-spacing: -0.055em;
+      margin: 0;
+    }
+
+    .event-location {
+      margin-top: 14px;
+      font-size: clamp(15px, 1.25vw, 20px);
+      font-weight: 650;
+      opacity: 0.9;
+    }
+
+    .upcoming-card {
+      grid-column: 1 / -1;
+      padding: clamp(16px, 1.6vw, 24px);
+      min-height: 180px;
+      overflow: hidden;
+    }
+
+    .section-title {
+      margin: 0 0 14px;
+      font-size: 13px;
+      letter-spacing: 0.09em;
+      font-weight: 950;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .upcoming-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: clamp(12px, 1.35vw, 20px);
+    }
+
+    .mini-event {
+      min-width: 0;
+    }
+
+    .mini-event img {
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      object-fit: cover;
+      border-radius: var(--radius-md);
+      box-shadow: 0 8px 18px rgba(70, 58, 44, 0.08);
+      display: block;
+      margin-bottom: 10px;
+    }
+
+    .mini-time {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .mini-title {
+      font-weight: 900;
+      font-size: clamp(13px, 1.05vw, 17px);
+      line-height: 1.18;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .empty-upcoming {
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      min-height: 112px;
+      border: 1px dashed var(--line);
+      border-radius: var(--radius-lg);
+      font-weight: 750;
+    }
+
+    .kiosk-shell.no-daily {
+      grid-template-columns: 1fr;
+      grid-template-rows: minmax(0, 1fr) auto;
+    }
+
+    .kiosk-shell.no-daily .left-stack {
+      grid-row: 1;
+      display: grid;
+      grid-template-columns: 1.6fr 1fr;
+      grid-template-rows: 1fr;
+      gap: clamp(18px, 2vw, 28px);
+    }
+
+    .kiosk-shell.no-daily .clock-card { min-height: 100%; }
+    .kiosk-shell.no-daily .time-line { font-size: clamp(116px, 17vw, 245px); }
+    .kiosk-shell.no-daily .event-hero { display: none; }
+
+    .admin-shell {
+      width: min(760px, 100%);
+      margin: 0 auto;
+      padding: max(18px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom));
+    }
+
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .admin-title {
+      margin: 0;
+      font-family: var(--serif);
+      letter-spacing: -0.05em;
+      font-size: clamp(38px, 10vw, 58px);
+      line-height: 0.95;
+    }
+
+    .admin-subtitle {
+      color: var(--muted);
+      font-weight: 750;
+      margin-top: 8px;
+      line-height: 1.35;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 10px 12px;
+      font-weight: 900;
+      white-space: nowrap;
+      box-shadow: 0 8px 18px rgba(70, 58, 44, 0.07);
+    }
+
+    .admin-card {
+      background: rgba(255,255,255,0.78);
+      border: 1px solid rgba(255,255,255,0.72);
+      border-radius: 26px;
+      box-shadow: 0 14px 32px rgba(70, 58, 44, 0.08);
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+
+    .form-grid { display: grid; gap: 12px; }
+
+    label {
+      display: grid;
+      gap: 7px;
+      color: var(--muted);
+      font-weight: 900;
+      font-size: 13px;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.86);
+      border-radius: 17px;
+      padding: 13px 14px;
+      color: var(--ink);
+      outline: none;
+    }
+
+    input:focus,
+    textarea:focus {
+      border-color: rgba(47,43,39,0.32);
+      box-shadow: 0 0 0 4px rgba(47,43,39,0.06);
+    }
+
+    textarea { min-height: 88px; resize: vertical; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .checkbox-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      color: var(--ink);
+      font-weight: 850;
+    }
+
+    .checkbox-row input { width: 18px; height: 18px; }
+
+    .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    .btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 13px 18px;
+      font-weight: 950;
+      color: white;
+      background: #2f2b27;
+      cursor: pointer;
+      box-shadow: 0 10px 20px rgba(47,43,39,0.15);
+    }
+
+    .btn.secondary {
+      background: rgba(255,255,255,0.88);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      box-shadow: none;
+    }
+
+    .btn.danger { background: #8d4138; }
+    .btn:disabled { opacity: 0.55; cursor: wait; }
+
+    .image-status,
+    .status-line {
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .admin-events { display: grid; gap: 12px; }
+
+    .admin-event {
+      display: grid;
+      grid-template-columns: 82px 1fr;
+      gap: 12px;
+      align-items: center;
+      padding: 10px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.7);
+      border: 1px solid var(--line);
+    }
+
+    .admin-event img {
+      width: 82px;
+      height: 62px;
+      object-fit: cover;
+      border-radius: 14px;
+    }
+
+    .admin-event-title { font-weight: 950; line-height: 1.2; }
+    .admin-event-meta { color: var(--muted); font-weight: 750; font-size: 13px; margin-top: 3px; }
+    .admin-actions { display: flex; gap: 8px; margin-top: 9px; }
+    .admin-actions button { padding: 8px 11px; font-size: 13px; }
+
+    @media (max-width: 780px), (pointer: coarse) {
+      body { display: block; padding: 0; }
+      .kiosk-shell { display: none; }
+    }
+
+    @media (max-width: 980px) and (pointer: fine) {
+      .kiosk-shell {
+        aspect-ratio: auto;
+        max-height: none;
+        min-height: calc(100svh - 48px);
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(380px, 1fr) auto;
+      }
+      .event-hero { min-height: 400px; }
+      .upcoming-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <main id="displayView" class="kiosk-shell" aria-live="polite">
+    <section class="left-stack">
+      <article class="clock-card">
+        <div>
+          <div class="time-line"><span id="timeDisplay">10:42</span><span id="ampmDisplay" class="ampm">AM</span></div>
+          <div id="dateDisplay" class="date-line">Monday, May 12</div>
+        </div>
+      </article>
+
+      <article class="weather-card">
+        <div class="current-weather">
+          <div id="weatherIcon" class="weather-icon">🌤️</div>
+          <div>
+            <div id="weatherTemp" class="weather-temp">--°</div>
+            <div id="weatherDesc" class="weather-desc">Loading weather</div>
+          </div>
+        </div>
+        <div id="forecastRow" class="forecast-row"></div>
+      </article>
+    </section>
+
+    <section id="heroEvent" class="event-hero">
+      <img id="heroImage" alt="" />
+      <div class="event-copy">
+        <div id="heroKicker" class="event-kicker">Today · 11:00 AM</div>
+        <h1 id="heroTitle" class="event-title">Brunch with Sarah</h1>
+        <div id="heroLocation" class="event-location">The Garden Café</div>
+      </div>
+    </section>
+
+    <section class="upcoming-card">
+      <h2 class="section-title">Upcoming</h2>
+      <div id="upcomingGrid" class="upcoming-grid"></div>
+    </section>
+  </main>
+
+  <main id="adminView" class="admin-shell hidden">
+    <header class="admin-header">
+      <div>
+        <h1 class="admin-title">Home<br>Organizer</h1>
+        <div class="admin-subtitle">Phone mode. Add shared events, upload images, and mark one event as today’s main card.</div>
+      </div>
+      <div class="pill" id="adminClock">--:--</div>
+    </header>
+
+    <section class="admin-card">
+      <div class="form-grid">
+        <label>
+          Admin PIN
+          <input id="pinInput" type="password" inputmode="numeric" autocomplete="current-password" placeholder="PIN from Vercel env" />
+        </label>
+        <div class="button-row">
+          <button id="savePinBtn" class="btn secondary" type="button">Save PIN on this phone</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="admin-card">
+      <form id="eventForm" class="form-grid">
+        <input id="eventId" type="hidden" />
+
+        <label>
+          Title
+          <input id="titleInput" required maxlength="80" placeholder="Brunch with Sarah" />
+        </label>
+
+        <div class="two-col">
+          <label>
+            Starts
+            <input id="startInput" required type="datetime-local" />
+          </label>
+          <label>
+            Ends, optional
+            <input id="endInput" type="datetime-local" />
+          </label>
+        </div>
+
+        <label>
+          Location
+          <input id="locationInput" maxlength="90" placeholder="The Garden Café" />
+        </label>
+
+        <label>
+          Note, optional
+          <textarea id="noteInput" maxlength="300" placeholder="Anything useful for the family"></textarea>
+        </label>
+
+        <label>
+          Image, optional
+          <input id="imageInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" />
+        </label>
+        <input id="imageUrlInput" type="hidden" />
+        <div id="imageStatus" class="image-status">No image selected. A calm placeholder will be used.</div>
+
+        <label class="checkbox-row">
+          <input id="featuredInput" type="checkbox" />
+          Use as the large daily card when it is today
+        </label>
+
+        <div class="button-row">
+          <button id="saveEventBtn" class="btn" type="submit">Save event</button>
+          <button id="resetBtn" class="btn secondary" type="button">Clear</button>
+        </div>
+        <div id="statusLine" class="status-line"></div>
+      </form>
+    </section>
+
+    <section class="admin-card">
+      <h2 class="section-title">Shared calendar</h2>
+      <div id="adminEvents" class="admin-events"></div>
+    </section>
+  </main>
+
+  <script>
+    const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
+    const REFRESH_EVENTS_MS = 60_000;
+    const DISPLAY_EVENT_LIMIT = 4;
+    const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+    const COMPRESSED_UPLOAD_TARGET_BYTES = 3.6 * 1024 * 1024;
+    const IMAGE_MAX_DIMENSION = 1600;
+    const JPEG_QUALITY_STEPS = [0.82, 0.72, 0.62, 0.52, 0.44];
+
+    const state = {
+      events: [],
+      weather: null,
+      editingId: null
+    };
+
+    const els = {
+      displayView: document.getElementById('displayView'),
+      adminView: document.getElementById('adminView'),
+      timeDisplay: document.getElementById('timeDisplay'),
+      ampmDisplay: document.getElementById('ampmDisplay'),
+      dateDisplay: document.getElementById('dateDisplay'),
+      weatherIcon: document.getElementById('weatherIcon'),
+      weatherTemp: document.getElementById('weatherTemp'),
+      weatherDesc: document.getElementById('weatherDesc'),
+      forecastRow: document.getElementById('forecastRow'),
+      heroEvent: document.getElementById('heroEvent'),
+      heroImage: document.getElementById('heroImage'),
+      heroKicker: document.getElementById('heroKicker'),
+      heroTitle: document.getElementById('heroTitle'),
+      heroLocation: document.getElementById('heroLocation'),
+      upcomingGrid: document.getElementById('upcomingGrid'),
+      adminClock: document.getElementById('adminClock'),
+      pinInput: document.getElementById('pinInput'),
+      savePinBtn: document.getElementById('savePinBtn'),
+      eventForm: document.getElementById('eventForm'),
+      eventId: document.getElementById('eventId'),
+      titleInput: document.getElementById('titleInput'),
+      startInput: document.getElementById('startInput'),
+      endInput: document.getElementById('endInput'),
+      locationInput: document.getElementById('locationInput'),
+      noteInput: document.getElementById('noteInput'),
+      imageInput: document.getElementById('imageInput'),
+      imageUrlInput: document.getElementById('imageUrlInput'),
+      imageStatus: document.getElementById('imageStatus'),
+      featuredInput: document.getElementById('featuredInput'),
+      saveEventBtn: document.getElementById('saveEventBtn'),
+      resetBtn: document.getElementById('resetBtn'),
+      statusLine: document.getElementById('statusLine'),
+      adminEvents: document.getElementById('adminEvents')
+    };
+
+    const params = new URLSearchParams(location.search);
+    const forceAdmin = params.has('admin');
+    const forceDisplay = params.has('display');
+    const isPhoneLike = matchMedia('(max-width: 780px), (pointer: coarse)').matches;
+    const adminMode = forceAdmin || (!forceDisplay && isPhoneLike);
+
+    function pad(number) {
+      return String(number).padStart(2, '0');
+    }
+
+    function formatTime(date, showAmPm = true) {
+      const formatter = new Intl.DateTimeFormat(undefined, {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: showAmPm
+      });
+      return formatter.format(date);
+    }
+
+    function splitTime(date) {
+      const parts = new Intl.DateTimeFormat(undefined, {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      }).formatToParts(date);
+      const hour = parts.find(part => part.type === 'hour')?.value || '10';
+      const minute = parts.find(part => part.type === 'minute')?.value || '42';
+      const dayPeriod = parts.find(part => part.type === 'dayPeriod')?.value || '';
+      return { time: `${hour}:${minute}`, ampm: dayPeriod.toUpperCase() };
+    }
+
+    function sameDay(a, b) {
+      return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    }
+
+    function todayStart() {
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }
+
+    function htmlEscape(value) {
+      return String(value || '').replace(/[&<>'"]/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+      }[char]));
+    }
+
+    function svgData(svg) {
+      return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+    }
+
+    function placeholderFor(seed = '', label = 'Calm') {
+      const options = [
+        { a: '#dad2c4', b: '#a89c8b', c: '#655b50', motif: 'plant' },
+        { a: '#e7dfd2', b: '#b9c4bf', c: '#6e7c73', motif: 'horizon' },
+        { a: '#eee6dc', b: '#d1b99f', c: '#806a55', motif: 'coffee' },
+        { a: '#e2e8e4', b: '#a9bdb8', c: '#667a74', motif: 'waves' },
+        { a: '#eadfd5', b: '#cab5a2', c: '#795f4e', motif: 'table' }
+      ];
+      const index = Math.abs([...String(seed || label)].reduce((sum, char) => sum + char.charCodeAt(0), 0)) % options.length;
+      const p = options[index];
+      const safeLabel = htmlEscape(label).slice(0, 32);
+      const motif = {
+        plant: `<path d="M310 310 C310 240 278 192 230 153" stroke="${p.c}" stroke-width="5" fill="none" stroke-linecap="round" opacity=".58"/><path d="M231 154 C211 132 174 128 162 151 C190 161 216 165 231 154Z" fill="${p.c}" opacity=".45"/><path d="M270 205 C250 178 213 176 197 198 C225 212 251 217 270 205Z" fill="${p.c}" opacity=".35"/><path d="M306 252 C334 224 376 224 390 249 C358 264 327 268 306 252Z" fill="${p.c}" opacity=".34"/>`,
+        horizon: `<path d="M0 265 C115 210 228 330 350 260 C450 202 526 235 640 190 L640 420 L0 420Z" fill="${p.b}" opacity=".55"/><circle cx="475" cy="130" r="46" fill="#fff8ed" opacity=".7"/>`,
+        coffee: `<ellipse cx="315" cy="300" rx="175" ry="34" fill="${p.c}" opacity=".16"/><rect x="235" y="175" width="120" height="95" rx="20" fill="#fff8ed" opacity=".68"/><path d="M354 198 h23 c35 0 35 48 0 48 h-23" stroke="#fff8ed" stroke-width="18" fill="none" opacity=".68"/><path d="M265 150 C255 128 286 124 274 101 M311 151 C301 126 335 126 322 99" stroke="${p.c}" stroke-width="5" fill="none" opacity=".32"/>`,
+        waves: `<path d="M0 235 C70 205 120 265 190 235 S310 205 380 235 S505 265 640 220 V420 H0Z" fill="${p.b}" opacity=".5"/><path d="M0 295 C80 260 135 330 215 295 S355 260 435 295 S550 330 640 285" stroke="#fff8ed" stroke-width="10" fill="none" opacity=".55"/>`,
+        table: `<rect x="135" y="245" width="370" height="16" rx="8" fill="${p.c}" opacity=".35"/><rect x="170" y="260" width="22" height="78" rx="10" fill="${p.c}" opacity=".22"/><rect x="450" y="260" width="22" height="78" rx="10" fill="${p.c}" opacity=".22"/><circle cx="300" cy="203" r="48" fill="#fff8ed" opacity=".45"/><path d="M362 183 C405 172 439 189 463 222" stroke="${p.c}" stroke-width="9" fill="none" opacity=".24"/>`
+      }[p.motif];
+
+      return svgData(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420">
+          <defs>
+            <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+              <stop stop-color="${p.a}"/>
+              <stop offset="1" stop-color="${p.b}"/>
+            </linearGradient>
+            <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="table" tableValues="0 .06"/></feComponentTransfer></filter>
+          </defs>
+          <rect width="640" height="420" fill="url(#g)"/>
+          <rect width="640" height="420" filter="url(#grain)"/>
+          <circle cx="105" cy="80" r="130" fill="#fff8ed" opacity=".26"/>
+          ${motif}
+          <text x="34" y="374" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="${p.c}" opacity=".46">${safeLabel}</text>
+        </svg>
+      `);
+    }
+
+    function weatherCodeToIcon(code) {
+      if ([0].includes(code)) return '☀️';
+      if ([1, 2].includes(code)) return '🌤️';
+      if ([3].includes(code)) return '☁️';
+      if ([45, 48].includes(code)) return '🌫️';
+      if ([51, 53, 55, 56, 57].includes(code)) return '🌦️';
+      if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return '🌧️';
+      if ([71, 73, 75, 77, 85, 86].includes(code)) return '❄️';
+      if ([95, 96, 99].includes(code)) return '⛈️';
+      return '🌤️';
+    }
+
+    function weatherCodeToText(code) {
+      if ([0].includes(code)) return 'Clear';
+      if ([1, 2].includes(code)) return 'Partly cloudy';
+      if ([3].includes(code)) return 'Cloudy';
+      if ([45, 48].includes(code)) return 'Fog';
+      if ([51, 53, 55, 56, 57].includes(code)) return 'Drizzle';
+      if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return 'Rain';
+      if ([71, 73, 75, 77, 85, 86].includes(code)) return 'Snow';
+      if ([95, 96, 99].includes(code)) return 'Thunderstorm';
+      return 'Mixed weather';
+    }
+
+    function setMode() {
+      els.adminView.classList.toggle('hidden', !adminMode);
+      els.displayView.classList.toggle('hidden', adminMode);
+      if (adminMode) document.body.style.display = 'block';
+    }
+
+    function updateClock() {
+      const now = new Date();
+      const split = splitTime(now);
+      els.timeDisplay.textContent = split.time;
+      els.ampmDisplay.textContent = split.ampm;
+      els.dateDisplay.textContent = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(now);
+      els.adminClock.textContent = formatTime(now, false);
+    }
+
+    async function fetchEvents() {
+      try {
+        const response = await fetch(`/api/events?t=${Date.now()}`, { cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not load events.');
+        state.events = Array.isArray(data.events) ? data.events : [];
+      } catch (error) {
+        console.warn(error);
+        state.events = [];
+      }
+      renderDisplay();
+      renderAdminEvents();
+    }
+
+    function getDisplayEvents() {
+      const now = new Date();
+      const floor = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+      const events = state.events
+        .map(event => ({ ...event, date: new Date(event.start) }))
+        .filter(event => !Number.isNaN(event.date) && event.date >= floor)
+        .sort((a, b) => a.date - b.date);
+
+      const todays = events.filter(event => sameDay(event.date, now));
+      const daily = todays.find(event => event.featured) || todays[0] || null;
+      const upcoming = events.filter(event => !daily || event.id !== daily.id).slice(0, DISPLAY_EVENT_LIMIT);
+      return { daily, upcoming };
+    }
+
+    function renderDisplay() {
+      if (adminMode) return;
+      const { daily, upcoming } = getDisplayEvents();
+      els.displayView.classList.toggle('no-daily', !daily);
+
+      if (daily) {
+        els.heroImage.src = daily.imageUrl || placeholderFor(daily.id, daily.title);
+        els.heroImage.alt = daily.title;
+        els.heroKicker.textContent = `${sameDay(new Date(daily.start), new Date()) ? 'Today' : 'Next'} · ${formatTime(new Date(daily.start), true)}`;
+        els.heroTitle.textContent = daily.title;
+        els.heroLocation.textContent = daily.location || daily.note || '';
+      }
+
+      if (!upcoming.length) {
+        els.upcomingGrid.innerHTML = '<div class="empty-upcoming" style="grid-column:1/-1">No upcoming events yet</div>';
+        return;
+      }
+
+      els.upcomingGrid.innerHTML = upcoming.map(event => {
+        const date = new Date(event.start);
+        const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date);
+        return `
+          <article class="mini-event">
+            <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}">
+            <div class="mini-time">${weekday} · ${formatTime(date, true)}</div>
+            <div class="mini-title">${htmlEscape(event.title)}</div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    async function fetchWeather() {
+      try {
+        const url = new URL('https://api.open-meteo.com/v1/forecast');
+        url.search = new URLSearchParams({
+          latitude: WEATHER_CONFIG.lat,
+          longitude: WEATHER_CONFIG.lon,
+          timezone: WEATHER_CONFIG.timezone,
+          current: 'temperature_2m,weather_code',
+          daily: 'weather_code,temperature_2m_max,temperature_2m_min',
+          forecast_days: '5'
+        }).toString();
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Weather fetch failed');
+        state.weather = await response.json();
+      } catch (error) {
+        state.weather = null;
+      }
+      renderWeather();
+    }
+
+    function renderWeather() {
+      const fallback = {
+        current: { temperature_2m: 20, weather_code: 2 },
+        daily: {
+          time: [0,1,2,3,4].map(i => new Date(Date.now() + i * 86400000).toISOString().slice(0,10)),
+          weather_code: [2, 3, 61, 2, 1],
+          temperature_2m_max: [22, 20, 19, 21, 23],
+          temperature_2m_min: [12, 11, 10, 12, 13]
+        }
+      };
+
+      const weather = state.weather || fallback;
+      const code = weather.current?.weather_code ?? 2;
+      const temp = Math.round(weather.current?.temperature_2m ?? 20);
+      els.weatherIcon.textContent = weatherCodeToIcon(code);
+      els.weatherTemp.textContent = `${temp}°`;
+      els.weatherDesc.textContent = `${weatherCodeToText(code)} · ${WEATHER_CONFIG.name}`;
+
+      const rows = (weather.daily?.time || []).slice(1, 5).map((day, index) => {
+        const dayDate = new Date(`${day}T12:00:00`);
+        const dailyCode = weather.daily.weather_code[index + 1] ?? 2;
+        const high = Math.round(weather.daily.temperature_2m_max[index + 1] ?? 20);
+        const low = Math.round(weather.daily.temperature_2m_min[index + 1] ?? 10);
+        return `
+          <div class="forecast-day">
+            <span>${new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(dayDate)}</span>
+            <span class="small-icon">${weatherCodeToIcon(dailyCode)}</span>
+            <strong>${high}°</strong>
+            <span>${low}°</span>
+          </div>
+        `;
+      }).join('');
+
+      els.forecastRow.innerHTML = rows;
+    }
+
+    function getPin() {
+      return localStorage.getItem('homeOrganizerAdminPin') || '';
+    }
+
+    function setStatus(message, isError = false) {
+      els.statusLine.textContent = message;
+      els.statusLine.style.color = isError ? '#8d4138' : 'var(--muted)';
+    }
+
+    function toLocalInputValue(dateLike) {
+      if (!dateLike) return '';
+      const date = new Date(dateLike);
+      if (Number.isNaN(date)) return '';
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+    function fromLocalInputValue(value) {
+      return value ? new Date(value).toISOString() : '';
+    }
+
+    function resetForm() {
+      state.editingId = null;
+      els.eventForm.reset();
+      els.eventId.value = '';
+      els.imageUrlInput.value = '';
+      els.saveEventBtn.textContent = 'Save event';
+      els.imageStatus.textContent = 'No image selected. A calm placeholder will be used.';
+      setStatus('');
+      const start = new Date(Date.now() + 60 * 60 * 1000);
+      start.setMinutes(0, 0, 0);
+      els.startInput.value = toLocalInputValue(start);
+    }
+
+    function formatBytes(bytes) {
+      if (!Number.isFinite(bytes)) return '';
+      if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    }
+
+    function loadImage(file) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = () => {
+          URL.revokeObjectURL(url);
+          resolve(image);
+        };
+        image.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error('Could not read this image. Try a JPEG, PNG or WEBP instead.'));
+        };
+        image.src = url;
+      });
+    }
+
+    function canvasToBlob(canvas, type, quality) {
+      return new Promise((resolve, reject) => {
+        canvas.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error('Image compression failed.'));
+        }, type, quality);
+      });
+    }
+
+    async function compressImageForUpload(file) {
+      if (file.size <= MAX_UPLOAD_BYTES) return file;
+
+      els.imageStatus.textContent = `Compressing ${formatBytes(file.size)} image on this phone…`;
+
+      const image = await loadImage(file);
+      const naturalWidth = image.naturalWidth || image.width;
+      const naturalHeight = image.naturalHeight || image.height;
+      if (!naturalWidth || !naturalHeight) throw new Error('Could not read image size.');
+
+      const baseName = (file.name || 'event-image').replace(/\.[^.]+$/, '');
+      let maxDimension = IMAGE_MAX_DIMENSION;
+      let bestBlob = null;
+
+      for (let sizeAttempt = 0; sizeAttempt < 7; sizeAttempt++) {
+        const scale = Math.min(1, maxDimension / Math.max(naturalWidth, naturalHeight));
+        const width = Math.max(320, Math.round(naturalWidth * scale));
+        const height = Math.max(240, Math.round(naturalHeight * scale));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d', { alpha: false });
+        ctx.fillStyle = '#f5f1eb';
+        ctx.fillRect(0, 0, width, height);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(image, 0, 0, width, height);
+
+        for (const quality of JPEG_QUALITY_STEPS) {
+          const blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+          bestBlob = blob;
+          if (blob.size <= COMPRESSED_UPLOAD_TARGET_BYTES) {
+            return new File([blob], `${baseName}-compressed.jpg`, {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            });
+          }
+        }
+
+        maxDimension = Math.round(maxDimension * 0.78);
+      }
+
+      if (bestBlob && bestBlob.size <= MAX_UPLOAD_BYTES) {
+        return new File([bestBlob], `${baseName}-compressed.jpg`, {
+          type: 'image/jpeg',
+          lastModified: Date.now()
+        });
+      }
+
+      throw new Error('Could not compress this image under 4 MB. Try a different image.');
+    }
+
+    async function uploadImageIfNeeded() {
+      const file = els.imageInput.files?.[0];
+      if (!file) return els.imageUrlInput.value;
+
+      const uploadFile = await compressImageForUpload(file);
+      if (uploadFile.size > MAX_UPLOAD_BYTES) {
+        throw new Error('Image is still over 4 MB after compression. Try a different image.');
+      }
+
+      const compressedNote = uploadFile !== file ? `Compressed to ${formatBytes(uploadFile.size)}. ` : '';
+      els.imageStatus.textContent = `${compressedNote}Uploading image…`;
+      const form = new FormData();
+      form.append('image', uploadFile);
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'x-admin-pin': getPin() },
+        body: form
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Upload failed.');
+      els.imageStatus.textContent = uploadFile !== file
+        ? `Image compressed to ${formatBytes(uploadFile.size)} and uploaded.`
+        : 'Image uploaded.';
+      return data.url;
+    }
+
+    async function saveEvent(event) {
+      const method = event.id ? 'PUT' : 'POST';
+      const response = await fetch('/api/events', {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-pin': getPin()
+        },
+        body: JSON.stringify(event)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not save event.');
+      state.events = data.events || state.events;
+      return data.event;
+    }
+
+    async function deleteEvent(id) {
+      const response = await fetch(`/api/events?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-pin': getPin() }
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not delete event.');
+      state.events = data.events || [];
+    }
+
+    function renderAdminEvents() {
+      if (!adminMode) return;
+      const nowStart = todayStart();
+      const futureEvents = state.events
+        .map(event => ({ ...event, date: new Date(event.start) }))
+        .filter(event => !Number.isNaN(event.date) && event.date >= nowStart)
+        .sort((a, b) => a.date - b.date)
+        .slice(0, 30);
+
+      if (!futureEvents.length) {
+        els.adminEvents.innerHTML = '<div class="empty-upcoming">No events yet</div>';
+        return;
+      }
+
+      els.adminEvents.innerHTML = futureEvents.map(event => `
+        <article class="admin-event">
+          <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}">
+          <div>
+            <div class="admin-event-title">${htmlEscape(event.title)} ${event.featured ? '· Featured' : ''}</div>
+            <div class="admin-event-meta">${new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(event.date)}${event.location ? ` · ${htmlEscape(event.location)}` : ''}</div>
+            <div class="admin-actions">
+              <button class="btn secondary" type="button" data-edit="${htmlEscape(event.id)}">Edit</button>
+              <button class="btn danger" type="button" data-delete="${htmlEscape(event.id)}">Delete</button>
+            </div>
+          </div>
+        </article>
+      `).join('');
+    }
+
+    function editEvent(id) {
+      const event = state.events.find(item => item.id === id);
+      if (!event) return;
+      state.editingId = id;
+      els.eventId.value = event.id;
+      els.titleInput.value = event.title || '';
+      els.startInput.value = toLocalInputValue(event.start);
+      els.endInput.value = toLocalInputValue(event.end);
+      els.locationInput.value = event.location || '';
+      els.noteInput.value = event.note || '';
+      els.imageUrlInput.value = event.imageUrl || '';
+      els.featuredInput.checked = Boolean(event.featured);
+      els.imageInput.value = '';
+      els.imageStatus.textContent = event.imageUrl ? 'Current image will be kept unless you upload a new one.' : 'No image selected. A calm placeholder will be used.';
+      els.saveEventBtn.textContent = 'Update event';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function bindAdmin() {
+      els.pinInput.value = getPin();
+      els.savePinBtn.addEventListener('click', () => {
+        localStorage.setItem('homeOrganizerAdminPin', els.pinInput.value.trim());
+        setStatus('PIN saved on this phone.');
+      });
+
+      els.imageInput.addEventListener('change', () => {
+        const file = els.imageInput.files?.[0];
+        if (!file) {
+          els.imageStatus.textContent = 'No image selected. A calm placeholder will be used.';
+          return;
+        }
+
+        els.imageStatus.textContent = file.size > MAX_UPLOAD_BYTES
+          ? `${file.name} selected (${formatBytes(file.size)}). It will be compressed before upload.`
+          : `${file.name} selected (${formatBytes(file.size)}).`;
+      });
+
+      els.eventForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        els.saveEventBtn.disabled = true;
+        setStatus('Saving…');
+        try {
+          if (els.pinInput.value.trim() && els.pinInput.value.trim() !== getPin()) {
+            localStorage.setItem('homeOrganizerAdminPin', els.pinInput.value.trim());
+          }
+          const imageUrl = await uploadImageIfNeeded();
+          const payload = {
+            id: els.eventId.value || undefined,
+            title: els.titleInput.value,
+            start: fromLocalInputValue(els.startInput.value),
+            end: fromLocalInputValue(els.endInput.value),
+            location: els.locationInput.value,
+            note: els.noteInput.value,
+            imageUrl,
+            featured: els.featuredInput.checked
+          };
+          await saveEvent(payload);
+          setStatus('Saved. It will update on the display within a minute.');
+          resetForm();
+          renderAdminEvents();
+        } catch (error) {
+          setStatus(error.message, true);
+        } finally {
+          els.saveEventBtn.disabled = false;
+        }
+      });
+
+      els.resetBtn.addEventListener('click', resetForm);
+
+      els.adminEvents.addEventListener('click', async event => {
+        const editId = event.target.closest('[data-edit]')?.dataset.edit;
+        const deleteId = event.target.closest('[data-delete]')?.dataset.delete;
+        if (editId) editEvent(editId);
+        if (deleteId) {
+          const item = state.events.find(event => event.id === deleteId);
+          if (!confirm(`Delete ${item?.title || 'this event'}?`)) return;
+          setStatus('Deleting…');
+          try {
+            await deleteEvent(deleteId);
+            renderAdminEvents();
+            setStatus('Deleted.');
+          } catch (error) {
+            setStatus(error.message, true);
+          }
+        }
+      });
+
+      resetForm();
+    }
+
+    function init() {
+      setMode();
+      updateClock();
+      setInterval(updateClock, 1000);
+      fetchWeather();
+      setInterval(fetchWeather, 30 * 60 * 1000);
+      fetchEvents();
+      setInterval(fetchEvents, REFRESH_EVENTS_MS);
+      if (adminMode) bindAdmin();
+    }
+
+    init();
+  </script>
+</body>
+</html>
