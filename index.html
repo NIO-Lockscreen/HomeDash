@@ -19,6 +19,7 @@
       --radius-md: 16px;
       --serif: Georgia, 'Times New Roman', serif;
       --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --page-pad: clamp(10px, 1.5vmin, 22px);
     }
 
     * { box-sizing: border-box; }
@@ -26,6 +27,7 @@
     html, body {
       margin: 0;
       min-height: 100%;
+      height: 100%;
       background:
         radial-gradient(circle at 20% 0%, rgba(255,255,255,0.92), transparent 32%),
         linear-gradient(135deg, #f7f1e9 0%, #ede4d8 100%);
@@ -37,35 +39,40 @@
       min-height: 100svh;
       display: grid;
       place-items: center;
-      padding: 24px;
+      padding: var(--page-pad);
+      overflow: hidden;
     }
 
     button, input, textarea, select { font: inherit; }
-
     .hidden { display: none !important; }
 
     .kiosk-shell {
-      width: min(1180px, 100%);
-      aspect-ratio: 16 / 10;
-      max-height: calc(100svh - 48px);
+      /* JS below fits this to the largest 3:2 rectangle possible.
+         That makes it feel native on Surface Pro while still adapting to other displays. */
+      width: min(1500px, calc(100vw - 24px));
+      height: min(1000px, calc(100svh - 24px));
+      max-width: none;
+      max-height: none;
       background: rgba(255, 255, 255, 0.46);
       border: 1px solid rgba(255, 255, 255, 0.65);
-      border-radius: 34px;
+      border-radius: clamp(26px, 2.6vmin, 42px);
       box-shadow: var(--shadow);
-      padding: clamp(18px, 2.4vw, 34px);
+      padding: clamp(16px, 2.2vmin, 34px);
       display: grid;
-      grid-template-columns: minmax(270px, 0.95fr) minmax(430px, 1.45fr);
-      grid-template-rows: minmax(0, 1fr) auto;
-      gap: clamp(18px, 2vw, 28px);
+      grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.38fr);
+      grid-template-rows: minmax(0, 1fr) minmax(140px, 0.34fr);
+      gap: clamp(16px, 2.2vmin, 32px);
       backdrop-filter: blur(18px);
       overflow: hidden;
+      container-type: size;
     }
 
     .left-stack {
       display: grid;
-      grid-template-rows: auto 1fr;
-      gap: 18px;
+      grid-template-rows: minmax(0, 0.96fr) minmax(0, 1.04fr);
+      gap: clamp(16px, 2.2vmin, 32px);
       min-width: 0;
+      min-height: 0;
     }
 
     .clock-card,
@@ -79,8 +86,8 @@
     }
 
     .clock-card {
-      padding: clamp(20px, 2.2vw, 32px);
-      min-height: 225px;
+      padding: clamp(22px, 3cqw, 46px);
+      min-height: 0;
       display: grid;
       place-items: center;
       text-align: center;
@@ -88,16 +95,17 @@
 
     .time-line {
       font-family: var(--serif);
-      font-size: clamp(72px, 9vw, 138px);
+      font-size: clamp(82px, 10.8cqw, 176px);
       line-height: 0.86;
       letter-spacing: -0.08em;
       font-weight: 500;
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
 
     .ampm {
       font-family: var(--sans);
-      font-size: clamp(14px, 1.2vw, 20px);
+      font-size: clamp(14px, 1.35cqw, 22px);
       letter-spacing: 0.12em;
       margin-left: 8px;
       vertical-align: 40%;
@@ -106,42 +114,43 @@
     }
 
     .date-line {
-      margin-top: 18px;
+      margin-top: clamp(14px, 1.6cqw, 24px);
       color: var(--muted);
-      font-weight: 600;
-      font-size: clamp(14px, 1.1vw, 18px);
+      font-weight: 650;
+      font-size: clamp(15px, 1.25cqw, 22px);
     }
 
     .weather-card {
-      padding: clamp(16px, 1.6vw, 24px);
+      padding: clamp(18px, 2.2cqw, 34px);
       display: grid;
-      gap: 18px;
-      align-content: start;
+      gap: clamp(14px, 1.6cqw, 26px);
+      align-content: center;
+      min-height: 0;
     }
 
     .current-weather {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: clamp(12px, 1.6cqw, 22px);
       justify-content: center;
-      min-height: 95px;
+      min-height: 0;
     }
 
     .weather-icon {
-      font-size: clamp(38px, 4vw, 54px);
+      font-size: clamp(38px, 4.2cqw, 68px);
       filter: drop-shadow(0 8px 12px rgba(97, 72, 35, 0.12));
     }
 
     .weather-temp {
       font-family: var(--serif);
-      font-size: clamp(42px, 4.4vw, 68px);
+      font-size: clamp(46px, 5.2cqw, 84px);
       line-height: 0.9;
       letter-spacing: -0.06em;
     }
 
     .weather-desc {
       margin-top: 8px;
-      font-size: 13px;
+      font-size: clamp(12px, 1cqw, 16px);
       color: var(--muted);
       font-weight: 700;
     }
@@ -149,9 +158,9 @@
     .forecast-row {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
+      gap: clamp(6px, 0.8cqw, 12px);
       border-top: 1px solid var(--line);
-      padding-top: 15px;
+      padding-top: clamp(12px, 1.35cqw, 20px);
     }
 
     .forecast-day {
@@ -159,14 +168,14 @@
       display: grid;
       gap: 4px;
       color: var(--muted);
-      font-size: 13px;
+      font-size: clamp(12px, 0.95cqw, 15px);
       font-weight: 800;
       text-transform: uppercase;
     }
 
-    .forecast-day .small-icon { font-size: 22px; text-transform: none; }
-    .forecast-day strong { color: var(--ink); font-size: 15px; }
-    .forecast-day span:last-child { font-size: 12px; opacity: 0.82; }
+    .forecast-day .small-icon { font-size: clamp(20px, 1.75cqw, 30px); text-transform: none; }
+    .forecast-day strong { color: var(--ink); font-size: clamp(14px, 1.12cqw, 18px); }
+    .forecast-day span:last-child { font-size: clamp(11px, 0.9cqw, 14px); opacity: 0.82; }
 
     .event-hero {
       position: relative;
@@ -194,16 +203,16 @@
 
     .event-copy {
       position: absolute;
-      left: clamp(24px, 2.2vw, 38px);
-      right: clamp(24px, 2.2vw, 38px);
-      bottom: clamp(24px, 2.2vw, 38px);
+      left: clamp(24px, 2.2cqw, 42px);
+      right: clamp(24px, 2.2cqw, 42px);
+      bottom: clamp(24px, 2.2cqw, 42px);
       color: white;
       z-index: 2;
       text-shadow: 0 2px 16px rgba(0,0,0,0.25);
     }
 
     .event-kicker {
-      font-size: clamp(12px, 1vw, 15px);
+      font-size: clamp(13px, 1.05cqw, 17px);
       font-weight: 900;
       letter-spacing: 0.08em;
       text-transform: uppercase;
@@ -213,7 +222,7 @@
 
     .event-title {
       font-family: var(--serif);
-      font-size: clamp(34px, 4.2vw, 72px);
+      font-size: clamp(38px, 4.9cqw, 86px);
       line-height: 0.95;
       letter-spacing: -0.055em;
       margin: 0;
@@ -221,21 +230,23 @@
 
     .event-location {
       margin-top: 14px;
-      font-size: clamp(15px, 1.25vw, 20px);
+      font-size: clamp(16px, 1.45cqw, 24px);
       font-weight: 650;
       opacity: 0.9;
     }
 
     .upcoming-card {
       grid-column: 1 / -1;
-      padding: clamp(16px, 1.6vw, 24px);
-      min-height: 180px;
+      padding: clamp(18px, 2cqw, 32px);
+      min-height: 0;
       overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
     }
 
     .section-title {
-      margin: 0 0 14px;
-      font-size: 13px;
+      margin: 0 0 clamp(12px, 1.2cqw, 20px);
+      font-size: clamp(12px, 0.95cqw, 16px);
       letter-spacing: 0.09em;
       font-weight: 950;
       color: var(--muted);
@@ -245,12 +256,12 @@
     .upcoming-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: clamp(12px, 1.35vw, 20px);
+      gap: clamp(14px, 1.65cqw, 26px);
+      min-height: 0;
+      align-items: stretch;
     }
 
-    .mini-event {
-      min-width: 0;
-    }
+    .mini-event { min-width: 0; }
 
     .mini-event img {
       width: 100%;
@@ -264,7 +275,7 @@
 
     .mini-time {
       color: var(--muted);
-      font-size: 12px;
+      font-size: clamp(12px, 0.86cqw, 14px);
       font-weight: 850;
       margin-bottom: 4px;
       white-space: nowrap;
@@ -274,7 +285,7 @@
 
     .mini-title {
       font-weight: 900;
-      font-size: clamp(13px, 1.05vw, 17px);
+      font-size: clamp(14px, 1.08cqw, 18px);
       line-height: 1.18;
       overflow: hidden;
       display: -webkit-box;
@@ -286,7 +297,7 @@
       display: grid;
       place-items: center;
       color: var(--muted);
-      min-height: 112px;
+      min-height: 100%;
       border: 1px dashed var(--line);
       border-radius: var(--radius-lg);
       font-weight: 750;
@@ -294,20 +305,34 @@
 
     .kiosk-shell.no-daily {
       grid-template-columns: 1fr;
-      grid-template-rows: minmax(0, 1fr) auto;
+      grid-template-rows: minmax(0, 1fr) minmax(130px, 0.26fr);
     }
 
     .kiosk-shell.no-daily .left-stack {
       grid-row: 1;
       display: grid;
-      grid-template-columns: 1.6fr 1fr;
+      grid-template-columns: minmax(0, 1.68fr) minmax(0, 0.92fr);
       grid-template-rows: 1fr;
-      gap: clamp(18px, 2vw, 28px);
+      gap: clamp(16px, 2.2vmin, 32px);
     }
 
-    .kiosk-shell.no-daily .clock-card { min-height: 100%; }
-    .kiosk-shell.no-daily .time-line { font-size: clamp(116px, 17vw, 245px); }
+    .kiosk-shell.no-daily .clock-card { min-height: 0; }
+    .kiosk-shell.no-daily .time-line { font-size: clamp(140px, 19cqw, 330px); }
+    .kiosk-shell.no-daily .date-line { font-size: clamp(18px, 1.55cqw, 28px); }
     .kiosk-shell.no-daily .event-hero { display: none; }
+
+    .kiosk-shell[data-shape="wide"] {
+      grid-template-columns: minmax(0, 1.08fr) minmax(0, 1.32fr);
+    }
+
+    .kiosk-shell[data-shape="wide"].no-daily .left-stack {
+      grid-template-columns: minmax(0, 1.78fr) minmax(0, 0.82fr);
+    }
+
+    .kiosk-shell[data-shape="tall"] {
+      grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.25fr);
+      grid-template-rows: minmax(0, 1fr) minmax(150px, 0.38fr);
+    }
 
     .admin-shell {
       width: min(760px, 100%);
@@ -386,7 +411,6 @@
     }
 
     textarea { min-height: 88px; resize: vertical; }
-
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
     .checkbox-row {
@@ -398,7 +422,6 @@
     }
 
     .checkbox-row input { width: 18px; height: 18px; }
-
     .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
 
     .btn {
@@ -456,20 +479,22 @@
     .admin-actions button { padding: 8px 11px; font-size: 13px; }
 
     @media (max-width: 780px), (pointer: coarse) {
-      body { display: block; padding: 0; }
+      body { display: block; padding: 0; overflow: auto; }
       .kiosk-shell { display: none; }
     }
 
     @media (max-width: 980px) and (pointer: fine) {
+      body { overflow: auto; }
       .kiosk-shell {
-        aspect-ratio: auto;
-        max-height: none;
-        min-height: calc(100svh - 48px);
+        height: auto !important;
+        min-height: calc(100svh - 24px);
         grid-template-columns: 1fr;
-        grid-template-rows: auto minmax(380px, 1fr) auto;
+        grid-template-rows: auto minmax(360px, 1fr) auto;
       }
-      .event-hero { min-height: 400px; }
+      .left-stack { grid-template-columns: 1fr 1fr; grid-template-rows: auto; }
+      .event-hero { min-height: 380px; }
       .upcoming-grid { grid-template-columns: repeat(2, 1fr); }
+      .kiosk-shell.no-daily .left-stack { grid-template-columns: 1fr; grid-template-rows: auto auto; }
     }
   </style>
 </head>
@@ -644,6 +669,28 @@
     const isPhoneLike = matchMedia('(max-width: 780px), (pointer: coarse)').matches;
     const adminMode = forceAdmin || (!forceDisplay && isPhoneLike);
 
+    function fitKioskToScreen() {
+      if (adminMode || !els.displayView) return;
+
+      const shortSide = Math.min(window.innerWidth, window.innerHeight);
+      const margin = Math.max(10, Math.min(26, shortSide * 0.018));
+      const availableW = Math.max(320, window.innerWidth - margin * 2);
+      const availableH = Math.max(320, window.innerHeight - margin * 2);
+      const targetRatio = 3 / 2; // Surface Pro friendly.
+      const screenRatio = availableW / availableH;
+
+      let width = availableW;
+      let height = width / targetRatio;
+      if (height > availableH) {
+        height = availableH;
+        width = height * targetRatio;
+      }
+
+      els.displayView.style.width = `${Math.floor(width)}px`;
+      els.displayView.style.height = `${Math.floor(height)}px`;
+      els.displayView.dataset.shape = screenRatio > 1.75 ? 'wide' : screenRatio < 1.28 ? 'tall' : 'surface';
+    }
+
     function pad(number) {
       return String(number).padStart(2, '0');
     }
@@ -753,6 +800,7 @@
       els.adminView.classList.toggle('hidden', !adminMode);
       els.displayView.classList.toggle('hidden', adminMode);
       if (adminMode) document.body.style.display = 'block';
+      else fitKioskToScreen();
     }
 
     function updateClock() {
@@ -796,6 +844,7 @@
       if (adminMode) return;
       const { daily, upcoming } = getDisplayEvents();
       els.displayView.classList.toggle('no-daily', !daily);
+      fitKioskToScreen();
 
       if (daily) {
         els.heroImage.src = daily.imageUrl || placeholderFor(daily.id, daily.title);
@@ -1171,6 +1220,8 @@
 
     function init() {
       setMode();
+      window.addEventListener('resize', fitKioskToScreen);
+      window.addEventListener('orientationchange', () => setTimeout(fitKioskToScreen, 250));
       updateClock();
       setInterval(updateClock, 1000);
       fetchWeather();
