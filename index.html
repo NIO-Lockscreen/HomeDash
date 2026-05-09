@@ -963,6 +963,124 @@
     .admin-actions { display: flex; gap: 8px; margin-top: 9px; }
     .admin-actions button { padding: 8px 11px; font-size: 13px; }
 
+
+
+    .config-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(29, 25, 21, 0.28);
+      backdrop-filter: blur(18px);
+    }
+
+    .config-overlay.hidden { display: none; }
+
+    .config-modal {
+      width: min(720px, 100%);
+      max-height: min(820px, calc(100svh - 28px));
+      overflow: auto;
+      background: rgba(255, 252, 247, 0.94);
+      border: 1px solid rgba(255,255,255,0.78);
+      border-radius: 30px;
+      box-shadow: 0 28px 90px rgba(47,43,39,0.22);
+      padding: clamp(18px, 3vw, 28px);
+    }
+
+    .config-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .config-title {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(34px, 7vw, 54px);
+      letter-spacing: -0.055em;
+      line-height: 0.96;
+    }
+
+    .config-subtitle {
+      color: var(--muted);
+      font-weight: 750;
+      line-height: 1.35;
+      margin-top: 8px;
+    }
+
+    .config-close {
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.82);
+      color: var(--ink);
+      font-weight: 950;
+      font-size: 22px;
+      cursor: pointer;
+    }
+
+    .config-grid { display: grid; gap: 14px; }
+
+    .config-section {
+      display: grid;
+      gap: 12px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 14px;
+      background: rgba(255,255,255,0.58);
+    }
+
+    .config-section-title {
+      margin: 0;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+      color: var(--muted);
+      font-weight: 950;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--ink);
+      font-weight: 900;
+    }
+
+    .toggle-row input {
+      width: 46px;
+      height: 26px;
+      accent-color: #2f2b27;
+    }
+
+    .config-help {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.42;
+    }
+
+    .config-help code {
+      color: var(--ink);
+      font-weight: 900;
+      background: rgba(47,43,39,0.06);
+      padding: 2px 5px;
+      border-radius: 7px;
+    }
+
+    .config-secret {
+      min-height: 120px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
     @media (max-width: 780px), (pointer: coarse) {
       body { display: block; padding: 0; overflow: auto; }
       .kiosk-shell { display: none; }
@@ -1319,6 +1437,63 @@
     </section>
   </main>
 
+
+
+  <div id="configOverlay" class="config-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="configTitle">
+    <section class="config-modal">
+      <div class="config-head">
+        <div>
+          <h2 id="configTitle" class="config-title">Organizer<br>Config</h2>
+          <div class="config-subtitle">Hold anywhere on the screen to open this menu. Google Calendar sync is off by default.</div>
+        </div>
+        <button id="configCloseBtn" class="config-close" type="button" aria-label="Close config">×</button>
+      </div>
+
+      <div class="config-grid">
+        <section class="config-section">
+          <h3 class="config-section-title">Admin</h3>
+          <label>
+            Admin PIN
+            <input id="configPinInput" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Same PIN as ADMIN_PIN in Vercel" />
+          </label>
+          <div class="config-help">Needed to save config and upload events. This is stored only on this device.</div>
+        </section>
+
+        <section class="config-section">
+          <h3 class="config-section-title">Google Calendar</h3>
+          <label class="toggle-row">
+            <span>Enable Google Calendar sync</span>
+            <input id="googleSyncInput" type="checkbox" />
+          </label>
+          <label>
+            Calendar ID
+            <input id="googleCalendarIdInput" placeholder="example: family123@group.calendar.google.com" />
+          </label>
+          <label>
+            Timezone
+            <input id="googleTimezoneInput" placeholder="Europe/Oslo" />
+          </label>
+          <label>
+            Service account JSON / base64 JSON
+            <textarea id="googleServiceAccountInput" class="config-secret" spellcheck="false" placeholder="Paste the Google service account key JSON here. Leave empty to keep existing key."></textarea>
+          </label>
+          <label class="checkbox-row">
+            <input id="clearGoogleCredentialsInput" type="checkbox" />
+            Clear saved Google service account key
+          </label>
+          <div id="googleConnectionStatus" class="config-help">Google Calendar sync is off.</div>
+          <div class="config-help">Create a service account in Google Cloud, share the calendar with the service account email, and give it permission to make changes to events. The key saved here is encrypted on the server using your ADMIN_PIN.</div>
+        </section>
+
+        <div class="button-row">
+          <button id="saveConfigBtn" class="btn" type="button">Save config</button>
+          <button id="reloadConfigBtn" class="btn secondary" type="button">Reload</button>
+        </div>
+        <div id="configStatus" class="status-line"></div>
+      </div>
+    </section>
+  </div>
+
   <script>
     const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
     const REFRESH_EVENTS_MS = 60_000;
@@ -1333,7 +1508,16 @@
       weather: null,
       editingId: null,
       selectedDayKey: null,
-      selectedDayTimer: null
+      selectedDayTimer: null,
+      config: {
+        googleCalendarSyncEnabled: false,
+        googleCalendarId: '',
+        googleCalendarTimezone: 'Europe/Oslo',
+        hasGoogleServiceAccount: false,
+        serviceAccountSource: ''
+      },
+      longPressTimer: null,
+      longPressOpened: false
     };
 
     const els = {
@@ -1375,7 +1559,19 @@
       saveEventBtn: document.getElementById('saveEventBtn'),
       resetBtn: document.getElementById('resetBtn'),
       statusLine: document.getElementById('statusLine'),
-      adminEvents: document.getElementById('adminEvents')
+      adminEvents: document.getElementById('adminEvents'),
+      configOverlay: document.getElementById('configOverlay'),
+      configCloseBtn: document.getElementById('configCloseBtn'),
+      configPinInput: document.getElementById('configPinInput'),
+      googleSyncInput: document.getElementById('googleSyncInput'),
+      googleCalendarIdInput: document.getElementById('googleCalendarIdInput'),
+      googleTimezoneInput: document.getElementById('googleTimezoneInput'),
+      googleServiceAccountInput: document.getElementById('googleServiceAccountInput'),
+      clearGoogleCredentialsInput: document.getElementById('clearGoogleCredentialsInput'),
+      googleConnectionStatus: document.getElementById('googleConnectionStatus'),
+      saveConfigBtn: document.getElementById('saveConfigBtn'),
+      reloadConfigBtn: document.getElementById('reloadConfigBtn'),
+      configStatus: document.getElementById('configStatus')
     };
 
     const params = new URLSearchParams(location.search);
@@ -1926,6 +2122,153 @@
       els.statusLine.style.color = isError ? '#8d4138' : 'var(--muted)';
     }
 
+
+    function setConfigStatus(message, isError = false) {
+      if (!els.configStatus) return;
+      els.configStatus.textContent = message;
+      els.configStatus.style.color = isError ? '#8d4138' : 'var(--muted)';
+    }
+
+    function describeGoogleConfig(config = state.config) {
+      if (!els.googleConnectionStatus) return;
+      const enabled = config.googleCalendarSyncEnabled === true;
+      const hasCalendar = Boolean(config.googleCalendarId);
+      const hasKey = Boolean(config.hasGoogleServiceAccount);
+      const keyText = hasKey
+        ? `Key saved${config.serviceAccountSource ? ` via ${config.serviceAccountSource}` : ''}`
+        : 'No service account key saved';
+      els.googleConnectionStatus.textContent = enabled
+        ? `Sync ON. ${hasCalendar ? 'Calendar ID set' : 'Calendar ID missing'}. ${keyText}.`
+        : `Sync OFF. ${hasCalendar ? 'Calendar ID set' : 'Calendar ID not set'}. ${keyText}.`;
+    }
+
+    function fillConfigForm() {
+      if (!els.configOverlay) return;
+      const config = state.config;
+      els.configPinInput.value = getPin();
+      els.googleSyncInput.checked = config.googleCalendarSyncEnabled === true;
+      els.googleCalendarIdInput.value = config.googleCalendarId || '';
+      els.googleTimezoneInput.value = config.googleCalendarTimezone || 'Europe/Oslo';
+      els.googleServiceAccountInput.value = '';
+      els.googleServiceAccountInput.placeholder = config.hasGoogleServiceAccount
+        ? 'A key is already saved. Leave empty to keep it, or paste a new key to replace it.'
+        : 'Paste the Google service account key JSON here. Leave empty if you use Vercel env variables.';
+      els.clearGoogleCredentialsInput.checked = false;
+      describeGoogleConfig(config);
+    }
+
+    function openConfigMenu() {
+      if (!els.configOverlay) return;
+      fillConfigForm();
+      els.configOverlay.classList.remove('hidden');
+      document.body.classList.add('config-open');
+      setConfigStatus('');
+      setTimeout(() => els.configPinInput?.focus?.(), 50);
+    }
+
+    function closeConfigMenu() {
+      if (!els.configOverlay) return;
+      els.configOverlay.classList.add('hidden');
+      document.body.classList.remove('config-open');
+    }
+
+    async function loadConfig() {
+      try {
+        const response = await fetch(`/api/config?t=${Date.now()}`, { cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not load config.');
+        state.config = { ...state.config, ...(data.config || {}) };
+        fillConfigForm();
+        return state.config;
+      } catch (error) {
+        console.warn(error);
+        setConfigStatus(error.message, true);
+        return state.config;
+      }
+    }
+
+    async function saveConfig() {
+      const pin = (els.configPinInput.value || '').trim() || getPin();
+      if (!pin) {
+        setConfigStatus('Enter the admin PIN first.', true);
+        return;
+      }
+      localStorage.setItem('homeOrganizerAdminPin', pin);
+      if (els.pinInput) els.pinInput.value = pin;
+
+      els.saveConfigBtn.disabled = true;
+      setConfigStatus('Saving config…');
+      try {
+        const payload = {
+          googleCalendarSyncEnabled: els.googleSyncInput.checked,
+          googleCalendarId: els.googleCalendarIdInput.value.trim(),
+          googleCalendarTimezone: els.googleTimezoneInput.value.trim() || 'Europe/Oslo',
+          googleServiceAccountSecret: els.googleServiceAccountInput.value.trim(),
+          clearGoogleServiceAccount: els.clearGoogleCredentialsInput.checked
+        };
+
+        const response = await fetch('/api/config', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-pin': pin
+          },
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not save config.');
+        state.config = { ...state.config, ...(data.config || {}) };
+        fillConfigForm();
+        setConfigStatus(state.config.googleCalendarSyncEnabled ? 'Config saved. New/edited admin events will sync to Google Calendar.' : 'Config saved. Google Calendar sync is off.');
+      } catch (error) {
+        setConfigStatus(error.message, true);
+      } finally {
+        els.saveConfigBtn.disabled = false;
+      }
+    }
+
+    function bindConfigMenu() {
+      if (!els.configOverlay) return;
+      els.configCloseBtn.addEventListener('click', closeConfigMenu);
+      els.configOverlay.addEventListener('click', event => {
+        if (event.target === els.configOverlay) closeConfigMenu();
+      });
+      window.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !els.configOverlay.classList.contains('hidden')) closeConfigMenu();
+      });
+      els.saveConfigBtn.addEventListener('click', saveConfig);
+      els.reloadConfigBtn.addEventListener('click', async () => {
+        setConfigStatus('Reloading config…');
+        await loadConfig();
+        setConfigStatus('Config reloaded.');
+      });
+      els.googleSyncInput.addEventListener('change', () => describeGoogleConfig({ ...state.config, googleCalendarSyncEnabled: els.googleSyncInput.checked }));
+
+      const startHold = event => {
+        if (event.target.closest?.('.config-modal, input, textarea, button, select, a')) return;
+        state.longPressOpened = false;
+        clearTimeout(state.longPressTimer);
+        state.longPressTimer = setTimeout(() => {
+          state.longPressOpened = true;
+          openConfigMenu();
+        }, 850);
+      };
+      const cancelHold = () => {
+        clearTimeout(state.longPressTimer);
+        state.longPressTimer = null;
+      };
+
+      window.addEventListener('pointerdown', startHold, { passive: true });
+      window.addEventListener('pointerup', cancelHold, { passive: true });
+      window.addEventListener('pointercancel', cancelHold, { passive: true });
+      window.addEventListener('pointermove', event => {
+        if (Math.abs(event.movementX || 0) + Math.abs(event.movementY || 0) > 12) cancelHold();
+      }, { passive: true });
+      window.addEventListener('contextmenu', event => {
+        if (state.longPressOpened) event.preventDefault();
+      });
+    }
+
     function toLocalInputValue(dateLike) {
       if (!dateLike) return '';
       const date = new Date(dateLike);
@@ -2074,7 +2417,7 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not save event.');
       state.events = data.events || state.events;
-      return data.event;
+      return data;
     }
 
     async function deleteEvent(id) {
@@ -2138,6 +2481,7 @@
       els.pinInput.value = getPin();
       els.savePinBtn.addEventListener('click', () => {
         localStorage.setItem('homeOrganizerAdminPin', els.pinInput.value.trim());
+        if (els.configPinInput) els.configPinInput.value = els.pinInput.value.trim();
         setStatus('PIN saved on this phone.');
       });
 
@@ -2172,8 +2516,14 @@
             imageUrl,
             featured: els.featuredInput.checked
           };
-          await saveEvent(payload);
-          setStatus('Saved. It will update on the display within a minute.');
+          const saved = await saveEvent(payload);
+          if (saved.googleCalendar?.synced) {
+            setStatus('Saved to the shared Google Calendar. The display will update within a minute.');
+          } else if (saved.googleCalendar?.disabled) {
+            setStatus(saved.googleCalendar?.reason === 'sync-off' ? 'Saved locally. Google Calendar sync is off.' : 'Saved locally. Google Calendar is not configured yet.', saved.googleCalendar?.reason !== 'sync-off');
+          } else {
+            setStatus('Saved. It will update on the display within a minute.');
+          }
           resetForm();
           renderAdminEvents();
         } catch (error) {
@@ -2196,7 +2546,7 @@
           try {
             await deleteEvent(deleteId);
             renderAdminEvents();
-            setStatus('Deleted.');
+            setStatus('Deleted from the shared calendar.');
           } catch (error) {
             setStatus(error.message, true);
           }
@@ -2210,6 +2560,8 @@
       setMode();
       window.addEventListener('resize', fitKioskToScreen);
       window.addEventListener('orientationchange', () => setTimeout(fitKioskToScreen, 250));
+      bindConfigMenu();
+      loadConfig();
       if (els.weekView) {
         els.weekView.addEventListener('click', event => {
           const dayButton = event.target.closest('.week-day.has-event');

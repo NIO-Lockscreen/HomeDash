@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@vercel/blob": "latest",
-    "formidable": "latest"
+    "formidable": "latest",
+    "googleapis": "latest"
   },
   "devDependencies": {
     "vercel": "latest"
