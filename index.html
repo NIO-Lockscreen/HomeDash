@@ -92,6 +92,8 @@
       place-items: center;
       text-align: center;
       overflow: hidden;
+      cursor: pointer;
+      touch-action: manipulation;
     }
 
     .time-line {
@@ -1228,6 +1230,50 @@
       margin-bottom: 14px;
     }
 
+    .admin-calendar-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 9px;
+    }
+
+    .repeat-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.78);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: .02em;
+      cursor: pointer;
+      user-select: none;
+      box-shadow: 0 8px 18px rgba(70,58,44,.06);
+    }
+
+    .repeat-toggle input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--ink);
+    }
+
+    .repeat-toggle small {
+      display: block;
+      margin-top: 1px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    .phone-only-control { display: none; }
+    .phone-admin .phone-only-control { display: inline-flex; }
+    .phone-admin .desktop-return-btn { display: none !important; }
+
     .admin-list-title {
       margin: 0;
       font-family: var(--serif);
@@ -1752,6 +1798,9 @@
       }
 
       .admin-list-title { font-size: clamp(31px, 9vw, 42px); }
+      .admin-calendar-actions { align-items: stretch; }
+      .admin-calendar-actions .btn { width: 100%; }
+      .repeat-toggle { width: 100%; justify-content: flex-start; }
 
       .event-editor-card {
         position: fixed;
@@ -2435,7 +2484,16 @@
           <h2 class="admin-list-title">Upcoming tasks</h2>
           <div id="adminListSubtitle" class="admin-list-subtitle">Loading shared calendar…</div>
         </div>
-        <button id="newTaskBtn" class="btn" type="button">Create a new task/event</button>
+        <div class="admin-calendar-actions">
+          <button id="newTaskBtn" class="btn" type="button">Create a new task/event</button>
+          <label id="repeatVisibilityToggle" class="repeat-toggle phone-only-control">
+            <input id="showFrequentRepeatingInput" type="checkbox" />
+            <span>
+              <span id="repeatVisibilityText">Show repeating tasks</span>
+              <small id="repeatVisibilityHelp">Frequent repeats are hidden by default.</small>
+            </span>
+          </label>
+        </div>
       </div>
       <div id="adminEvents" class="admin-events"></div>
     </section>
@@ -2478,7 +2536,7 @@
           Repeat
           <select id="repeatInput">
             <option value="none">Does not repeat</option>
-            <option value="yearly">Every year, for birthdays and anniversaries</option>
+            <option value="yearly">Yearly</option>
             <option value="weekly">Every week</option>
             <option value="biweekly">Every other week</option>
           </select>
@@ -2617,6 +2675,8 @@
       editingId: null,
       selectedDayKey: null,
       selectedDayTimer: null,
+      selectedDayCycleTimer: null,
+      selectedDayCycleIndex: 0,
       selectedEventFlipped: false,
       heroEventFlipped: false,
       selectedInstanceId: null,
@@ -2630,6 +2690,7 @@
       weatherFocusDate: null,
       dangerHoldTimer: null,
       dangerHoldOpened: false,
+      showFrequentRepeatingTasks: localStorage.getItem('homeOrganizerShowFrequentRepeatingTasks') === '1',
       pendingImageFocus: null,
       imageFocusToken: 0
     };
@@ -2664,6 +2725,10 @@
       adminCalendarCard: document.getElementById('adminCalendarCard'),
       adminListSubtitle: document.getElementById('adminListSubtitle'),
       newTaskBtn: document.getElementById('newTaskBtn'),
+      repeatVisibilityToggle: document.getElementById('repeatVisibilityToggle'),
+      showFrequentRepeatingInput: document.getElementById('showFrequentRepeatingInput'),
+      repeatVisibilityText: document.getElementById('repeatVisibilityText'),
+      repeatVisibilityHelp: document.getElementById('repeatVisibilityHelp'),
       eventEditorCard: document.getElementById('eventEditorCard'),
       eventEditorTitle: document.getElementById('eventEditorTitle'),
       closeEditorBtn: document.getElementById('closeEditorBtn'),
@@ -2719,6 +2784,7 @@
     const isPhoneLike = matchMedia('(max-width: 780px), ((pointer: coarse) and (max-height: 520px))').matches;
     const adminMode = forceAdmin || (!forceDisplay && isPhoneLike);
     if (adminMode && !isPhoneLike) document.body.classList.add('desktop-admin');
+    if (adminMode && isPhoneLike) document.body.classList.add('phone-admin');
 
     function fitKioskToScreen() {
       if (adminMode || !els.displayView || window.innerWidth <= 980) return;
@@ -3262,6 +3328,12 @@
       `;
     }
 
+    function stopSelectedDayCycle() {
+      if (state.selectedDayCycleTimer) clearInterval(state.selectedDayCycleTimer);
+      state.selectedDayCycleTimer = null;
+      state.selectedDayCycleIndex = 0;
+    }
+
     function clearSelectedDayPreview() {
       state.selectedDayKey = null;
       state.selectedEventFlipped = false;
@@ -3269,12 +3341,34 @@
       state.selectedInstanceId = null;
       if (state.selectedDayTimer) clearTimeout(state.selectedDayTimer);
       state.selectedDayTimer = null;
+      stopSelectedDayCycle();
       renderDisplay();
     }
 
     function startSelectionReturnTimer() {
       if (state.selectedDayTimer) clearTimeout(state.selectedDayTimer);
       state.selectedDayTimer = setTimeout(clearSelectedDayPreview, 5 * 60 * 1000);
+    }
+
+    function startSelectedDayCycle(dayKey) {
+      stopSelectedDayCycle();
+      const orderedEvents = eventsForDayKey(dayKey).sort((a, b) => new Date(a.start) - new Date(b.start));
+      if (orderedEvents.length <= 1) return;
+      state.selectedDayCycleTimer = setInterval(() => {
+        if (state.heroEventFlipped || state.selectedEventFlipped) return;
+        const currentEvents = eventsForDayKey(dayKey).sort((a, b) => new Date(a.start) - new Date(b.start));
+        if (currentEvents.length <= 1) {
+          stopSelectedDayCycle();
+          return;
+        }
+        const currentIndex = Math.max(0, currentEvents.findIndex(event => event._instanceId === state.selectedInstanceId));
+        const nextIndex = (currentIndex + 1) % currentEvents.length;
+        state.selectedDayCycleIndex = nextIndex;
+        state.selectedInstanceId = currentEvents[nextIndex]._instanceId;
+        state.heroEventFlipped = false;
+        state.selectedEventFlipped = false;
+        renderDisplay();
+      }, 10_000);
     }
 
     function selectDayPreview(dayKey) {
@@ -3285,13 +3379,16 @@
       state.selectedEventFlipped = false;
       state.heroEventFlipped = false;
       state.selectedInstanceId = firstEvent?._instanceId || null;
+      state.selectedDayCycleIndex = 0;
       startSelectionReturnTimer();
+      startSelectedDayCycle(dayKey);
       renderDisplay();
     }
 
     function selectEventPreview(instanceId) {
       const event = occurrenceByInstanceId(instanceId);
       if (!event) return;
+      stopSelectedDayCycle();
       state.selectedInstanceId = instanceId;
       state.selectedDayKey = dateKey(event.date || new Date(event.start));
       state.selectedEventFlipped = false;
@@ -3303,6 +3400,7 @@
     function setMode() {
       els.adminView.classList.toggle('hidden', !adminMode);
       els.displayView.classList.toggle('hidden', adminMode);
+      if (els.returnToDisplayBtn) els.returnToDisplayBtn.classList.toggle('hidden', isPhoneLike);
       if (adminMode) document.body.style.display = 'block';
       else fitKioskToScreen();
     }
@@ -4276,6 +4374,33 @@ Cancel = choose whether to delete the whole series.`);
       els.taskActionOverlay.setAttribute('aria-hidden', 'false');
     }
 
+
+    function isFrequentRepeatingEvent(event) {
+      const repeat = event?.repeat || 'none';
+      return repeat === 'weekly' || repeat === 'biweekly';
+    }
+
+    function endOfNextMonth(fromDate = new Date()) {
+      return new Date(fromDate.getFullYear(), fromDate.getMonth() + 2, 0, 23, 59, 59, 999);
+    }
+
+    function updateRepeatVisibilityControl(hiddenCount = 0) {
+      if (!els.showFrequentRepeatingInput) return;
+      els.showFrequentRepeatingInput.checked = Boolean(state.showFrequentRepeatingTasks);
+      if (els.repeatVisibilityText) {
+        els.repeatVisibilityText.textContent = state.showFrequentRepeatingTasks
+          ? 'Hide repeating tasks'
+          : 'Show repeating tasks';
+      }
+      if (els.repeatVisibilityHelp) {
+        els.repeatVisibilityHelp.textContent = state.showFrequentRepeatingTasks
+          ? 'Showing repeats only for this and next month.'
+          : hiddenCount
+            ? `${hiddenCount} frequent repeat${hiddenCount === 1 ? '' : 's'} hidden.`
+            : 'Frequent repeats are hidden by default.';
+      }
+    }
+
     function renderAdminEvents() {
       if (!adminMode) return;
       renderAdminShell();
@@ -4287,12 +4412,28 @@ Cancel = choose whether to delete the whole series.`);
 
       const nowStart = todayStart();
       const rangeEnd = new Date(nowStart.getTime() + 365 * 86400000);
-      const futureEvents = expandEventsInRange(nowStart, rangeEnd, { includeCompleted: true }).slice(0, 80);
+      const repeatVisibleThrough = endOfNextMonth(nowStart);
+      const allFutureEvents = expandEventsInRange(nowStart, rangeEnd, { includeCompleted: true });
+      const hiddenFrequentRepeats = allFutureEvents.filter(event => isFrequentRepeatingEvent(event) && event.date <= repeatVisibleThrough).length;
+      const futureEvents = allFutureEvents
+        .filter(event => {
+          if (!isFrequentRepeatingEvent(event)) return true;
+          if (!state.showFrequentRepeatingTasks) return false;
+          return event.date <= repeatVisibleThrough;
+        })
+        .slice(0, 80);
+
+      updateRepeatVisibilityControl(state.showFrequentRepeatingTasks ? 0 : hiddenFrequentRepeats);
 
       if (els.adminListSubtitle) {
+        const repeatNote = state.showFrequentRepeatingTasks
+          ? ' Frequent repeats are limited to this and next month.'
+          : hiddenFrequentRepeats
+            ? ` ${hiddenFrequentRepeats} frequent repeat${hiddenFrequentRepeats === 1 ? '' : 's'} hidden.`
+            : '';
         els.adminListSubtitle.textContent = futureEvents.length
-          ? `${futureEvents.length} upcoming saved task${futureEvents.length === 1 ? '' : 's'} across your shared calendar.`
-          : 'No upcoming tasks yet. Create your first task/event.';
+          ? `${futureEvents.length} upcoming saved task${futureEvents.length === 1 ? '' : 's'} across your shared calendar.${repeatNote}`
+          : `No upcoming tasks shown. Create your first task/event or show repeating tasks.${repeatNote}`;
       }
 
       if (!futureEvents.length) {
@@ -4494,22 +4635,41 @@ Cancel = choose whether to delete the whole series.`);
       const clock = els.clockCard;
       if (!clock) return;
       let lastPress = 0;
-      const maybeToggle = event => {
+      let singlePressTimer = null;
+
+      const returnToToday = () => {
+        if (adminMode) return;
+        clearSelectedDayPreview();
+      };
+
+      const handleClockPress = event => {
         if (adminMode) return;
         const now = Date.now();
-        if (now - lastPress < 420) {
+        const isDoublePress = now - lastPress < 420;
+
+        if (isDoublePress) {
           event.preventDefault?.();
-          toggleFullscreen();
+          if (singlePressTimer) clearTimeout(singlePressTimer);
+          singlePressTimer = null;
           lastPress = 0;
-        } else {
-          lastPress = now;
+          toggleFullscreen();
+          return;
         }
+
+        lastPress = now;
+        if (singlePressTimer) clearTimeout(singlePressTimer);
+        singlePressTimer = setTimeout(() => {
+          singlePressTimer = null;
+          returnToToday();
+        }, 260);
       };
+
+      clock.addEventListener('pointerup', handleClockPress);
       clock.addEventListener('dblclick', event => {
         event.preventDefault();
-        toggleFullscreen();
+        if (singlePressTimer) clearTimeout(singlePressTimer);
+        singlePressTimer = null;
       });
-      clock.addEventListener('pointerup', maybeToggle);
       document.addEventListener('fullscreenchange', () => setTimeout(fitKioskToScreen, 120));
     }
 
@@ -4524,6 +4684,11 @@ Cancel = choose whether to delete the whole series.`);
       });
 
       els.newTaskBtn?.addEventListener('click', openNewEventEditor);
+      els.showFrequentRepeatingInput?.addEventListener('change', () => {
+        state.showFrequentRepeatingTasks = Boolean(els.showFrequentRepeatingInput.checked);
+        localStorage.setItem('homeOrganizerShowFrequentRepeatingTasks', state.showFrequentRepeatingTasks ? '1' : '0');
+        renderAdminEvents();
+      });
       els.closeEditorBtn?.addEventListener('click', () => closeEventEditor());
 
       els.imageInput.addEventListener('change', () => {
