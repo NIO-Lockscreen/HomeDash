@@ -3565,7 +3565,9 @@
 
     function getDisplayEvents() {
       const now = new Date();
-      const floor = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+      // Daily view should keep showing today's tasks for the full calendar day.
+      // Do not drop a 15:00 task just because the current time is 19:23.
+      const floor = todayStart();
       const end = new Date(now.getTime() + 90 * 86400000);
       const events = expandEventsInRange(floor, end, { includeCompleted: false });
       if (state.selectedInstanceId && !events.some(event => event._instanceId === state.selectedInstanceId)) state.selectedInstanceId = null;
