@@ -47,6 +47,14 @@ function parseDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function normalizeDateKeys(values, existing = []) {
+  const source = Array.isArray(values) ? values : existing;
+  return [...new Set(source
+    .map(value => String(value || '').slice(0, 10))
+    .filter(value => /^\d{4}-\d{2}-\d{2}$/.test(value))
+  )].slice(0, 500);
+}
+
 function cleanEvent(input, existing = {}) {
   const id = existing.id || input.id || crypto.randomUUID();
   const title = String(input.title || '').trim().slice(0, 80);
@@ -61,9 +69,8 @@ function cleanEvent(input, existing = {}) {
   const repeat = allowedRepeats.has(String(input.repeat || existing.repeat || 'none'))
     ? String(input.repeat || existing.repeat || 'none')
     : 'none';
-  const completedDates = Array.isArray(input.completedDates)
-    ? input.completedDates.map(value => String(value).slice(0, 10)).filter(Boolean).slice(0, 500)
-    : (Array.isArray(existing.completedDates) ? existing.completedDates : []);
+  const completedDates = normalizeDateKeys(input.completedDates, Array.isArray(existing.completedDates) ? existing.completedDates : []);
+  const excludedDates = normalizeDateKeys(input.excludedDates, Array.isArray(existing.excludedDates) ? existing.excludedDates : []);
 
   return {
     id,
@@ -73,6 +80,7 @@ function cleanEvent(input, existing = {}) {
     repeat,
     completed: Boolean(input.completed ?? existing.completed ?? false),
     completedDates,
+    excludedDates,
     location: String(input.location || '').trim().slice(0, 90),
     note: String(input.note || '').trim().slice(0, 300),
     imageUrl,
@@ -203,13 +211,32 @@ function getGoogleCalendarClient(config) {
   return google.calendar({ version: 'v3', auth });
 }
 
-function googleRecurrenceFromEvent(event) {
+function googleLocalDateTimeFromKey(dateKey, event) {
+  const startDate = parseDate(event.start) || new Date();
+  const [year, month, day] = String(dateKey || '').split('-');
+  if (!year || !month || !day) return '';
+  const hh = String(startDate.getHours()).padStart(2, '0');
+  const mm = String(startDate.getMinutes()).padStart(2, '0');
+  const ss = String(startDate.getSeconds()).padStart(2, '0');
+  return `${year}${month}${day}T${hh}${mm}${ss}`;
+}
+
+function googleRecurrenceFromEvent(event, timezone) {
+  const lines = [];
   switch (event.repeat || 'none') {
-    case 'yearly': return ['RRULE:FREQ=YEARLY'];
-    case 'weekly': return ['RRULE:FREQ=WEEKLY'];
-    case 'biweekly': return ['RRULE:FREQ=WEEKLY;INTERVAL=2'];
-    default: return undefined;
+    case 'yearly': lines.push('RRULE:FREQ=YEARLY'); break;
+    case 'weekly': lines.push('RRULE:FREQ=WEEKLY'); break;
+    case 'biweekly': lines.push('RRULE:FREQ=WEEKLY;INTERVAL=2'); break;
+    default: break;
   }
+
+  const excludedDates = normalizeDateKeys(event.excludedDates || []);
+  if (lines.length && excludedDates.length) {
+    const exDates = excludedDates.map(key => googleLocalDateTimeFromKey(key, event)).filter(Boolean);
+    if (exDates.length) lines.push(`EXDATE;TZID=${timezone}:${exDates.join(',')}`);
+  }
+
+  return lines.length ? lines : undefined;
 }
 
 function googleRequestBodyFromEvent(event, timezone) {
@@ -225,6 +252,7 @@ function googleRequestBodyFromEvent(event, timezone) {
   if (event.note) descriptionParts.push(event.note);
   if (event.completed) descriptionParts.push('Marked complete in Home Organizer.');
   if (event.repeat && event.repeat !== 'none') descriptionParts.push(`Repeats: ${event.repeat}.`);
+  if (event.excludedDates?.length) descriptionParts.push(`Skipped dates: ${event.excludedDates.join(', ')}.`);
   if (event.imageUrl) descriptionParts.push(`Image: ${event.imageUrl}`);
   descriptionParts.push('Created from Home Organizer admin mode.');
 
@@ -240,7 +268,7 @@ function googleRequestBodyFromEvent(event, timezone) {
       dateTime: endDate.toISOString(),
       timeZone: timezone
     },
-    recurrence: googleRecurrenceFromEvent(event) || [],
+    recurrence: googleRecurrenceFromEvent(event, timezone) || [],
     extendedProperties: {
       private: {
         homeOrganizerId: event.id
@@ -366,8 +394,24 @@ export default async function handler(req, res) {
 
     if (req.method === 'DELETE') {
       const url = new URL(req.url, `https://${req.headers.host}`);
+      const deleteAll = url.searchParams.get('all') === '1';
       const id = url.searchParams.get('id');
       const events = await loadEvents();
+
+      if (deleteAll) {
+        const googleResults = [];
+        for (const event of events) {
+          try {
+            googleResults.push({ id: event.id, ...(await deleteGoogleCalendarEvent(event)) });
+          } catch (error) {
+            googleResults.push({ id: event.id, synced: false, error: error.message || 'Google Calendar delete failed.' });
+          }
+        }
+        await saveEvents([]);
+        send(res, 200, { events: [], googleCalendar: { bulk: true, results: googleResults } });
+        return;
+      }
+
       const deletedEvent = events.find(event => event.id === id);
       if (!deletedEvent) {
         send(res, 404, { error: 'Event not found.' });

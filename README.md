@@ -144,3 +144,20 @@ When creating or editing a task, use the Repeat dropdown:
 - Every other week, for things like DND Sunday
 
 For “every other Sunday”, create the first task on a Sunday and choose “Every other week”.
+
+## Mobile admin calendar view update
+
+In phone/admin mode, the app now behaves more like an active calendar:
+
+- First visit: only the Admin PIN card is shown.
+- After saving the PIN on the phone: the default view becomes an upcoming task list.
+- Tasks are grouped by month, with “This month”, “Next month”, and later month sections.
+- Use **Create a new task/event** at the top to open the hidden task editor.
+- Tap a task card to flip it and see notes/actions such as edit, change date, complete, or delete.
+
+## Latest update notes
+
+- The weather card now stays useful even when a daily task is showing: it displays hourly weather for the active task day.
+- Tap the weather card on the display to open a clean weekly forecast view.
+- On phone/admin mode, the task editor now opens as a normal scrollable section instead of a cropped bottom sheet.
+- Hidden delete-all menu: hold the **Home Organizer** title in phone/admin mode, enter the admin PIN, type `DELETE`, then confirm.

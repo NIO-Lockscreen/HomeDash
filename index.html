@@ -752,13 +752,34 @@
       overflow: hidden;
       min-height: 0;
       isolation: isolate;
+      perspective: 1400px;
+      cursor: pointer;
     }
 
-    .event-hero::after {
+    .hero-flip-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      transform-style: preserve-3d;
+      transition: transform .72s cubic-bezier(.2,.75,.2,1);
+    }
+
+    .event-hero.is-flipped .hero-flip-inner { transform: rotateY(180deg); }
+
+    .hero-face {
+      position: absolute;
+      inset: 0;
+      backface-visibility: hidden;
+      overflow: hidden;
+      border-radius: inherit;
+    }
+
+    .hero-front::after {
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(180deg, rgba(0,0,0,0.04) 15%, rgba(0,0,0,0.52) 100%);
+      background: linear-gradient(180deg, rgba(0,0,0,0.04) 15%, rgba(0,0,0,0.56) 100%);
       z-index: 1;
     }
 
@@ -805,6 +826,51 @@
       opacity: 0.9;
     }
 
+    .event-copy .flip-hint { color: rgba(255,255,255,.82); text-shadow: 0 2px 14px rgba(0,0,0,.22); }
+
+    .hero-back {
+      transform: rotateY(180deg);
+      background: linear-gradient(135deg, rgba(255,255,255,.88), rgba(246,241,234,.92));
+      border: 1px solid rgba(255,255,255,.78);
+      padding: clamp(22px, 2.5vmin, 36px);
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+      gap: clamp(10px, 1.2vmin, 16px);
+      color: var(--ink);
+    }
+
+    .hero-back-title {
+      font-family: var(--serif);
+      font-size: clamp(36px, 4vw, 68px);
+      line-height: .95;
+      letter-spacing: -.055em;
+      margin: 0;
+    }
+
+    .hero-back-detail {
+      white-space: pre-wrap;
+      overflow: auto;
+      color: var(--ink);
+      font-weight: 760;
+      line-height: 1.42;
+      padding-right: 4px;
+    }
+
+    .hero-back-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+
+    .hero-back-return {
+      color: var(--muted);
+      font-weight: 800;
+      font-size: clamp(11px, .85vw, 14px);
+    }
+
     .upcoming-card {
       grid-column: 1 / -1;
       padding: clamp(16px, 1.8vmin, 26px);
@@ -825,38 +891,79 @@
 
     .upcoming-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: clamp(12px, 1.35vw, 20px);
+      min-height: 0;
+      align-items: stretch;
     }
 
     .mini-event {
+      position: relative;
       min-width: 0;
+      min-height: clamp(112px, 13vmin, 178px);
+      overflow: hidden;
+      border: 0;
+      border-radius: var(--radius-md);
+      background: rgba(255,255,255,.75);
+      padding: 0;
+      text-align: left;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(70, 58, 44, 0.08);
+      color: white;
+    }
+
+    .mini-event:hover,
+    .mini-event:focus-visible {
+      outline: none;
+      transform: translateY(-1px);
+      box-shadow: 0 12px 26px rgba(70,58,44,.13);
     }
 
     .mini-event img {
+      position: absolute;
+      inset: 0;
       width: 100%;
-      aspect-ratio: 16 / 10;
+      height: 100%;
       object-fit: cover;
-      border-radius: var(--radius-md);
-      box-shadow: 0 8px 18px rgba(70, 58, 44, 0.08);
       display: block;
-      margin-bottom: 10px;
+      filter: saturate(0.9) contrast(0.95);
+      transform: scale(1.01);
+    }
+
+    .mini-event::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,.02) 15%, rgba(0,0,0,.68) 100%);
+      z-index: 1;
+    }
+
+    .mini-copy {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 11px;
+      z-index: 2;
+      text-shadow: 0 2px 12px rgba(0,0,0,.24);
     }
 
     .mini-time {
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 850;
+      color: rgba(255,255,255,.88);
+      font-size: clamp(11px, .9vw, 13px);
+      font-weight: 900;
       margin-bottom: 4px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      letter-spacing: .03em;
+      text-transform: uppercase;
     }
 
     .mini-title {
-      font-weight: 900;
-      font-size: clamp(13px, 1.05vw, 17px);
-      line-height: 1.18;
+      color: white;
+      font-weight: 950;
+      font-size: clamp(15px, 1.15vw, 20px);
+      line-height: 1.08;
       overflow: hidden;
       display: -webkit-box;
       -webkit-line-clamp: 2;
@@ -1015,7 +1122,79 @@
       font-weight: 750;
     }
 
-    .admin-events { display: grid; gap: 12px; }
+    .admin-calendar-card {
+      background: rgba(255,255,255,0.62);
+      border: 1px solid rgba(255,255,255,0.72);
+      border-radius: 28px;
+      box-shadow: 0 14px 32px rgba(70, 58, 44, 0.08);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .admin-calendar-top {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .admin-list-title {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(30px, 6vw, 44px);
+      letter-spacing: -0.05em;
+      line-height: 1;
+    }
+
+    .admin-list-subtitle {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 780;
+      line-height: 1.35;
+      margin-top: 5px;
+    }
+
+    .event-editor-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .event-editor-head .section-title { margin: 0; }
+
+    .admin-events { display: grid; gap: 14px; }
+
+    .month-group { display: grid; gap: 10px; }
+
+    .month-heading {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.74);
+      background: rgba(255, 252, 247, 0.82);
+      backdrop-filter: blur(14px);
+      color: var(--ink);
+      font-weight: 950;
+      box-shadow: 0 8px 20px rgba(70, 58, 44, 0.06);
+    }
+
+    .month-heading span:last-child {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .admin-events-month { display: grid; gap: 10px; }
 
     .admin-event {
       min-height: 128px;
@@ -1084,6 +1263,39 @@
       text-transform: uppercase;
     }
 
+
+
+
+
+    .admin-event-simple {
+      display: grid;
+      gap: 10px;
+      padding: 10px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.72);
+      border: 1px solid var(--line);
+      min-height: auto;
+    }
+
+    .admin-event-main {
+      display: grid;
+      grid-template-columns: 82px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+    }
+
+    .admin-event-simple img {
+      width: 82px;
+      height: 62px;
+      object-fit: cover;
+      border-radius: 14px;
+    }
+
+    .admin-event-simple .admin-event-note {
+      max-height: none;
+      border-top: 1px solid var(--line);
+      padding-top: 9px;
+    }
 
 
     .config-overlay {
@@ -1272,6 +1484,71 @@
         overflow: hidden;
       }
 
+      .admin-calendar-card {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 24px;
+        padding: 10px;
+        margin-bottom: 12px;
+      }
+
+      .admin-calendar-top {
+        position: sticky;
+        top: calc(env(safe-area-inset-top, 0px) + 6px);
+        z-index: 8;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin: -2px 0 12px;
+        padding: 10px;
+        border: 1px solid rgba(255,255,255,.72);
+        border-radius: 22px;
+        background: rgba(255,252,247,.88);
+        backdrop-filter: blur(18px);
+        box-shadow: 0 12px 28px rgba(70, 58, 44, 0.09);
+      }
+
+      .admin-list-title { font-size: clamp(31px, 9vw, 42px); }
+
+      .event-editor-card {
+        position: fixed;
+        left: max(10px, env(safe-area-inset-left, 0px));
+        right: max(10px, env(safe-area-inset-right, 0px));
+        bottom: max(10px, env(safe-area-inset-bottom, 0px));
+        z-index: 45;
+        max-height: calc(100svh - 22px);
+        overflow-y: auto;
+        box-shadow: 0 26px 80px rgba(47,43,39,.24);
+        background: rgba(255,252,247,.96);
+        backdrop-filter: blur(18px);
+      }
+
+      .event-editor-head {
+        position: sticky;
+        top: -14px;
+        z-index: 3;
+        margin: -14px -14px 12px;
+        padding: 14px;
+        background: rgba(255,252,247,.96);
+        backdrop-filter: blur(16px);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .event-editor-head .btn {
+        width: auto;
+        min-height: 40px;
+        padding: 10px 14px;
+        font-size: 14px;
+      }
+
+      .admin-shell.editor-open::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        z-index: 44;
+        background: rgba(29,25,21,.22);
+        backdrop-filter: blur(4px);
+      }
+
       .form-grid { gap: 11px; }
 
       label {
@@ -1381,7 +1658,40 @@
         min-height: 38px;
       }
 
-      .config-overlay {
+  
+
+    .admin-event-simple {
+      display: grid;
+      gap: 10px;
+      padding: 10px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.72);
+      border: 1px solid var(--line);
+      min-height: auto;
+    }
+
+    .admin-event-main {
+      display: grid;
+      grid-template-columns: 82px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+    }
+
+    .admin-event-simple img {
+      width: 82px;
+      height: 62px;
+      object-fit: cover;
+      border-radius: 14px;
+    }
+
+    .admin-event-simple .admin-event-note {
+      max-height: none;
+      border-top: 1px solid var(--line);
+      padding-top: 9px;
+    }
+
+
+    .config-overlay {
         padding: max(10px, env(safe-area-inset-top, 0px)) 10px max(10px, env(safe-area-inset-bottom, 0px));
         place-items: stretch;
       }
@@ -1639,6 +1949,163 @@
       .kiosk-shell.no-daily .left-stack { grid-template-columns: 1fr; grid-template-rows: auto auto; }
       .kiosk-shell.no-daily .time-line { font-size: clamp(92px, 18vw, 170px); }
     }
+
+    /* Update: daily-task weather still shows hourly; weather card opens weekly forecast */
+    .weather-card { cursor: pointer; }
+    .hourly-weather { display: grid; }
+    .kiosk-shell:not(.no-daily) .forecast-row { display: none; }
+    .kiosk-shell:not(.no-daily) .weather-card {
+      align-content: stretch;
+      gap: clamp(8px, 1vmin, 14px);
+    }
+    .kiosk-shell:not(.no-daily) .weather-content {
+      align-content: stretch;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: clamp(8px, 1vmin, 14px);
+    }
+    .kiosk-shell:not(.no-daily) .current-weather { gap: clamp(8px, 1vmin, 14px); }
+    .kiosk-shell:not(.no-daily) .weather-icon { font-size: clamp(28px, 2.7vw, 48px); }
+    .kiosk-shell:not(.no-daily) .weather-temp { font-size: clamp(36px, 3.6vw, 62px); }
+    .kiosk-shell:not(.no-daily) .weather-desc { margin-top: 4px; font-size: clamp(11px, .82vw, 13px); }
+    .kiosk-shell:not(.no-daily) .hourly-weather { min-height: 0; padding-top: clamp(7px, .8vmin, 11px); }
+    .kiosk-shell:not(.no-daily) .hourly-title { font-size: clamp(9px, .72vw, 12px); }
+    .kiosk-shell:not(.no-daily) .hourly-table { min-height: 0; }
+    .kiosk-shell:not(.no-daily) .hourly-row {
+      grid-template-columns: .62fr .54fr .58fr .66fr;
+      gap: 5px;
+      padding: clamp(4px, .52vmin, 7px) clamp(6px, .7vmin, 10px);
+      font-size: clamp(9px, .72vw, 12px);
+    }
+    .kiosk-shell:not(.no-daily) .hourly-icon { font-size: clamp(13px, 1.05vw, 18px); }
+    .kiosk-shell:not(.no-daily) .hourly-row:nth-child(n+7) { display: none; }
+
+    .weather-overlay,
+    .danger-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 70;
+      display: grid;
+      place-items: center;
+      padding: clamp(14px, 2vmin, 28px);
+      background: rgba(29, 25, 21, 0.28);
+      backdrop-filter: blur(18px);
+    }
+
+    .weather-overlay.hidden,
+    .danger-overlay.hidden { display: none; }
+
+    .weather-modal,
+    .danger-modal {
+      width: min(980px, 100%);
+      max-height: min(860px, calc(100svh - 28px));
+      overflow: auto;
+      background: rgba(255, 252, 247, 0.95);
+      border: 1px solid rgba(255,255,255,0.78);
+      border-radius: 32px;
+      box-shadow: 0 28px 90px rgba(47,43,39,0.22);
+      padding: clamp(18px, 3vw, 30px);
+    }
+
+    .danger-modal { width: min(640px, 100%); }
+
+    .weather-modal-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .weather-modal-title {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(38px, 5vw, 72px);
+      line-height: .95;
+      letter-spacing: -.055em;
+    }
+
+    .weather-modal-subtitle {
+      margin-top: 8px;
+      color: var(--muted);
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
+    .weather-weekly-list {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: clamp(9px, 1.1vmin, 16px);
+    }
+
+    .weather-week-day {
+      min-width: 0;
+      display: grid;
+      gap: 9px;
+      align-content: start;
+      padding: clamp(12px, 1.3vmin, 18px);
+      border-radius: 22px;
+      border: 1px solid rgba(87, 78, 67, 0.12);
+      background: rgba(255,255,255,.62);
+      box-shadow: 0 10px 22px rgba(70,58,44,.07);
+      text-align: center;
+    }
+
+    .weather-week-day.today {
+      background: rgba(47,43,39,.9);
+      color: white;
+    }
+
+    .weather-week-name {
+      color: var(--muted);
+      font-size: clamp(11px, .85vw, 13px);
+      font-weight: 950;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .weather-week-day.today .weather-week-name { color: rgba(255,255,255,.72); }
+    .weather-week-icon { font-size: clamp(28px, 3vw, 48px); line-height: 1; }
+    .weather-week-temp { font-family: var(--serif); font-size: clamp(26px, 2.8vw, 46px); line-height: .95; letter-spacing: -.04em; }
+    .weather-week-low { color: var(--muted); font-weight: 850; }
+    .weather-week-day.today .weather-week-low { color: rgba(255,255,255,.7); }
+    .weather-week-desc { color: var(--muted); font-weight: 800; font-size: clamp(11px, .85vw, 13px); line-height: 1.22; }
+    .weather-week-day.today .weather-week-desc { color: rgba(255,255,255,.72); }
+
+    @media (max-width: 780px), (pointer: coarse) {
+      .event-editor-card {
+        position: static !important;
+        left: auto !important;
+        right: auto !important;
+        bottom: auto !important;
+        z-index: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+        box-shadow: 0 14px 32px rgba(70, 58, 44, 0.08) !important;
+        background: rgba(255,255,255,0.78) !important;
+        backdrop-filter: none !important;
+      }
+      .admin-shell.editor-open::before { display: none !important; }
+      .event-editor-head {
+        top: calc(env(safe-area-inset-top, 0px) + 6px) !important;
+        margin: -14px -14px 12px !important;
+      }
+      .weather-modal,
+      .danger-modal {
+        width: 100%;
+        max-height: calc(100svh - 20px);
+        border-radius: 24px;
+        padding: 16px;
+      }
+      .weather-weekly-list { grid-template-columns: 1fr; }
+      .weather-week-day {
+        grid-template-columns: 58px minmax(0, 1fr) auto;
+        align-items: center;
+        text-align: left;
+      }
+      .weather-week-icon { grid-row: 1 / span 3; }
+      .weather-week-temp { text-align: right; }
+      .weather-week-low { text-align: right; }
+    }
+
   </style>
 </head>
 <body>
@@ -1669,12 +2136,18 @@
       </article>
     </section>
 
-    <section id="heroEvent" class="event-hero">
-      <img id="heroImage" alt="" />
-      <div class="event-copy">
-        <div id="heroKicker" class="event-kicker">Today · 11:00 AM</div>
-        <h1 id="heroTitle" class="event-title">Brunch with Sarah</h1>
-        <div id="heroLocation" class="event-location">The Garden Café</div>
+    <section id="heroEvent" class="event-hero" aria-live="polite">
+      <div id="heroFlipInner" class="hero-flip-inner" data-hero-flip>
+        <div class="hero-face hero-front">
+          <img id="heroImage" alt="" />
+          <div class="event-copy">
+            <div id="heroKicker" class="event-kicker">Today · 11:00</div>
+            <h1 id="heroTitle" class="event-title">Brunch with Sarah</h1>
+            <div id="heroLocation" class="event-location">The Garden Café</div>
+            <div class="flip-hint">Tap task for details and actions</div>
+          </div>
+        </div>
+        <div id="heroBack" class="hero-face hero-back"></div>
       </div>
     </section>
 
@@ -1687,25 +2160,48 @@
   <main id="adminView" class="admin-shell hidden">
     <header class="admin-header">
       <div>
-        <h1 class="admin-title">Home<br>Organizer</h1>
-        <div class="admin-subtitle">Phone mode. Add shared events, upload images, and mark one event as today’s main card.</div>
+        <h1 id="adminTitle" class="admin-title" title="Hold to open delete menu">Home<br>Organizer</h1>
+        <div class="admin-subtitle">Phone calendar mode. See upcoming tasks first, then open the task editor only when you need it.</div>
       </div>
       <div class="pill" id="adminClock">--:--</div>
     </header>
 
-    <section class="admin-card">
+    <section id="pinCard" class="admin-card admin-pin-card">
       <div class="form-grid">
+        <div>
+          <h2 class="section-title">Admin PIN</h2>
+          <div class="admin-list-subtitle">First time on this phone: enter the PIN from Vercel. Later, this screen opens straight to your active calendar.</div>
+        </div>
         <label>
-          Admin PIN
+          PIN
           <input id="pinInput" type="password" inputmode="numeric" autocomplete="current-password" placeholder="PIN from Vercel env" />
         </label>
         <div class="button-row">
-          <button id="savePinBtn" class="btn secondary" type="button">Save PIN on this phone</button>
+          <button id="savePinBtn" class="btn" type="button">Save PIN on this phone</button>
         </div>
       </div>
     </section>
 
-    <section class="admin-card">
+    <section id="adminCalendarCard" class="admin-calendar-card hidden">
+      <div class="admin-calendar-top">
+        <div>
+          <h2 class="admin-list-title">Upcoming tasks</h2>
+          <div id="adminListSubtitle" class="admin-list-subtitle">Loading shared calendar…</div>
+        </div>
+        <button id="newTaskBtn" class="btn" type="button">Create a new task/event</button>
+      </div>
+      <div id="adminEvents" class="admin-events"></div>
+    </section>
+
+    <section id="eventEditorCard" class="admin-card event-editor-card hidden">
+      <div class="event-editor-head">
+        <div>
+          <h2 id="eventEditorTitle" class="section-title">Create task/event</h2>
+          <div class="admin-list-subtitle">Add the details, repeat rule, and optional image.</div>
+        </div>
+        <button id="closeEditorBtn" class="btn secondary" type="button">Close</button>
+      </div>
+
       <form id="eventForm" class="form-grid">
         <input id="eventId" type="hidden" />
 
@@ -1731,7 +2227,7 @@
             <option value="none">Does not repeat</option>
             <option value="yearly">Every year, for birthdays and anniversaries</option>
             <option value="weekly">Every week</option>
-            <option value="biweekly">Every other week, for things like DND Sunday</option>
+            <option value="biweekly">Every other week</option>
           </select>
         </label>
 
@@ -1763,11 +2259,6 @@
         </div>
         <div id="statusLine" class="status-line"></div>
       </form>
-    </section>
-
-    <section class="admin-card">
-      <h2 class="section-title">Shared calendar</h2>
-      <div id="adminEvents" class="admin-events"></div>
     </section>
   </main>
 
@@ -1828,6 +2319,51 @@
     </section>
   </div>
 
+
+  <div id="weatherOverlay" class="weather-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="weatherOverlayTitle">
+    <section class="weather-modal">
+      <div class="weather-modal-head">
+        <div>
+          <h2 id="weatherOverlayTitle" class="weather-modal-title">Weekly weather</h2>
+          <div class="weather-modal-subtitle">Tap the weather card again any time to open this view.</div>
+        </div>
+        <button id="weatherOverlayCloseBtn" class="config-close" type="button" aria-label="Close weekly weather">×</button>
+      </div>
+      <div id="weatherWeeklyList" class="weather-weekly-list"></div>
+    </section>
+  </div>
+
+  <div id="dangerOverlay" class="danger-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="dangerTitle">
+    <section class="danger-modal">
+      <div class="config-head">
+        <div>
+          <h2 id="dangerTitle" class="config-title">Delete<br>Everything</h2>
+          <div class="config-subtitle">This hidden menu is opened by holding the Home Organizer title. It deletes all tasks/events from the shared Home Organizer calendar.</div>
+        </div>
+        <button id="dangerCloseBtn" class="config-close" type="button" aria-label="Close delete menu">×</button>
+      </div>
+      <div class="config-grid">
+        <section class="config-section">
+          <h3 class="config-section-title">Safety check</h3>
+          <label>
+            Admin PIN
+            <input id="dangerPinInput" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Admin PIN" />
+          </label>
+          <label>
+            Type DELETE
+            <input id="dangerConfirmInput" autocomplete="off" placeholder="DELETE" />
+          </label>
+          <div class="config-help">If Google Calendar sync is enabled, the server will also try to delete the connected Google Calendar events.</div>
+        </section>
+        <div class="button-row">
+          <button id="deleteAllEventsBtn" class="btn danger" type="button">Delete all tasks/events</button>
+          <button id="cancelDeleteAllBtn" class="btn secondary" type="button">Cancel</button>
+        </div>
+        <div id="dangerStatus" class="status-line"></div>
+      </div>
+    </section>
+  </div>
+
   <script>
     const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
     const REFRESH_EVENTS_MS = 60_000;
@@ -1844,6 +2380,7 @@
       selectedDayKey: null,
       selectedDayTimer: null,
       selectedEventFlipped: false,
+      heroEventFlipped: false,
       selectedInstanceId: null,
       flippedAdminEventId: null,
       config: {
@@ -1854,7 +2391,10 @@
         serviceAccountSource: ''
       },
       longPressTimer: null,
-      longPressOpened: false
+      longPressOpened: false,
+      weatherFocusDate: null,
+      dangerHoldTimer: null,
+      dangerHoldOpened: false
     };
 
     const els = {
@@ -1874,12 +2414,20 @@
       hourlyWeather: document.getElementById('hourlyWeather'),
       weekView: document.getElementById('weekView'),
       heroEvent: document.getElementById('heroEvent'),
+      heroBack: document.getElementById('heroBack'),
       heroImage: document.getElementById('heroImage'),
       heroKicker: document.getElementById('heroKicker'),
       heroTitle: document.getElementById('heroTitle'),
       heroLocation: document.getElementById('heroLocation'),
       upcomingGrid: document.getElementById('upcomingGrid'),
       adminClock: document.getElementById('adminClock'),
+      pinCard: document.getElementById('pinCard'),
+      adminCalendarCard: document.getElementById('adminCalendarCard'),
+      adminListSubtitle: document.getElementById('adminListSubtitle'),
+      newTaskBtn: document.getElementById('newTaskBtn'),
+      eventEditorCard: document.getElementById('eventEditorCard'),
+      eventEditorTitle: document.getElementById('eventEditorTitle'),
+      closeEditorBtn: document.getElementById('closeEditorBtn'),
       pinInput: document.getElementById('pinInput'),
       savePinBtn: document.getElementById('savePinBtn'),
       eventForm: document.getElementById('eventForm'),
@@ -1909,7 +2457,18 @@
       googleConnectionStatus: document.getElementById('googleConnectionStatus'),
       saveConfigBtn: document.getElementById('saveConfigBtn'),
       reloadConfigBtn: document.getElementById('reloadConfigBtn'),
-      configStatus: document.getElementById('configStatus')
+      configStatus: document.getElementById('configStatus'),
+      weatherOverlay: document.getElementById('weatherOverlay'),
+      weatherOverlayCloseBtn: document.getElementById('weatherOverlayCloseBtn'),
+      weatherWeeklyList: document.getElementById('weatherWeeklyList'),
+      adminTitle: document.getElementById('adminTitle'),
+      dangerOverlay: document.getElementById('dangerOverlay'),
+      dangerCloseBtn: document.getElementById('dangerCloseBtn'),
+      dangerPinInput: document.getElementById('dangerPinInput'),
+      dangerConfirmInput: document.getElementById('dangerConfirmInput'),
+      deleteAllEventsBtn: document.getElementById('deleteAllEventsBtn'),
+      cancelDeleteAllBtn: document.getElementById('cancelDeleteAllBtn'),
+      dangerStatus: document.getElementById('dangerStatus')
     };
 
     const params = new URLSearchParams(location.search);
@@ -2003,6 +2562,12 @@
       return completedDates.includes(dateKey(occurrenceDate));
     }
 
+    function isOccurrenceExcluded(event, occurrenceDate = null) {
+      if ((event.repeat || 'none') === 'none' || !occurrenceDate) return false;
+      const excludedDates = Array.isArray(event.excludedDates) ? event.excludedDates : [];
+      return excludedDates.includes(dateKey(occurrenceDate));
+    }
+
     function makeOccurrence(event, occurrenceStart, index = 0) {
       const duration = eventDurationMs(event);
       const occurrenceEnd = new Date(occurrenceStart.getTime() + duration);
@@ -2045,7 +2610,7 @@
             const occurrenceStart = new Date(year, start.getMonth(), start.getDate(), start.getHours(), start.getMinutes(), 0, 0);
             if (occurrenceStart.getMonth() !== start.getMonth()) continue;
             if (occurrenceStart < start) continue;
-            if (occurrenceStart >= startRange && occurrenceStart <= endRange) {
+            if (occurrenceStart >= startRange && occurrenceStart <= endRange && !isOccurrenceExcluded(event, occurrenceStart)) {
               const occurrence = makeOccurrence(event, occurrenceStart, index);
               if (includeCompleted || !occurrence._completed) occurrences.push(occurrence);
             }
@@ -2061,7 +2626,7 @@
           for (let i = 0; i < 80; i++) {
             const occurrenceStart = new Date(start.getTime() + index * intervalMs);
             if (occurrenceStart > endRange) break;
-            if (occurrenceStart >= startRange && occurrenceStart <= endRange) {
+            if (occurrenceStart >= startRange && occurrenceStart <= endRange && !isOccurrenceExcluded(event, occurrenceStart)) {
               const occurrence = makeOccurrence(event, occurrenceStart, index);
               if (includeCompleted || !occurrence._completed) occurrences.push(occurrence);
             }
@@ -2230,6 +2795,53 @@
       if (els.selectedEventPanel) els.selectedEventPanel.innerHTML = '';
     }
 
+
+    function occurrenceByInstanceId(instanceId) {
+      if (!instanceId) return null;
+      const now = new Date();
+      const rangeStart = new Date(now.getTime() - 7 * 86400000);
+      const rangeEnd = new Date(now.getTime() + 365 * 86400000);
+      return expandEventsInRange(rangeStart, rangeEnd, { includeCompleted: false })
+        .find(event => event._instanceId === instanceId) || null;
+    }
+
+    function eventDetailsText(event) {
+      const repeat = repeatLabel(event);
+      return [
+        event.note || 'No note added for this task.',
+        event.location ? `Location: ${event.location}` : '',
+        repeat ? `Repeats: ${repeat}` : '',
+        event._isRecurring ? 'This is one occurrence of a repeating task.' : ''
+      ].filter(Boolean).join('\n\n');
+    }
+
+    function renderHeroEvent(event) {
+      if (!event) return;
+      const date = new Date(event.start);
+      const dayLabel = sameDay(date, new Date()) ? 'Today' : new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(date);
+      const repeat = repeatLabel(event);
+      els.heroImage.src = event.imageUrl || placeholderFor(event.id, event.title);
+      els.heroImage.alt = event.title;
+      els.heroKicker.textContent = `${dayLabel} · ${formatTime(date, false)}${repeat ? ` · ${repeat}` : ''}`;
+      els.heroTitle.textContent = event.title;
+      els.heroLocation.textContent = event.location || event.note || 'Shared calendar task';
+      els.heroEvent.classList.toggle('is-flipped', state.heroEventFlipped);
+      if (els.heroBack) {
+        els.heroBack.innerHTML = `
+          <div class="selected-event-kicker">Task details</div>
+          <h2 class="hero-back-title">${htmlEscape(event.title)}</h2>
+          <div class="hero-back-detail">${htmlEscape(eventDetailsText(event))}</div>
+          <div class="hero-back-actions">
+            <button class="tiny-btn done" type="button" data-hero-complete="${htmlEscape(event._instanceId)}">${event._completed ? 'Undo complete' : 'Mark complete'}</button>
+            <button class="tiny-btn" type="button" data-hero-edit="${htmlEscape(event._sourceId || event.id)}">Change date / edit</button>
+            <button class="tiny-btn danger" type="button" data-hero-delete-instance="${htmlEscape(event._instanceId)}">Delete</button>
+            <button class="tiny-btn" type="button" data-hero-close>Flip back</button>
+          </div>
+          <div class="hero-back-return">Upcoming tasks open here. It returns to today automatically after 5 minutes.</div>
+        `;
+      }
+    }
+
     function renderSelectedEventPanel(events) {
       if (!events.length) {
         hideSelectedEventPanel();
@@ -2245,11 +2857,7 @@
       const dayLabel = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(date);
       const timeLabel = formatTime(date, false);
       const repeat = repeatLabel(first);
-      const details = [
-        first.note || 'No note added for this task.',
-        first.location ? `Location: ${first.location}` : '',
-        repeat ? `Repeats: ${repeat}` : ''
-      ].filter(Boolean).join('\n\n');
+      const details = eventDetailsText(first);
 
       els.weatherCard.classList.add('show-selected-event');
       els.selectedEventPanel.innerHTML = `
@@ -2274,9 +2882,9 @@
               <h2 class="selected-event-title">${htmlEscape(first.title)}</h2>
               <div class="selected-event-detail">${htmlEscape(details)}</div>
               <div class="selected-event-actions">
-                <button class="tiny-btn done" type="button" data-display-complete="${htmlEscape(first._instanceId)}">Mark complete</button>
+                <button class="tiny-btn done" type="button" data-display-complete="${htmlEscape(first._instanceId)}">${first._completed ? 'Undo complete' : 'Mark complete'}</button>
                 <button class="tiny-btn" type="button" data-display-edit="${htmlEscape(first._sourceId || first.id)}">Change date / edit</button>
-                <button class="tiny-btn danger" type="button" data-display-delete="${htmlEscape(first._sourceId || first.id)}">Delete</button>
+                <button class="tiny-btn danger" type="button" data-display-delete-instance="${htmlEscape(first._instanceId)}">Delete</button>
                 <button class="tiny-btn" type="button" data-selected-close>Flip back</button>
               </div>
               <div class="selected-event-return">Returns to today automatically after 5 minutes.</div>
@@ -2289,10 +2897,16 @@
     function clearSelectedDayPreview() {
       state.selectedDayKey = null;
       state.selectedEventFlipped = false;
+      state.heroEventFlipped = false;
       state.selectedInstanceId = null;
       if (state.selectedDayTimer) clearTimeout(state.selectedDayTimer);
       state.selectedDayTimer = null;
       renderDisplay();
+    }
+
+    function startSelectionReturnTimer() {
+      if (state.selectedDayTimer) clearTimeout(state.selectedDayTimer);
+      state.selectedDayTimer = setTimeout(clearSelectedDayPreview, 5 * 60 * 1000);
     }
 
     function selectDayPreview(dayKey) {
@@ -2300,9 +2914,20 @@
       if (!events.length) return;
       state.selectedDayKey = dayKey;
       state.selectedEventFlipped = false;
+      state.heroEventFlipped = false;
       state.selectedInstanceId = null;
-      if (state.selectedDayTimer) clearTimeout(state.selectedDayTimer);
-      state.selectedDayTimer = setTimeout(clearSelectedDayPreview, 5 * 60 * 1000);
+      startSelectionReturnTimer();
+      renderDisplay();
+    }
+
+    function selectEventPreview(instanceId) {
+      const event = occurrenceByInstanceId(instanceId);
+      if (!event) return;
+      state.selectedInstanceId = instanceId;
+      state.selectedDayKey = dateKey(event.date || new Date(event.start));
+      state.selectedEventFlipped = false;
+      state.heroEventFlipped = false;
+      startSelectionReturnTimer();
       renderDisplay();
     }
 
@@ -2348,14 +2973,19 @@
 
       const todays = events.filter(event => sameDay(event.date, now));
       const daily = todays.find(event => event.featured) || todays[0] || null;
-      const upcoming = events.filter(event => !daily || event._instanceId !== daily._instanceId).slice(0, DISPLAY_EVENT_LIMIT);
-      return { daily, upcoming };
+      const selected = state.selectedInstanceId ? events.find(event => event._instanceId === state.selectedInstanceId) : null;
+      const main = selected || daily;
+      const upcoming = events.filter(event => !main || event._instanceId !== main._instanceId).slice(0, DISPLAY_EVENT_LIMIT);
+      return { daily, main, upcoming };
     }
 
     function renderDisplay() {
       if (adminMode) return;
-      const { daily, upcoming } = getDisplayEvents();
+      const { daily, main, upcoming } = getDisplayEvents();
       els.displayView.classList.toggle('no-daily', !daily);
+      state.weatherFocusDate = main ? new Date(main.date || main.start) : new Date();
+      renderWeather();
+
       if (!daily) {
         renderWeekView();
         const selectedEvents = state.selectedDayKey ? eventsForDayKey(state.selectedDayKey) : [];
@@ -2366,13 +2996,7 @@
       }
       fitKioskToScreen();
 
-      if (daily) {
-        els.heroImage.src = daily.imageUrl || placeholderFor(daily.id, daily.title);
-        els.heroImage.alt = daily.title;
-        els.heroKicker.textContent = `${sameDay(new Date(daily.start), new Date()) ? 'Today' : 'Next'} · ${formatTime(new Date(daily.start), false)}`;
-        els.heroTitle.textContent = daily.title;
-        els.heroLocation.textContent = daily.location || daily.note || '';
-      }
+      if (daily && main) renderHeroEvent(main);
 
       if (!upcoming.length) {
         els.upcomingGrid.innerHTML = '<div class="empty-upcoming" style="grid-column:1/-1">No upcoming events yet</div>';
@@ -2382,12 +3006,15 @@
       els.upcomingGrid.innerHTML = upcoming.map(event => {
         const date = new Date(event.start);
         const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date);
+        const repeat = repeatLabel(event);
         return `
-          <article class="mini-event">
+          <button class="mini-event" type="button" data-upcoming-pick="${htmlEscape(event._instanceId)}" aria-label="Open ${htmlEscape(event.title)}">
             <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}">
-            <div class="mini-time">${weekday} · ${formatTime(date, false)}</div>
-            <div class="mini-title">${htmlEscape(event.title)}</div>
-          </article>
+            <span class="mini-copy">
+              <span class="mini-time">${weekday} · ${formatTime(date, false)}${repeat ? ` · ${htmlEscape(repeat)}` : ''}</span>
+              <span class="mini-title">${htmlEscape(event.title)}</span>
+            </span>
+          </button>
         `;
       }).join('');
     }
@@ -2402,7 +3029,7 @@
           current: 'temperature_2m,weather_code',
           hourly: 'temperature_2m,weather_code,precipitation_probability',
           daily: 'weather_code,temperature_2m_max,temperature_2m_min',
-          forecast_days: '5'
+          forecast_days: '10'
         }).toString();
 
         const response = await fetch(url);
@@ -2502,7 +3129,7 @@
       return best;
     }
 
-    function renderHourlyWeather(weather) {
+    function renderHourlyWeather(weather, focusDate = new Date()) {
       if (!els.hourlyWeather) return;
       const hourly = weather.hourly;
       if (!hourly?.time?.length) {
@@ -2511,7 +3138,9 @@
       }
 
       const now = new Date();
-      const todayKey = dateKey(now);
+      const chosenDate = focusDate instanceof Date && !Number.isNaN(focusDate.getTime()) ? focusDate : now;
+      const focusKey = dateKey(chosenDate);
+      const isToday = focusKey === dateKey(now);
       const items = hourly.time.map((time, index) => {
         const date = new Date(time);
         return {
@@ -2520,16 +3149,22 @@
           temp: Math.round(hourly.temperature_2m?.[index] ?? weather.current?.temperature_2m ?? 0),
           rain: hourly.precipitation_probability?.[index]
         };
-      }).filter(item => !Number.isNaN(item.date) && dateKey(item.date) === todayKey && item.date >= new Date(now.getTime() - 30 * 60 * 1000));
+      }).filter(item => !Number.isNaN(item.date) && dateKey(item.date) === focusKey && (!isToday || item.date >= new Date(now.getTime() - 30 * 60 * 1000)));
 
-      const rows = items.slice(0, 8);
+      const compact = els.displayView && !els.displayView.classList.contains('no-daily');
+      const rows = items.slice(0, compact ? 5 : 8);
       if (!rows.length) {
-        els.hourlyWeather.innerHTML = '';
+        const label = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'short', day: 'numeric' }).format(chosenDate);
+        els.hourlyWeather.innerHTML = `<div class="hourly-title">No hourly weather available for ${htmlEscape(label)}</div>`;
         return;
       }
 
+      const label = isToday
+        ? 'Weather through today'
+        : `Weather for ${new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(chosenDate)}`;
+
       els.hourlyWeather.innerHTML = `
-        <div class="hourly-title">Weather through the day</div>
+        <div class="hourly-title">${htmlEscape(label)}</div>
         <div class="hourly-table">
           <div class="hourly-row hourly-head"><div>Time</div><div>Weather</div><div>Temp</div><div class="hourly-rain">Rain</div></div>
           ${rows.map(item => `
@@ -2585,7 +3220,103 @@
       }).join('');
 
       els.forecastRow.innerHTML = rows;
-      renderHourlyWeather(weather);
+      renderHourlyWeather(weather, state.weatherFocusDate || new Date());
+    }
+
+
+    function renderWeeklyWeatherModal() {
+      if (!els.weatherWeeklyList) return;
+      const weather = state.weather;
+      const daily = weather?.daily;
+      if (!daily?.time?.length) {
+        els.weatherWeeklyList.innerHTML = '<div class="empty-upcoming">No weekly forecast loaded yet.</div>';
+        return;
+      }
+
+      const today = new Date();
+      els.weatherWeeklyList.innerHTML = daily.time.slice(0, 7).map((day, index) => {
+        const dayDate = new Date(`${day}T12:00:00`);
+        const high = Math.round(daily.temperature_2m_max?.[index] ?? weather.current?.temperature_2m ?? 0);
+        const low = Math.round(daily.temperature_2m_min?.[index] ?? high);
+        const code = daily.weather_code?.[index] ?? weather.current?.weather_code ?? 2;
+        const isToday = sameDay(dayDate, today);
+        return `
+          <article class="weather-week-day${isToday ? ' today' : ''}">
+            <div class="weather-week-icon">${weatherCodeToIcon(code)}</div>
+            <div class="weather-week-name">${htmlEscape(new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(dayDate))}</div>
+            <div class="weather-week-temp">${high}°</div>
+            <div class="weather-week-desc">${htmlEscape(weatherCodeToText(code))}</div>
+            <div class="weather-week-low">Low ${low}°</div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    function openWeatherOverlay() {
+      renderWeeklyWeatherModal();
+      els.weatherOverlay?.classList.remove('hidden');
+    }
+
+    function closeWeatherOverlay() {
+      els.weatherOverlay?.classList.add('hidden');
+    }
+
+    function setDangerStatus(message, isError = false) {
+      if (!els.dangerStatus) return;
+      els.dangerStatus.textContent = message;
+      els.dangerStatus.style.color = isError ? '#8d4138' : 'var(--muted)';
+    }
+
+    function openDangerMenu() {
+      if (els.dangerPinInput) els.dangerPinInput.value = getPin();
+      if (els.dangerConfirmInput) els.dangerConfirmInput.value = '';
+      setDangerStatus('Type DELETE to unlock the delete button.');
+      els.dangerOverlay?.classList.remove('hidden');
+      setTimeout(() => els.dangerConfirmInput?.focus({ preventScroll: true }), 80);
+    }
+
+    function closeDangerMenu() {
+      els.dangerOverlay?.classList.add('hidden');
+    }
+
+    async function deleteAllEvents() {
+      const pin = (els.dangerPinInput?.value || getPin()).trim();
+      const confirmation = (els.dangerConfirmInput?.value || '').trim();
+      if (!pin) {
+        setDangerStatus('Enter the admin PIN first.', true);
+        return;
+      }
+      if (confirmation !== 'DELETE') {
+        setDangerStatus('Type DELETE exactly to confirm.', true);
+        return;
+      }
+      if (!confirm('Delete ALL tasks/events from Home Organizer?')) return;
+      if (!confirm('Last check: this clears the shared calendar list for everyone. Continue?')) return;
+
+      localStorage.setItem('homeOrganizerAdminPin', pin);
+      setDangerStatus('Deleting all tasks/events…');
+      if (els.deleteAllEventsBtn) els.deleteAllEventsBtn.disabled = true;
+      try {
+        const response = await fetch('/api/events?all=1', {
+          method: 'DELETE',
+          headers: { 'x-admin-pin': pin }
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not delete all events.');
+        state.events = [];
+        state.selectedDayKey = null;
+        state.selectedInstanceId = null;
+        state.heroEventFlipped = false;
+        state.selectedEventFlipped = false;
+        renderAdminEvents();
+        renderDisplay();
+        setDangerStatus('All tasks/events deleted.');
+        setTimeout(closeDangerMenu, 650);
+      } catch (error) {
+        setDangerStatus(error.message || 'Could not delete all events.', true);
+      } finally {
+        if (els.deleteAllEventsBtn) els.deleteAllEventsBtn.disabled = false;
+      }
     }
 
     function getPin() {
@@ -2593,8 +3324,47 @@
     }
 
     function setStatus(message, isError = false) {
+      if (!els.statusLine) return;
       els.statusLine.textContent = message;
       els.statusLine.style.color = isError ? '#8d4138' : 'var(--muted)';
+    }
+
+    function hasSavedAdminPin() {
+      return Boolean(getPin().trim());
+    }
+
+    function renderAdminShell() {
+      if (!adminMode) return;
+      const signedIn = hasSavedAdminPin();
+      if (els.pinCard) els.pinCard.classList.toggle('hidden', signedIn);
+      if (els.adminCalendarCard) els.adminCalendarCard.classList.toggle('hidden', !signedIn);
+      if (!signedIn) closeEventEditor({ reset: false });
+      else if (els.pinInput) els.pinInput.value = getPin();
+    }
+
+    function showEventEditor() {
+      if (!hasSavedAdminPin()) {
+        renderAdminShell();
+        return;
+      }
+      if (els.eventEditorCard) els.eventEditorCard.classList.remove('hidden');
+      if (els.adminView) els.adminView.classList.add('editor-open');
+      setTimeout(() => {
+        els.eventEditorCard?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        els.titleInput?.focus({ preventScroll: true });
+      }, 80);
+    }
+
+    function closeEventEditor(options = {}) {
+      if (els.eventEditorCard) els.eventEditorCard.classList.add('hidden');
+      if (els.adminView) els.adminView.classList.remove('editor-open');
+      if (options.reset !== false && els.eventForm) resetForm();
+    }
+
+    function openNewEventEditor() {
+      resetForm();
+      if (els.eventEditorTitle) els.eventEditorTitle.textContent = 'Create task/event';
+      showEventEditor();
     }
 
 
@@ -2906,56 +3676,134 @@
       state.events = data.events || [];
     }
 
-    function renderAdminEvents() {
-      if (!adminMode) return;
-      const nowStart = todayStart();
-      const rangeEnd = new Date(nowStart.getTime() + 365 * 86400000);
-      const futureEvents = expandEventsInRange(nowStart, rangeEnd, { includeCompleted: true }).slice(0, 30);
+    async function deleteOccurrence(instanceId) {
+      const [sourceId, occurrenceKey] = String(instanceId || '').split('::');
+      const source = getSourceEvent(sourceId);
+      if (!source) throw new Error('Task not found.');
 
-      if (!futureEvents.length) {
-        els.adminEvents.innerHTML = '<div class="empty-upcoming">No events yet</div>';
+      if ((source.repeat || 'none') === 'none') {
+        await deleteEvent(sourceId);
         return;
       }
 
-      els.adminEvents.innerHTML = futureEvents.map(event => {
-        const sourceId = event._sourceId || event.id;
-        const repeat = repeatLabel(event);
-        const completeText = event._completed ? '<span class="complete-badge">Done</span>' : '';
-        const repeatText = repeat ? `<span class="repeat-badge">${htmlEscape(repeat)}</span>` : '';
-        const dateText = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(event.date);
-        const noteText = event.note || 'No note added. Tap edit to add details.';
-        return `
-          <article class="admin-event${state.flippedAdminEventId === event._instanceId ? ' is-flipped' : ''}${event._completed ? ' admin-event-complete' : ''}" data-admin-card="${htmlEscape(event._instanceId)}">
-            <div class="admin-flip-inner">
-              <div class="admin-event-face admin-event-front">
-                <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}">
-                <div>
-                  <div class="admin-event-title">${htmlEscape(event.title)} ${event.featured ? '· Featured' : ''}${repeatText}${completeText}</div>
-                  <div class="admin-event-meta">${dateText}${event.location ? ` · ${htmlEscape(event.location)}` : ''}</div>
-                  <div class="flip-hint">Tap to flip for note and actions</div>
-                </div>
-              </div>
-              <div class="admin-event-face admin-event-back">
-                <div>
-                  <div class="admin-event-title">${htmlEscape(event.title)}${repeatText}${completeText}</div>
-                  <div class="admin-event-meta">${dateText}${event._isRecurring ? ' · This changes the whole series' : ''}</div>
-                </div>
-                <div class="admin-event-note">${htmlEscape(noteText)}</div>
-                <div class="inline-date-row">
-                  <input type="datetime-local" value="${htmlEscape(toLocalInputValue(event.start))}" data-date-input="${htmlEscape(event._instanceId)}" aria-label="New date for ${htmlEscape(event.title)}">
-                  <button class="btn secondary" type="button" data-change-date="${htmlEscape(event._instanceId)}">Change date</button>
-                </div>
-                <div class="admin-actions">
-                  <button class="btn secondary" type="button" data-edit="${htmlEscape(sourceId)}">Edit</button>
-                  <button class="btn secondary" type="button" data-complete="${htmlEscape(event._instanceId)}">${event._completed ? 'Undo complete' : 'Complete'}</button>
-                  <button class="btn danger" type="button" data-delete="${htmlEscape(sourceId)}">Delete</button>
-                  <button class="btn secondary" type="button" data-flip-back="${htmlEscape(event._instanceId)}">Back</button>
-                </div>
-              </div>
+      const excludedDates = Array.isArray(source.excludedDates) ? [...source.excludedDates] : [];
+      if (!excludedDates.includes(occurrenceKey)) excludedDates.push(occurrenceKey);
+      await saveEvent({ ...source, excludedDates });
+    }
+
+    async function deleteTaskWithChoice(instanceId) {
+      const [sourceId] = String(instanceId || '').split('::');
+      const source = getSourceEvent(sourceId);
+      if (!source) throw new Error('Task not found.');
+
+      if ((source.repeat || 'none') === 'none') {
+        if (!confirm(`Delete ${source.title || 'this event'}?`)) return false;
+        await deleteEvent(sourceId);
+        return true;
+      }
+
+      const deleteOnlyThis = confirm(`This is a repeating task.
+
+OK = delete only this occurrence.
+Cancel = choose whether to delete the whole series.`);
+      if (deleteOnlyThis) {
+        await deleteOccurrence(instanceId);
+        return true;
+      }
+
+      const deleteAll = confirm(`Delete ALL repeats connected to “${source.title || 'this task'}”?`);
+      if (!deleteAll) return false;
+      await deleteEvent(sourceId);
+      return true;
+    }
+
+    function adminMonthLabel(date) {
+      const now = new Date();
+      if (date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()) return 'This month';
+
+      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      if (date.getFullYear() === nextMonth.getFullYear() && date.getMonth() === nextMonth.getMonth()) return 'Next month';
+
+      return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(date);
+    }
+
+    function renderAdminEventCard(event) {
+      const sourceId = event._sourceId || event.id;
+      const repeat = repeatLabel(event);
+      const completeText = event._completed ? '<span class="complete-badge">Done</span>' : '';
+      const repeatText = repeat ? `<span class="repeat-badge">${htmlEscape(repeat)}</span>` : '';
+      const dateText = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(event.date);
+      const noteText = event.note || 'No note added. Tap edit to add details.';
+      return `
+        <article class="admin-event-simple${event._completed ? ' admin-event-complete' : ''}" data-admin-card="${htmlEscape(event._instanceId)}">
+          <div class="admin-event-main">
+            <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}">
+            <div>
+              <div class="admin-event-title">${htmlEscape(event.title)} ${event.featured ? '· Featured' : ''}${repeatText}${completeText}</div>
+              <div class="admin-event-meta">${dateText}${event.location ? ` · ${htmlEscape(event.location)}` : ''}</div>
             </div>
-          </article>
-        `;
-      }).join('');
+          </div>
+          <div class="admin-event-note">${htmlEscape(noteText)}</div>
+          <div class="inline-date-row">
+            <input type="datetime-local" value="${htmlEscape(toLocalInputValue(event.start))}" data-date-input="${htmlEscape(event._instanceId)}" aria-label="New date for ${htmlEscape(event.title)}">
+            <button class="btn secondary" type="button" data-change-date="${htmlEscape(event._instanceId)}">Change date</button>
+          </div>
+          <div class="admin-actions">
+            <button class="btn secondary" type="button" data-edit="${htmlEscape(sourceId)}">Edit</button>
+            <button class="btn secondary" type="button" data-complete="${htmlEscape(event._instanceId)}">${event._completed ? 'Undo complete' : 'Complete'}</button>
+            <button class="btn danger" type="button" data-delete-instance="${htmlEscape(event._instanceId)}">Delete</button>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderAdminEvents() {
+      if (!adminMode) return;
+      renderAdminShell();
+      if (!hasSavedAdminPin()) {
+        if (els.adminListSubtitle) els.adminListSubtitle.textContent = 'Enter your admin PIN first.';
+        if (els.adminEvents) els.adminEvents.innerHTML = '';
+        return;
+      }
+
+      const nowStart = todayStart();
+      const rangeEnd = new Date(nowStart.getTime() + 365 * 86400000);
+      const futureEvents = expandEventsInRange(nowStart, rangeEnd, { includeCompleted: true }).slice(0, 80);
+
+      if (els.adminListSubtitle) {
+        els.adminListSubtitle.textContent = futureEvents.length
+          ? `${futureEvents.length} upcoming saved task${futureEvents.length === 1 ? '' : 's'} across your shared calendar.`
+          : 'No upcoming tasks yet. Create your first task/event.';
+      }
+
+      if (!futureEvents.length) {
+        els.adminEvents.innerHTML = '<div class="empty-upcoming">No events yet. Tap “Create a new task/event” to add one.</div>';
+        return;
+      }
+
+      const groups = [];
+      const seen = new Map();
+      futureEvents.forEach(event => {
+        const key = `${event.date.getFullYear()}-${pad(event.date.getMonth() + 1)}`;
+        if (!seen.has(key)) {
+          const group = { key, label: adminMonthLabel(event.date), events: [] };
+          seen.set(key, group);
+          groups.push(group);
+        }
+        seen.get(key).events.push(event);
+      });
+
+      els.adminEvents.innerHTML = groups.map(group => `
+        <section class="month-group" aria-label="${htmlEscape(group.label)}">
+          <div class="month-heading">
+            <span>${htmlEscape(group.label)}</span>
+            <span>${group.events.length} task${group.events.length === 1 ? '' : 's'}</span>
+          </div>
+          <div class="admin-events-month">
+            ${group.events.map(renderAdminEventCard).join('')}
+          </div>
+        </section>
+      `).join('');
     }
 
     function editEvent(id) {
@@ -2974,7 +3822,8 @@
       els.imageInput.value = '';
       els.imageStatus.textContent = event.imageUrl ? 'Current image will be kept unless you upload a new one.' : 'No image selected. A calm placeholder will be used.';
       els.saveEventBtn.textContent = 'Update event';
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (els.eventEditorTitle) els.eventEditorTitle.textContent = 'Edit task/event';
+      showEventEditor();
     }
 
     async function toggleComplete(instanceId) {
@@ -3027,8 +3876,13 @@
       els.savePinBtn.addEventListener('click', () => {
         localStorage.setItem('homeOrganizerAdminPin', els.pinInput.value.trim());
         if (els.configPinInput) els.configPinInput.value = els.pinInput.value.trim();
+        renderAdminShell();
+        renderAdminEvents();
         setStatus('PIN saved on this phone.');
       });
+
+      els.newTaskBtn?.addEventListener('click', openNewEventEditor);
+      els.closeEditorBtn?.addEventListener('click', () => closeEventEditor());
 
       els.imageInput.addEventListener('change', () => {
         const file = els.imageInput.files?.[0];
@@ -3071,6 +3925,7 @@
             setStatus('Saved. It will update on the display within a minute.');
           }
           resetForm();
+          closeEventEditor({ reset: false });
           renderAdminEvents();
         } catch (error) {
           setStatus(error.message, true);
@@ -3082,13 +3937,10 @@
       els.resetBtn.addEventListener('click', resetForm);
 
       els.adminEvents.addEventListener('click', async event => {
-        const actionTarget = event.target.closest('button, input');
-        const card = event.target.closest('[data-admin-card]');
         const editId = event.target.closest('[data-edit]')?.dataset.edit;
-        const deleteId = event.target.closest('[data-delete]')?.dataset.delete;
+        const deleteInstanceId = event.target.closest('[data-delete-instance]')?.dataset.deleteInstance;
         const completeId = event.target.closest('[data-complete]')?.dataset.complete;
         const changeDateId = event.target.closest('[data-change-date]')?.dataset.changeDate;
-        const flipBackId = event.target.closest('[data-flip-back]')?.dataset.flipBack;
 
         try {
           if (editId) {
@@ -3096,11 +3948,13 @@
             return;
           }
 
-          if (deleteId) {
-            const item = getSourceEvent(deleteId);
-            if (!confirm(`Delete ${item?.title || 'this event'}?${item?.repeat && item.repeat !== 'none' ? ' This deletes the repeating series.' : ''}`)) return;
+          if (deleteInstanceId) {
             setStatus('Deleting…');
-            await deleteEvent(deleteId);
+            const didDelete = await deleteTaskWithChoice(deleteInstanceId);
+            if (!didDelete) {
+              setStatus('Delete cancelled.');
+              return;
+            }
             state.flippedAdminEventId = null;
             renderAdminEvents();
             renderDisplay();
@@ -3123,22 +3977,64 @@
             return;
           }
 
-          if (flipBackId) {
-            state.flippedAdminEventId = null;
-            renderAdminEvents();
-            return;
-          }
-
-          if (card && !actionTarget) {
-            state.flippedAdminEventId = state.flippedAdminEventId === card.dataset.adminCard ? null : card.dataset.adminCard;
-            renderAdminEvents();
-          }
         } catch (error) {
           setStatus(error.message, true);
         }
       });
 
       resetForm();
+      closeEventEditor({ reset: false });
+      renderAdminShell();
+    }
+
+
+    function bindWeatherOverlay() {
+      els.weatherCard?.addEventListener('click', event => {
+        if (event.target.closest?.('.selected-event-panel, button, a')) return;
+        openWeatherOverlay();
+      });
+      els.weatherOverlayCloseBtn?.addEventListener('click', closeWeatherOverlay);
+      els.weatherOverlay?.addEventListener('click', event => {
+        if (event.target === els.weatherOverlay) closeWeatherOverlay();
+      });
+      window.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !els.weatherOverlay?.classList.contains('hidden')) closeWeatherOverlay();
+      });
+    }
+
+    function bindDangerMenu() {
+      els.dangerCloseBtn?.addEventListener('click', closeDangerMenu);
+      els.cancelDeleteAllBtn?.addEventListener('click', closeDangerMenu);
+      els.deleteAllEventsBtn?.addEventListener('click', deleteAllEvents);
+      els.dangerOverlay?.addEventListener('click', event => {
+        if (event.target === els.dangerOverlay) closeDangerMenu();
+      });
+
+      const title = els.adminTitle;
+      if (!title) return;
+      const startTitleHold = event => {
+        event.stopPropagation();
+        state.dangerHoldOpened = false;
+        clearTimeout(state.dangerHoldTimer);
+        state.dangerHoldTimer = setTimeout(() => {
+          state.dangerHoldOpened = true;
+          openDangerMenu();
+        }, 950);
+      };
+      const cancelTitleHold = event => {
+        event?.stopPropagation?.();
+        clearTimeout(state.dangerHoldTimer);
+        state.dangerHoldTimer = null;
+      };
+      title.addEventListener('pointerdown', startTitleHold);
+      title.addEventListener('pointerup', cancelTitleHold);
+      title.addEventListener('pointercancel', cancelTitleHold);
+      title.addEventListener('pointermove', event => {
+        if (Math.abs(event.movementX || 0) + Math.abs(event.movementY || 0) > 12) cancelTitleHold(event);
+      });
+      title.addEventListener('contextmenu', event => {
+        if (state.dangerHoldOpened) event.preventDefault();
+      });
     }
 
     function init() {
@@ -3146,6 +4042,8 @@
       window.addEventListener('resize', fitKioskToScreen);
       window.addEventListener('orientationchange', () => setTimeout(fitKioskToScreen, 250));
       bindConfigMenu();
+      bindWeatherOverlay();
+      bindDangerMenu();
       loadConfig();
       if (els.weekView) {
         els.weekView.addEventListener('click', event => {
@@ -3154,16 +4052,63 @@
           selectDayPreview(dayButton.dataset.day);
         });
       }
+      if (els.upcomingGrid) {
+        els.upcomingGrid.addEventListener('click', event => {
+          const pick = event.target.closest('[data-upcoming-pick]')?.dataset.upcomingPick;
+          if (!pick) return;
+          selectEventPreview(pick);
+        });
+      }
+
+      if (els.heroEvent) {
+        els.heroEvent.addEventListener('click', async event => {
+          const completeId = event.target.closest('[data-hero-complete]')?.dataset.heroComplete;
+          const editId = event.target.closest('[data-hero-edit]')?.dataset.heroEdit;
+          const deleteInstanceId = event.target.closest('[data-hero-delete-instance]')?.dataset.heroDeleteInstance;
+          const close = event.target.closest('[data-hero-close]');
+          if (completeId || editId || deleteInstanceId || close) event.stopPropagation();
+
+          try {
+            if (completeId) {
+              await toggleComplete(completeId);
+              state.heroEventFlipped = false;
+              renderDisplay();
+              return;
+            }
+            if (editId) {
+              location.href = `${location.pathname}?admin=1&edit=${encodeURIComponent(editId)}`;
+              return;
+            }
+            if (deleteInstanceId) {
+              const didDelete = await deleteTaskWithChoice(deleteInstanceId);
+              if (didDelete) clearSelectedDayPreview();
+              return;
+            }
+            if (close) {
+              state.heroEventFlipped = false;
+              renderDisplay();
+              return;
+            }
+            if (event.target.closest('[data-hero-flip]')) {
+              state.heroEventFlipped = !state.heroEventFlipped;
+              renderDisplay();
+            }
+          } catch (error) {
+            alert(error.message || 'Could not update task. Make sure the admin PIN is saved on this device.');
+          }
+        });
+      }
+
       if (els.selectedEventPanel) {
         els.selectedEventPanel.addEventListener('click', async event => {
           const flip = event.target.closest('[data-selected-flip]');
           const pickId = event.target.closest('[data-selected-pick]')?.dataset.selectedPick;
           const completeId = event.target.closest('[data-display-complete]')?.dataset.displayComplete;
           const editId = event.target.closest('[data-display-edit]')?.dataset.displayEdit;
-          const deleteId = event.target.closest('[data-display-delete]')?.dataset.displayDelete;
+          const deleteInstanceId = event.target.closest('[data-display-delete-instance]')?.dataset.displayDeleteInstance;
           const close = event.target.closest('[data-selected-close]');
 
-          if (pickId || completeId || editId || deleteId || close) event.stopPropagation();
+          if (pickId || completeId || editId || deleteInstanceId || close) event.stopPropagation();
 
           try {
             if (pickId) {
@@ -3182,11 +4127,9 @@
               location.href = `${location.pathname}?admin=1&edit=${encodeURIComponent(editId)}`;
               return;
             }
-            if (deleteId) {
-              const item = getSourceEvent(deleteId);
-              if (!confirm(`Delete ${item?.title || 'this event'}?`)) return;
-              await deleteEvent(deleteId);
-              clearSelectedDayPreview();
+            if (deleteInstanceId) {
+              const didDelete = await deleteTaskWithChoice(deleteInstanceId);
+              if (didDelete) clearSelectedDayPreview();
               return;
             }
             if (close) {
