@@ -1,4 +1,4 @@
-import { head, put } from '@vercel/blob';
+import { head, put, del } from '@vercel/blob';
 import crypto from 'crypto';
 
 const EVENTS_PATH = 'home-organizer/events.json';
@@ -110,6 +110,53 @@ async function saveEvents(events) {
   });
 }
 
+function isOrganizerBlobImage(value) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  if (text.startsWith('home-organizer/images/')) return true;
+  try {
+    const url = new URL(text);
+    return url.pathname.includes('/home-organizer/images/');
+  } catch {
+    return text.includes('home-organizer/images/');
+  }
+}
+
+function imageUrlsFromEvents(events) {
+  return [...new Set((Array.isArray(events) ? events : [])
+    .map(event => event && event.imageUrl)
+    .filter(isOrganizerBlobImage))];
+}
+
+function imageUrlsNoLongerUsed(beforeEvents, afterEvents) {
+  const after = new Set(imageUrlsFromEvents(afterEvents));
+  return imageUrlsFromEvents(beforeEvents).filter(url => !after.has(url));
+}
+
+async function deleteUnusedImages(urls) {
+  const uniqueUrls = [...new Set((urls || []).filter(isOrganizerBlobImage))];
+  if (!uniqueUrls.length) return { attempted: 0, deleted: 0, failed: 0 };
+
+  try {
+    await del(uniqueUrls);
+    return { attempted: uniqueUrls.length, deleted: uniqueUrls.length, failed: 0 };
+  } catch (error) {
+    console.warn('Bulk blob cleanup failed, retrying one by one:', error);
+    let deleted = 0;
+    let failed = 0;
+    for (const url of uniqueUrls) {
+      try {
+        await del(url);
+        deleted += 1;
+      } catch (singleError) {
+        failed += 1;
+        console.warn('Could not delete old event image:', url, singleError);
+      }
+    }
+    return { attempted: uniqueUrls.length, deleted, failed };
+  }
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
@@ -123,12 +170,14 @@ export default async function handler(req, res) {
       const payload = JSON.parse(await readBody(req) || '{}');
       const events = await loadEvents();
       const existingIndex = payload.id ? events.findIndex(event => event.id === payload.id) : -1;
-      const event = cleanEvent(payload, existingIndex === -1 ? {} : events[existingIndex]);
+      const previousEvent = existingIndex === -1 ? null : events[existingIndex];
+      const event = cleanEvent(payload, previousEvent || {});
       if (existingIndex === -1) events.push(event);
       else events[existingIndex] = event;
       const next = sortEvents(events);
       await saveEvents(next);
-      send(res, existingIndex === -1 ? 201 : 200, { event, events: next, localSaved: true, idempotent: existingIndex !== -1 });
+      const imageCleanup = previousEvent ? await deleteUnusedImages(imageUrlsNoLongerUsed([previousEvent], next)) : { attempted: 0, deleted: 0, failed: 0 };
+      send(res, existingIndex === -1 ? 201 : 200, { event, events: next, localSaved: true, idempotent: existingIndex !== -1, imageCleanup });
       return;
     }
 
@@ -140,11 +189,13 @@ export default async function handler(req, res) {
         send(res, 404, { error: 'Event not found.' });
         return;
       }
-      const event = cleanEvent(payload, events[index]);
+      const previousEvent = events[index];
+      const event = cleanEvent(payload, previousEvent);
       events[index] = event;
       const next = sortEvents(events);
       await saveEvents(next);
-      send(res, 200, { event, events: next, localSaved: true });
+      const imageCleanup = await deleteUnusedImages(imageUrlsNoLongerUsed([previousEvent], next));
+      send(res, 200, { event, events: next, localSaved: true, imageCleanup });
       return;
     }
 
@@ -152,8 +203,10 @@ export default async function handler(req, res) {
       const url = new URL(req.url, `https://${req.headers.host}`);
       const events = await loadEvents();
       if (url.searchParams.get('all') === '1') {
+        const imagesToDelete = imageUrlsFromEvents(events);
         await saveEvents([]);
-        send(res, 200, { events: [], localDeleted: true });
+        const imageCleanup = await deleteUnusedImages(imagesToDelete);
+        send(res, 200, { events: [], localDeleted: true, imageCleanup });
         return;
       }
       const id = url.searchParams.get('id');
@@ -161,9 +214,11 @@ export default async function handler(req, res) {
         send(res, 404, { error: 'Event not found.' });
         return;
       }
+      const removedEvents = events.filter(event => event.id === id);
       const next = events.filter(event => event.id !== id);
       await saveEvents(next);
-      send(res, 200, { events: next, localDeleted: true });
+      const imageCleanup = await deleteUnusedImages(imageUrlsNoLongerUsed(removedEvents, next));
+      send(res, 200, { events: next, localDeleted: true, imageCleanup });
       return;
     }
 

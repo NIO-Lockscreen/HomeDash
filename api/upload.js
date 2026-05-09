@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { formidable } from 'formidable';
 import { put } from '@vercel/blob';
 

@@ -886,6 +886,29 @@
       pointer-events: auto;
     }
 
+
+    /* Robust flipped-card hit testing: the back side becomes the only clickable layer after flip. */
+    .hero-front { z-index: 2; }
+    .hero-back { z-index: 1; }
+    .event-hero.is-flipped .hero-front {
+      pointer-events: none !important;
+      z-index: 1;
+    }
+    .event-hero.is-flipped .hero-back {
+      pointer-events: auto !important;
+      z-index: 8;
+    }
+    .event-hero.is-flipped .hero-back,
+    .event-hero.is-flipped .hero-back * {
+      pointer-events: auto !important;
+    }
+    .event-hero.is-flipped .hero-back-actions,
+    .event-hero.is-flipped .hero-back-actions * {
+      transform: translateZ(2px);
+      -webkit-transform: translateZ(2px);
+    }
+    .hero-back-actions .tiny-btn { touch-action: manipulation; cursor: pointer; }
+
     .hero-back-return {
       color: var(--muted);
       font-weight: 800;
@@ -1035,6 +1058,23 @@
       align-items: flex-start;
       margin-bottom: 18px;
     }
+
+    .admin-header-actions {
+      display: grid;
+      gap: 10px;
+      justify-items: end;
+      flex-shrink: 0;
+    }
+
+    .desktop-return-btn {
+      display: none;
+      min-width: 190px;
+      min-height: 56px;
+      font-size: 15px;
+      box-shadow: 0 14px 28px rgba(47,43,39,0.18);
+    }
+
+    body.desktop-admin .desktop-return-btn { display: inline-flex; align-items: center; justify-content: center; }
 
     .admin-title {
       margin: 0;
@@ -2331,7 +2371,10 @@
         <h1 id="adminTitle" class="admin-title" title="Hold to open delete menu">Home<br>Organizer</h1>
         <div class="admin-subtitle">Phone calendar mode. See upcoming tasks first, then open the task editor only when you need it.</div>
       </div>
-      <div class="pill" id="adminClock">--:--</div>
+      <div class="admin-header-actions">
+        <div class="pill" id="adminClock">--:--</div>
+        <button id="returnToDisplayBtn" class="btn desktop-return-btn" type="button">Back to normal view</button>
+      </div>
     </header>
 
     <section id="pinCard" class="admin-card admin-pin-card">
@@ -2520,7 +2563,7 @@
 
   <script>
     const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
-    const REFRESH_EVENTS_MS = 60_000;
+    const REFRESH_EVENTS_MS = 10_000;
     const DISPLAY_EVENT_LIMIT = 4;
     const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
     const COMPRESSED_UPLOAD_TARGET_BYTES = 3.6 * 1024 * 1024;
@@ -2528,6 +2571,7 @@
     const JPEG_QUALITY_STEPS = [0.82, 0.72, 0.62, 0.52, 0.44];
     const PENDING_WRITES_KEY = 'homeOrganizerPendingWrites';
     const LOCAL_EVENT_ID_PREFIX = 'local-';
+    const LAST_WRITE_SIGNAL_KEY = 'homeOrganizerLastWrite';
 
     const state = {
       events: [],
@@ -2576,6 +2620,7 @@
       heroLocation: document.getElementById('heroLocation'),
       upcomingGrid: document.getElementById('upcomingGrid'),
       adminClock: document.getElementById('adminClock'),
+      returnToDisplayBtn: document.getElementById('returnToDisplayBtn'),
       pinCard: document.getElementById('pinCard'),
       adminCalendarCard: document.getElementById('adminCalendarCard'),
       adminListSubtitle: document.getElementById('adminListSubtitle'),
@@ -2634,6 +2679,7 @@
     const forceDisplay = params.has('display');
     const isPhoneLike = matchMedia('(max-width: 780px), (pointer: coarse)').matches;
     const adminMode = forceAdmin || (!forceDisplay && isPhoneLike);
+    if (adminMode && !isPhoneLike) document.body.classList.add('desktop-admin');
 
     function fitKioskToScreen() {
       if (adminMode || !els.displayView || window.innerWidth <= 980) return;
@@ -3172,6 +3218,10 @@
       return events.sort((a, b) => new Date(a.start) - new Date(b.start));
     }
 
+    function signalOtherOpenViewsToRefresh() {
+      try { localStorage.setItem(LAST_WRITE_SIGNAL_KEY, String(Date.now())); } catch {}
+    }
+
     function refreshEventsFromServerEvents() {
       state.events = applyPendingOps(state.serverEvents);
     }
@@ -3215,6 +3265,7 @@
             if (Array.isArray(data.events)) {
               state.serverEvents = data.events;
               refreshEventsFromServerEvents();
+              signalOtherOpenViewsToRefresh();
             }
           } catch (error) {
             if (!isRetryableError(error)) {
@@ -4352,6 +4403,56 @@ Cancel = choose whether to delete the whole series.`);
       });
     }
 
+
+    async function handleHeroBackActionClick(event) {
+      const completeButton = event.target.closest?.('[data-hero-complete]');
+      const editButton = event.target.closest?.('[data-hero-edit]');
+      const deleteButton = event.target.closest?.('[data-hero-delete-instance]');
+      const closeButton = event.target.closest?.('[data-hero-close]');
+      if (!completeButton && !editButton && !deleteButton && !closeButton) return false;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+
+      try {
+        if (completeButton) {
+          if (!ensureDisplayActionPin()) return true;
+          completeButton.disabled = true;
+          await toggleComplete(completeButton.dataset.heroComplete);
+          state.heroEventFlipped = false;
+          renderDisplay();
+          return true;
+        }
+
+        if (editButton) {
+          location.href = `${location.pathname}?admin=1&edit=${encodeURIComponent(editButton.dataset.heroEdit)}`;
+          return true;
+        }
+
+        if (deleteButton) {
+          if (!ensureDisplayActionPin()) return true;
+          deleteButton.disabled = true;
+          const didDelete = await deleteTaskWithChoice(deleteButton.dataset.heroDeleteInstance);
+          if (didDelete) clearSelectedDayPreview();
+          else renderDisplay();
+          return true;
+        }
+
+        if (closeButton) {
+          state.heroEventFlipped = false;
+          renderDisplay();
+          return true;
+        }
+      } catch (error) {
+        alert(error.message || 'Could not update task. Make sure the admin PIN is saved on this device.');
+        renderDisplay();
+        return true;
+      }
+
+      return true;
+    }
+
     function bindDangerMenu() {
       els.dangerCloseBtn?.addEventListener('click', closeDangerMenu);
       els.cancelDeleteAllBtn?.addEventListener('click', closeDangerMenu);
@@ -4394,6 +4495,14 @@ Cancel = choose whether to delete the whole series.`);
       bindConfigMenu();
       bindWeatherOverlay();
       bindDangerMenu();
+      document.addEventListener('click', event => {
+        handleHeroBackActionClick(event);
+      }, true);
+      document.addEventListener('pointerdown', event => {
+        if (event.target.closest?.('[data-hero-complete], [data-hero-edit], [data-hero-delete-instance], [data-hero-close]')) {
+          event.stopPropagation();
+        }
+      }, true);
       loadConfig();
       if (els.weekView) {
         els.weekView.addEventListener('click', event => {
@@ -4508,6 +4617,9 @@ Cancel = choose whether to delete the whole series.`);
       setInterval(fetchEvents, REFRESH_EVENTS_MS);
       setInterval(() => processPendingWrites({ silent: true }), 15_000);
       window.addEventListener('online', () => processPendingWrites({ silent: true }));
+      window.addEventListener('storage', event => { if (event.key === LAST_WRITE_SIGNAL_KEY) fetchEvents(); });
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) fetchEvents(); });
+      window.addEventListener('pageshow', () => fetchEvents());
       if (adminMode) bindAdmin();
     }
 

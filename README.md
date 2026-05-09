@@ -55,3 +55,12 @@ Repeating tasks use these fields on the single master event:
 ```
 
 The browser expands those into temporary occurrences for display only. The server keeps just the master task.
+
+## New in cleanup/refresh version
+
+- Deleting a task now also deletes its stored event image from Vercel Blob when no remaining task uses that image.
+- Replacing an image on a task cleans up the old Blob image when it is no longer used.
+- Deleting all tasks also tries to remove all Home Organizer images under the event image paths.
+- Display mode now refreshes tasks every 10 seconds, and also refreshes when the page becomes visible again.
+- Desktop admin mode shows a large **Back to normal view** button so you can return to the Surface display after editing.
+- If admin and display are open in two tabs on the same device, the display tab is notified immediately after a successful save. Across different devices, display mode polls every 10 seconds.
