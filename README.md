@@ -126,3 +126,21 @@ Edit this line in `index.html` to change the weather city:
 ```js
 const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
 ```
+
+## New task interaction features
+
+- In admin mode, tap a task card in the Shared calendar list to flip it over.
+- The back side shows the note/details entered when the task was created.
+- From the back side you can change the date, edit the full task, delete it, or mark it complete.
+- Completed one-off tasks are hidden from the big display. Repeating tasks can be completed per occurrence.
+
+## Repeating tasks
+
+When creating or editing a task, use the Repeat dropdown:
+
+- Does not repeat
+- Every year, for birthdays and anniversaries
+- Every week
+- Every other week, for things like DND Sunday
+
+For “every other Sunday”, create the first task on a Sunday and choose “Every other week”.

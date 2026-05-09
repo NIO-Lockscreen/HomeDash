@@ -57,12 +57,22 @@ function cleanEvent(input, existing = {}) {
 
   const end = String(input.end || '').trim();
   const imageUrl = String(input.imageUrl || '').trim();
+  const allowedRepeats = new Set(['none', 'yearly', 'weekly', 'biweekly']);
+  const repeat = allowedRepeats.has(String(input.repeat || existing.repeat || 'none'))
+    ? String(input.repeat || existing.repeat || 'none')
+    : 'none';
+  const completedDates = Array.isArray(input.completedDates)
+    ? input.completedDates.map(value => String(value).slice(0, 10)).filter(Boolean).slice(0, 500)
+    : (Array.isArray(existing.completedDates) ? existing.completedDates : []);
 
   return {
     id,
     title,
     start,
     end: end && parseDate(end) ? end : '',
+    repeat,
+    completed: Boolean(input.completed ?? existing.completed ?? false),
+    completedDates,
     location: String(input.location || '').trim().slice(0, 90),
     note: String(input.note || '').trim().slice(0, 300),
     imageUrl,
@@ -193,6 +203,15 @@ function getGoogleCalendarClient(config) {
   return google.calendar({ version: 'v3', auth });
 }
 
+function googleRecurrenceFromEvent(event) {
+  switch (event.repeat || 'none') {
+    case 'yearly': return ['RRULE:FREQ=YEARLY'];
+    case 'weekly': return ['RRULE:FREQ=WEEKLY'];
+    case 'biweekly': return ['RRULE:FREQ=WEEKLY;INTERVAL=2'];
+    default: return undefined;
+  }
+}
+
 function googleRequestBodyFromEvent(event, timezone) {
   const startDate = parseDate(event.start);
   if (!startDate) throw new Error('Event start date is invalid.');
@@ -204,6 +223,8 @@ function googleRequestBodyFromEvent(event, timezone) {
 
   const descriptionParts = [];
   if (event.note) descriptionParts.push(event.note);
+  if (event.completed) descriptionParts.push('Marked complete in Home Organizer.');
+  if (event.repeat && event.repeat !== 'none') descriptionParts.push(`Repeats: ${event.repeat}.`);
   if (event.imageUrl) descriptionParts.push(`Image: ${event.imageUrl}`);
   descriptionParts.push('Created from Home Organizer admin mode.');
 
@@ -219,6 +240,7 @@ function googleRequestBodyFromEvent(event, timezone) {
       dateTime: endDate.toISOString(),
       timeZone: timezone
     },
+    recurrence: googleRecurrenceFromEvent(event) || [],
     extendedProperties: {
       private: {
         homeOrganizerId: event.id

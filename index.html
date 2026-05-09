@@ -22,6 +22,7 @@
     }
 
     * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
     html, body {
       margin: 0;
@@ -567,6 +568,82 @@
       font-size: clamp(12px, .9vw, 15px);
     }
 
+
+    .selected-event-flip {
+      perspective: 1400px;
+      min-height: 100%;
+      display: block;
+      cursor: pointer;
+    }
+
+    .selected-event-inner {
+      position: relative;
+      min-height: 100%;
+      transform-style: preserve-3d;
+      transition: transform .7s cubic-bezier(.2,.75,.2,1);
+    }
+
+    .selected-event-flip.is-flipped .selected-event-inner { transform: rotateY(180deg); }
+
+    .selected-event-face {
+      position: absolute;
+      inset: 0;
+      backface-visibility: hidden;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: clamp(12px, 1.4vmin, 20px);
+    }
+
+    .selected-event-back {
+      transform: rotateY(180deg);
+      background: rgba(255,255,255,.72);
+      border: 1px solid rgba(255,255,255,.78);
+      border-radius: calc(var(--radius-xl) - 8px);
+      padding: clamp(16px, 1.8vmin, 24px);
+      align-content: center;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+    }
+
+    .flip-hint {
+      margin-top: 6px;
+      color: rgba(129,120,110,.75);
+      font-size: clamp(11px, .82vw, 13px);
+      font-weight: 850;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .selected-event-detail {
+      white-space: pre-wrap;
+      overflow: auto;
+      color: var(--ink);
+      font-weight: 750;
+      line-height: 1.42;
+      padding-right: 3px;
+    }
+
+    .selected-event-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+
+    .tiny-btn {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,.82);
+      color: var(--ink);
+      padding: 8px 11px;
+      font-weight: 950;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .tiny-btn.danger { background: #8d4138; color: white; border-color: transparent; }
+    .tiny-btn.done { background: rgba(47,43,39,.9); color: white; border-color: transparent; }
+
     .current-weather {
       display: flex;
       align-items: center;
@@ -941,6 +1018,23 @@
     .admin-events { display: grid; gap: 12px; }
 
     .admin-event {
+      min-height: 128px;
+      perspective: 1200px;
+    }
+
+    .admin-flip-inner {
+      position: relative;
+      min-height: 128px;
+      transform-style: preserve-3d;
+      transition: transform .62s cubic-bezier(.2,.75,.2,1);
+    }
+
+    .admin-event.is-flipped .admin-flip-inner { transform: rotateY(180deg); }
+
+    .admin-event-face {
+      position: absolute;
+      inset: 0;
+      backface-visibility: hidden;
       display: grid;
       grid-template-columns: 82px 1fr;
       gap: 12px;
@@ -949,6 +1043,15 @@
       border-radius: 20px;
       background: rgba(255,255,255,0.7);
       border: 1px solid var(--line);
+      overflow: hidden;
+    }
+
+    .admin-event-back {
+      transform: rotateY(180deg);
+      grid-template-columns: 1fr;
+      align-items: stretch;
+      gap: 9px;
+      background: rgba(255,255,255,0.82);
     }
 
     .admin-event img {
@@ -960,8 +1063,26 @@
 
     .admin-event-title { font-weight: 950; line-height: 1.2; }
     .admin-event-meta { color: var(--muted); font-weight: 750; font-size: 13px; margin-top: 3px; }
-    .admin-actions { display: flex; gap: 8px; margin-top: 9px; }
+    .admin-event-note { color: var(--ink); font-weight: 750; font-size: 14px; line-height: 1.35; white-space: pre-wrap; max-height: 72px; overflow: auto; }
+    .admin-event-complete .admin-event-title { text-decoration: line-through; opacity: .62; }
+    .admin-event-complete .admin-event-face { background: rgba(238,244,239,.72); }
+    .admin-actions { display: flex; gap: 8px; margin-top: 9px; flex-wrap: wrap; }
     .admin-actions button { padding: 8px 11px; font-size: 13px; }
+    .inline-date-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+    .inline-date-row input { padding: 10px 11px; border-radius: 14px; }
+    .repeat-badge, .complete-badge {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 8px;
+      margin-left: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 950;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
 
 
 
@@ -1081,9 +1202,212 @@
       line-height: 1.35;
     }
 
+
+
+    /* Phone admin mode: compact, no horizontal overflow, no giant controls */
     @media (max-width: 780px), (pointer: coarse) {
-      body { display: block; padding: 0; overflow: auto; }
-      .kiosk-shell { display: none; }
+      html,
+      body {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+      }
+
+      body {
+        display: block;
+        padding: 0;
+        overflow-y: auto;
+        font-size: 16px;
+      }
+
+      .kiosk-shell { display: none !important; }
+
+      .admin-shell {
+        width: 100%;
+        max-width: 520px;
+        margin: 0 auto;
+        padding:
+          calc(env(safe-area-inset-top, 0px) + 12px)
+          max(12px, env(safe-area-inset-left, 0px))
+          calc(env(safe-area-inset-bottom, 0px) + 88px)
+          max(12px, env(safe-area-inset-right, 0px));
+      }
+
+      .admin-header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: start;
+        margin: 0 0 12px;
+      }
+
+      .admin-title {
+        font-size: clamp(30px, 8.2vw, 40px);
+        line-height: .98;
+        letter-spacing: -0.045em;
+      }
+
+      .admin-title br { display: none; }
+
+      .admin-subtitle {
+        margin-top: 6px;
+        font-size: 15px;
+        line-height: 1.32;
+        font-weight: 760;
+        max-width: 32ch;
+      }
+
+      .pill {
+        padding: 7px 9px;
+        font-size: 14px;
+        line-height: 1;
+      }
+
+      .admin-card {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 22px;
+        padding: 14px;
+        margin-bottom: 12px;
+        overflow: hidden;
+      }
+
+      .form-grid { gap: 11px; }
+
+      label {
+        gap: 6px;
+        font-size: 14px;
+        line-height: 1.15;
+      }
+
+      input,
+      textarea,
+      select {
+        display: block;
+        max-width: 100%;
+        min-width: 0;
+        font-size: 16px;
+        line-height: 1.25;
+        border-radius: 16px;
+        padding: 12px 13px;
+      }
+
+      input[type="datetime-local"] {
+        min-height: 48px;
+        text-align: left;
+      }
+
+      input[type="file"] {
+        padding: 10px;
+        white-space: normal;
+      }
+
+      textarea {
+        min-height: 92px;
+      }
+
+      .two-col {
+        grid-template-columns: 1fr;
+        gap: 11px;
+      }
+
+      .checkbox-row {
+        display: grid;
+        grid-template-columns: 22px minmax(0, 1fr);
+        align-items: start;
+        gap: 10px;
+        font-size: 15px;
+        line-height: 1.25;
+      }
+
+      .checkbox-row input {
+        width: 20px;
+        height: 20px;
+        margin-top: 1px;
+      }
+
+      .button-row {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 9px;
+      }
+
+      .btn {
+        width: 100%;
+        min-height: 48px;
+        padding: 12px 15px;
+        font-size: 16px;
+        line-height: 1.1;
+      }
+
+      .image-status,
+      .status-line {
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      .admin-event,
+      .admin-flip-inner {
+        min-height: 168px;
+      }
+
+      .admin-event-face {
+        grid-template-columns: 66px minmax(0, 1fr);
+        gap: 10px;
+        padding: 9px;
+        border-radius: 18px;
+      }
+
+      .admin-event-back { grid-template-columns: 1fr; }
+
+      .admin-event img {
+        width: 66px;
+        height: 54px;
+        border-radius: 12px;
+      }
+
+      .inline-date-row { grid-template-columns: 1fr; }
+
+      .admin-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .admin-actions button {
+        width: 100%;
+        padding: 9px 10px;
+        font-size: 13px;
+        min-height: 38px;
+      }
+
+      .config-overlay {
+        padding: max(10px, env(safe-area-inset-top, 0px)) 10px max(10px, env(safe-area-inset-bottom, 0px));
+        place-items: stretch;
+      }
+
+      .config-modal {
+        width: 100%;
+        max-height: calc(100svh - 20px);
+        border-radius: 24px;
+        padding: 16px;
+      }
+
+      .config-head {
+        gap: 10px;
+      }
+
+      .config-title {
+        font-size: clamp(28px, 8vw, 38px);
+      }
+
+      .config-title br { display: none; }
+
+      .config-subtitle,
+      .config-help {
+        font-size: 13px;
+        line-height: 1.35;
+      }
     }
 
 
@@ -1402,6 +1726,16 @@
         </div>
 
         <label>
+          Repeat
+          <select id="repeatInput">
+            <option value="none">Does not repeat</option>
+            <option value="yearly">Every year, for birthdays and anniversaries</option>
+            <option value="weekly">Every week</option>
+            <option value="biweekly">Every other week, for things like DND Sunday</option>
+          </select>
+        </label>
+
+        <label>
           Location
           <input id="locationInput" maxlength="90" placeholder="The Garden Café" />
         </label>
@@ -1509,6 +1843,9 @@
       editingId: null,
       selectedDayKey: null,
       selectedDayTimer: null,
+      selectedEventFlipped: false,
+      selectedInstanceId: null,
+      flippedAdminEventId: null,
       config: {
         googleCalendarSyncEnabled: false,
         googleCalendarId: '',
@@ -1550,6 +1887,7 @@
       titleInput: document.getElementById('titleInput'),
       startInput: document.getElementById('startInput'),
       endInput: document.getElementById('endInput'),
+      repeatInput: document.getElementById('repeatInput'),
       locationInput: document.getElementById('locationInput'),
       noteInput: document.getElementById('noteInput'),
       imageInput: document.getElementById('imageInput'),
@@ -1633,6 +1971,110 @@
     function todayStart() {
       const now = new Date();
       return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }
+
+    function parseEventDate(value) {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function repeatLabel(event) {
+      const repeat = event?.repeat || 'none';
+      return {
+        none: '',
+        yearly: 'Yearly',
+        weekly: 'Weekly',
+        biweekly: 'Every other week'
+      }[repeat] || '';
+    }
+
+    function eventDurationMs(event) {
+      const start = parseEventDate(event.start);
+      const end = parseEventDate(event.end);
+      if (!start || !end || end <= start) return 60 * 60 * 1000;
+      return end - start;
+    }
+
+    function isOccurrenceCompleted(event, occurrenceDate = null) {
+      const repeat = event.repeat || 'none';
+      if (repeat === 'none') return Boolean(event.completed);
+      if (!occurrenceDate) return false;
+      const completedDates = Array.isArray(event.completedDates) ? event.completedDates : [];
+      return completedDates.includes(dateKey(occurrenceDate));
+    }
+
+    function makeOccurrence(event, occurrenceStart, index = 0) {
+      const duration = eventDurationMs(event);
+      const occurrenceEnd = new Date(occurrenceStart.getTime() + duration);
+      const occurrenceKey = dateKey(occurrenceStart);
+      return {
+        ...event,
+        _sourceId: event.id,
+        _occurrenceKey: occurrenceKey,
+        _instanceId: `${event.id || 'event'}::${occurrenceKey}::${index}`,
+        _isRecurring: (event.repeat || 'none') !== 'none',
+        _completed: isOccurrenceCompleted(event, occurrenceStart),
+        start: occurrenceStart.toISOString(),
+        end: event.end ? occurrenceEnd.toISOString() : '',
+        date: occurrenceStart
+      };
+    }
+
+    function expandEventsInRange(rangeStart, rangeEnd, options = {}) {
+      const includeCompleted = options.includeCompleted === true;
+      const occurrences = [];
+      const startRange = new Date(rangeStart);
+      const endRange = new Date(rangeEnd);
+
+      state.events.forEach(event => {
+        const repeat = event.repeat || 'none';
+        const start = parseEventDate(event.start);
+        if (!start) return;
+
+        if (repeat === 'none') {
+          if (start >= startRange && start <= endRange) {
+            const occurrence = makeOccurrence(event, start, 0);
+            if (includeCompleted || !occurrence._completed) occurrences.push(occurrence);
+          }
+          return;
+        }
+
+        if (repeat === 'yearly') {
+          let index = 0;
+          for (let year = startRange.getFullYear() - 1; year <= endRange.getFullYear() + 1; year++) {
+            const occurrenceStart = new Date(year, start.getMonth(), start.getDate(), start.getHours(), start.getMinutes(), 0, 0);
+            if (occurrenceStart.getMonth() !== start.getMonth()) continue;
+            if (occurrenceStart < start) continue;
+            if (occurrenceStart >= startRange && occurrenceStart <= endRange) {
+              const occurrence = makeOccurrence(event, occurrenceStart, index);
+              if (includeCompleted || !occurrence._completed) occurrences.push(occurrence);
+            }
+            index += 1;
+          }
+          return;
+        }
+
+        if (repeat === 'weekly' || repeat === 'biweekly') {
+          const intervalDays = repeat === 'biweekly' ? 14 : 7;
+          const intervalMs = intervalDays * 86400000;
+          let index = Math.max(0, Math.floor((startRange - start) / intervalMs) - 1);
+          for (let i = 0; i < 80; i++) {
+            const occurrenceStart = new Date(start.getTime() + index * intervalMs);
+            if (occurrenceStart > endRange) break;
+            if (occurrenceStart >= startRange && occurrenceStart <= endRange) {
+              const occurrence = makeOccurrence(event, occurrenceStart, index);
+              if (includeCompleted || !occurrence._completed) occurrences.push(occurrence);
+            }
+            index += 1;
+          }
+        }
+      });
+
+      return occurrences.sort((a, b) => a.date - b.date);
+    }
+
+    function getSourceEvent(id) {
+      return state.events.find(event => event.id === id || event.id === String(id || '').split('::')[0]);
     }
 
     function htmlEscape(value) {
@@ -1736,10 +2178,12 @@
     }
 
     function eventsForDayKey(dayKey) {
-      return state.events
-        .map(event => ({ ...event, date: new Date(event.start) }))
-        .filter(event => !Number.isNaN(event.date) && dateKey(event.date) === dayKey)
-        .sort((a, b) => a.date - b.date);
+      const day = dateFromKey(dayKey);
+      if (!day) return [];
+      const start = new Date(day);
+      const end = new Date(day);
+      end.setHours(23, 59, 59, 999);
+      return expandEventsInRange(start, end, { includeCompleted: false });
     }
 
     function renderWeekView() {
@@ -1792,31 +2236,60 @@
         return;
       }
 
-      const first = events[0];
+      const orderedEvents = state.selectedInstanceId
+        ? [...events].sort((a, b) => a._instanceId === state.selectedInstanceId ? -1 : b._instanceId === state.selectedInstanceId ? 1 : a.date - b.date)
+        : events;
+      const first = orderedEvents[0];
       const date = new Date(first.start);
-      const otherEvents = events.slice(1, 4);
+      const otherEvents = orderedEvents.slice(1, 4);
       const dayLabel = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(date);
       const timeLabel = formatTime(date, false);
+      const repeat = repeatLabel(first);
+      const details = [
+        first.note || 'No note added for this task.',
+        first.location ? `Location: ${first.location}` : '',
+        repeat ? `Repeats: ${repeat}` : ''
+      ].filter(Boolean).join('\n\n');
+
       els.weatherCard.classList.add('show-selected-event');
       els.selectedEventPanel.innerHTML = `
-        <img class="selected-event-image" alt="" src="${htmlEscape(first.imageUrl || placeholderFor(first.id, first.title))}">
-        <div class="selected-event-copy">
-          <div class="selected-event-kicker">${htmlEscape(dayLabel)} · ${htmlEscape(timeLabel)}</div>
-          <h2 class="selected-event-title">${htmlEscape(first.title)}</h2>
-          <div class="selected-event-meta">${htmlEscape(first.location || first.note || 'Shared calendar event')}</div>
-          ${first.location && first.note ? `<div class="selected-event-note">${htmlEscape(first.note)}</div>` : ''}
-          ${otherEvents.length ? `
-            <div class="selected-event-list">
-              ${otherEvents.map(event => `<div>${htmlEscape(formatTime(new Date(event.start), false))} · ${htmlEscape(event.title)}</div>`).join('')}
+        <div class="selected-event-flip${state.selectedEventFlipped ? ' is-flipped' : ''}" data-selected-flip>
+          <div class="selected-event-inner">
+            <div class="selected-event-face selected-event-front">
+              <img class="selected-event-image" alt="" src="${htmlEscape(first.imageUrl || placeholderFor(first.id, first.title))}">
+              <div class="selected-event-copy">
+                <div class="selected-event-kicker">${htmlEscape(dayLabel)} · ${htmlEscape(timeLabel)}${repeat ? ` · ${htmlEscape(repeat)}` : ''}</div>
+                <h2 class="selected-event-title">${htmlEscape(first.title)}</h2>
+                <div class="selected-event-meta">${htmlEscape(first.location || first.note || 'Shared calendar event')}</div>
+                ${otherEvents.length ? `
+                  <div class="selected-event-list">
+                    ${otherEvents.map(event => `<button class="tiny-btn" type="button" data-selected-pick="${htmlEscape(event._instanceId)}">${htmlEscape(formatTime(new Date(event.start), false))} · ${htmlEscape(event.title)}</button>`).join('')}
+                  </div>
+                ` : ''}
+                <div class="flip-hint">Tap task to flip for note and actions</div>
+              </div>
             </div>
-          ` : ''}
-          <div class="selected-event-return">Returns to today automatically after 5 minutes.</div>
+            <div class="selected-event-face selected-event-back">
+              <div class="selected-event-kicker">Task details</div>
+              <h2 class="selected-event-title">${htmlEscape(first.title)}</h2>
+              <div class="selected-event-detail">${htmlEscape(details)}</div>
+              <div class="selected-event-actions">
+                <button class="tiny-btn done" type="button" data-display-complete="${htmlEscape(first._instanceId)}">Mark complete</button>
+                <button class="tiny-btn" type="button" data-display-edit="${htmlEscape(first._sourceId || first.id)}">Change date / edit</button>
+                <button class="tiny-btn danger" type="button" data-display-delete="${htmlEscape(first._sourceId || first.id)}">Delete</button>
+                <button class="tiny-btn" type="button" data-selected-close>Flip back</button>
+              </div>
+              <div class="selected-event-return">Returns to today automatically after 5 minutes.</div>
+            </div>
+          </div>
         </div>
       `;
     }
 
     function clearSelectedDayPreview() {
       state.selectedDayKey = null;
+      state.selectedEventFlipped = false;
+      state.selectedInstanceId = null;
       if (state.selectedDayTimer) clearTimeout(state.selectedDayTimer);
       state.selectedDayTimer = null;
       renderDisplay();
@@ -1826,6 +2299,8 @@
       const events = eventsForDayKey(dayKey);
       if (!events.length) return;
       state.selectedDayKey = dayKey;
+      state.selectedEventFlipped = false;
+      state.selectedInstanceId = null;
       if (state.selectedDayTimer) clearTimeout(state.selectedDayTimer);
       state.selectedDayTimer = setTimeout(clearSelectedDayPreview, 5 * 60 * 1000);
       renderDisplay();
@@ -1861,19 +2336,19 @@
       }
       renderDisplay();
       renderAdminEvents();
+      const editParam = params.get('edit');
+      if (adminMode && editParam && !state.editingId) setTimeout(() => editEvent(editParam), 50);
     }
 
     function getDisplayEvents() {
       const now = new Date();
       const floor = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-      const events = state.events
-        .map(event => ({ ...event, date: new Date(event.start) }))
-        .filter(event => !Number.isNaN(event.date) && event.date >= floor)
-        .sort((a, b) => a.date - b.date);
+      const end = new Date(now.getTime() + 90 * 86400000);
+      const events = expandEventsInRange(floor, end, { includeCompleted: false });
 
       const todays = events.filter(event => sameDay(event.date, now));
       const daily = todays.find(event => event.featured) || todays[0] || null;
-      const upcoming = events.filter(event => !daily || event.id !== daily.id).slice(0, DISPLAY_EVENT_LIMIT);
+      const upcoming = events.filter(event => !daily || event._instanceId !== daily._instanceId).slice(0, DISPLAY_EVENT_LIMIT);
       return { daily, upcoming };
     }
 
@@ -2285,6 +2760,7 @@
       els.eventForm.reset();
       els.eventId.value = '';
       els.imageUrlInput.value = '';
+      if (els.repeatInput) els.repeatInput.value = 'none';
       els.saveEventBtn.textContent = 'Save event';
       els.imageStatus.textContent = 'No image selected. A calm placeholder will be used.';
       setStatus('');
@@ -2433,34 +2909,57 @@
     function renderAdminEvents() {
       if (!adminMode) return;
       const nowStart = todayStart();
-      const futureEvents = state.events
-        .map(event => ({ ...event, date: new Date(event.start) }))
-        .filter(event => !Number.isNaN(event.date) && event.date >= nowStart)
-        .sort((a, b) => a.date - b.date)
-        .slice(0, 30);
+      const rangeEnd = new Date(nowStart.getTime() + 365 * 86400000);
+      const futureEvents = expandEventsInRange(nowStart, rangeEnd, { includeCompleted: true }).slice(0, 30);
 
       if (!futureEvents.length) {
         els.adminEvents.innerHTML = '<div class="empty-upcoming">No events yet</div>';
         return;
       }
 
-      els.adminEvents.innerHTML = futureEvents.map(event => `
-        <article class="admin-event">
-          <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}">
-          <div>
-            <div class="admin-event-title">${htmlEscape(event.title)} ${event.featured ? '· Featured' : ''}</div>
-            <div class="admin-event-meta">${new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(event.date)}${event.location ? ` · ${htmlEscape(event.location)}` : ''}</div>
-            <div class="admin-actions">
-              <button class="btn secondary" type="button" data-edit="${htmlEscape(event.id)}">Edit</button>
-              <button class="btn danger" type="button" data-delete="${htmlEscape(event.id)}">Delete</button>
+      els.adminEvents.innerHTML = futureEvents.map(event => {
+        const sourceId = event._sourceId || event.id;
+        const repeat = repeatLabel(event);
+        const completeText = event._completed ? '<span class="complete-badge">Done</span>' : '';
+        const repeatText = repeat ? `<span class="repeat-badge">${htmlEscape(repeat)}</span>` : '';
+        const dateText = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(event.date);
+        const noteText = event.note || 'No note added. Tap edit to add details.';
+        return `
+          <article class="admin-event${state.flippedAdminEventId === event._instanceId ? ' is-flipped' : ''}${event._completed ? ' admin-event-complete' : ''}" data-admin-card="${htmlEscape(event._instanceId)}">
+            <div class="admin-flip-inner">
+              <div class="admin-event-face admin-event-front">
+                <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}">
+                <div>
+                  <div class="admin-event-title">${htmlEscape(event.title)} ${event.featured ? '· Featured' : ''}${repeatText}${completeText}</div>
+                  <div class="admin-event-meta">${dateText}${event.location ? ` · ${htmlEscape(event.location)}` : ''}</div>
+                  <div class="flip-hint">Tap to flip for note and actions</div>
+                </div>
+              </div>
+              <div class="admin-event-face admin-event-back">
+                <div>
+                  <div class="admin-event-title">${htmlEscape(event.title)}${repeatText}${completeText}</div>
+                  <div class="admin-event-meta">${dateText}${event._isRecurring ? ' · This changes the whole series' : ''}</div>
+                </div>
+                <div class="admin-event-note">${htmlEscape(noteText)}</div>
+                <div class="inline-date-row">
+                  <input type="datetime-local" value="${htmlEscape(toLocalInputValue(event.start))}" data-date-input="${htmlEscape(event._instanceId)}" aria-label="New date for ${htmlEscape(event.title)}">
+                  <button class="btn secondary" type="button" data-change-date="${htmlEscape(event._instanceId)}">Change date</button>
+                </div>
+                <div class="admin-actions">
+                  <button class="btn secondary" type="button" data-edit="${htmlEscape(sourceId)}">Edit</button>
+                  <button class="btn secondary" type="button" data-complete="${htmlEscape(event._instanceId)}">${event._completed ? 'Undo complete' : 'Complete'}</button>
+                  <button class="btn danger" type="button" data-delete="${htmlEscape(sourceId)}">Delete</button>
+                  <button class="btn secondary" type="button" data-flip-back="${htmlEscape(event._instanceId)}">Back</button>
+                </div>
+              </div>
             </div>
-          </div>
-        </article>
-      `).join('');
+          </article>
+        `;
+      }).join('');
     }
 
     function editEvent(id) {
-      const event = state.events.find(item => item.id === id);
+      const event = getSourceEvent(id);
       if (!event) return;
       state.editingId = id;
       els.eventId.value = event.id;
@@ -2468,6 +2967,7 @@
       els.startInput.value = toLocalInputValue(event.start);
       els.endInput.value = toLocalInputValue(event.end);
       els.locationInput.value = event.location || '';
+      if (els.repeatInput) els.repeatInput.value = event.repeat || 'none';
       els.noteInput.value = event.note || '';
       els.imageUrlInput.value = event.imageUrl || '';
       els.featuredInput.checked = Boolean(event.featured);
@@ -2475,6 +2975,51 @@
       els.imageStatus.textContent = event.imageUrl ? 'Current image will be kept unless you upload a new one.' : 'No image selected. A calm placeholder will be used.';
       els.saveEventBtn.textContent = 'Update event';
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function toggleComplete(instanceId) {
+      const [sourceId, occurrenceKey] = String(instanceId || '').split('::');
+      const source = getSourceEvent(sourceId);
+      if (!source) throw new Error('Task not found.');
+      const repeat = source.repeat || 'none';
+      const payload = { ...source };
+
+      if (repeat === 'none') {
+        payload.completed = !Boolean(source.completed);
+      } else {
+        const dates = Array.isArray(source.completedDates) ? [...source.completedDates] : [];
+        const index = dates.indexOf(occurrenceKey);
+        if (index >= 0) dates.splice(index, 1);
+        else dates.push(occurrenceKey);
+        payload.completedDates = dates;
+      }
+
+      const result = await saveEvent(payload);
+      renderAdminEvents();
+      renderDisplay();
+      return result;
+    }
+
+    async function changeEventDate(instanceId, newLocalValue) {
+      const [sourceId] = String(instanceId || '').split('::');
+      const source = getSourceEvent(sourceId);
+      if (!source) throw new Error('Task not found.');
+      if (!newLocalValue) throw new Error('Choose a valid date first.');
+
+      const oldStart = parseEventDate(source.start);
+      const newStart = new Date(newLocalValue);
+      if (!oldStart || Number.isNaN(newStart.getTime())) throw new Error('Invalid date.');
+
+      const payload = { ...source, start: newStart.toISOString() };
+      if (source.end) {
+        const duration = eventDurationMs(source);
+        payload.end = new Date(newStart.getTime() + duration).toISOString();
+      }
+
+      const result = await saveEvent(payload);
+      renderAdminEvents();
+      renderDisplay();
+      return result;
     }
 
     function bindAdmin() {
@@ -2513,6 +3058,7 @@
             end: fromLocalInputValue(els.endInput.value),
             location: els.locationInput.value,
             note: els.noteInput.value,
+            repeat: els.repeatInput?.value || 'none',
             imageUrl,
             featured: els.featuredInput.checked
           };
@@ -2536,20 +3082,59 @@
       els.resetBtn.addEventListener('click', resetForm);
 
       els.adminEvents.addEventListener('click', async event => {
+        const actionTarget = event.target.closest('button, input');
+        const card = event.target.closest('[data-admin-card]');
         const editId = event.target.closest('[data-edit]')?.dataset.edit;
         const deleteId = event.target.closest('[data-delete]')?.dataset.delete;
-        if (editId) editEvent(editId);
-        if (deleteId) {
-          const item = state.events.find(event => event.id === deleteId);
-          if (!confirm(`Delete ${item?.title || 'this event'}?`)) return;
-          setStatus('Deleting…');
-          try {
-            await deleteEvent(deleteId);
-            renderAdminEvents();
-            setStatus('Deleted from the shared calendar.');
-          } catch (error) {
-            setStatus(error.message, true);
+        const completeId = event.target.closest('[data-complete]')?.dataset.complete;
+        const changeDateId = event.target.closest('[data-change-date]')?.dataset.changeDate;
+        const flipBackId = event.target.closest('[data-flip-back]')?.dataset.flipBack;
+
+        try {
+          if (editId) {
+            editEvent(editId);
+            return;
           }
+
+          if (deleteId) {
+            const item = getSourceEvent(deleteId);
+            if (!confirm(`Delete ${item?.title || 'this event'}?${item?.repeat && item.repeat !== 'none' ? ' This deletes the repeating series.' : ''}`)) return;
+            setStatus('Deleting…');
+            await deleteEvent(deleteId);
+            state.flippedAdminEventId = null;
+            renderAdminEvents();
+            renderDisplay();
+            setStatus('Deleted from the shared calendar.');
+            return;
+          }
+
+          if (completeId) {
+            setStatus('Updating completion…');
+            await toggleComplete(completeId);
+            setStatus('Task completion updated.');
+            return;
+          }
+
+          if (changeDateId) {
+            const input = els.adminEvents.querySelector(`[data-date-input="${CSS.escape(changeDateId)}"]`);
+            setStatus('Changing date…');
+            await changeEventDate(changeDateId, input?.value);
+            setStatus('Date changed.');
+            return;
+          }
+
+          if (flipBackId) {
+            state.flippedAdminEventId = null;
+            renderAdminEvents();
+            return;
+          }
+
+          if (card && !actionTarget) {
+            state.flippedAdminEventId = state.flippedAdminEventId === card.dataset.adminCard ? null : card.dataset.adminCard;
+            renderAdminEvents();
+          }
+        } catch (error) {
+          setStatus(error.message, true);
         }
       });
 
@@ -2567,6 +3152,55 @@
           const dayButton = event.target.closest('.week-day.has-event');
           if (!dayButton) return;
           selectDayPreview(dayButton.dataset.day);
+        });
+      }
+      if (els.selectedEventPanel) {
+        els.selectedEventPanel.addEventListener('click', async event => {
+          const flip = event.target.closest('[data-selected-flip]');
+          const pickId = event.target.closest('[data-selected-pick]')?.dataset.selectedPick;
+          const completeId = event.target.closest('[data-display-complete]')?.dataset.displayComplete;
+          const editId = event.target.closest('[data-display-edit]')?.dataset.displayEdit;
+          const deleteId = event.target.closest('[data-display-delete]')?.dataset.displayDelete;
+          const close = event.target.closest('[data-selected-close]');
+
+          if (pickId || completeId || editId || deleteId || close) event.stopPropagation();
+
+          try {
+            if (pickId) {
+              state.selectedInstanceId = pickId;
+              state.selectedEventFlipped = false;
+              renderDisplay();
+              return;
+            }
+            if (completeId) {
+              await toggleComplete(completeId);
+              state.selectedEventFlipped = false;
+              renderDisplay();
+              return;
+            }
+            if (editId) {
+              location.href = `${location.pathname}?admin=1&edit=${encodeURIComponent(editId)}`;
+              return;
+            }
+            if (deleteId) {
+              const item = getSourceEvent(deleteId);
+              if (!confirm(`Delete ${item?.title || 'this event'}?`)) return;
+              await deleteEvent(deleteId);
+              clearSelectedDayPreview();
+              return;
+            }
+            if (close) {
+              state.selectedEventFlipped = false;
+              renderDisplay();
+              return;
+            }
+            if (flip) {
+              state.selectedEventFlipped = !state.selectedEventFlipped;
+              renderDisplay();
+            }
+          } catch (error) {
+            alert(error.message || 'Could not update task. Make sure the admin PIN is saved on this device.');
+          }
         });
       }
       updateClock();
