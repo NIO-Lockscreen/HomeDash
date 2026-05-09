@@ -1,18 +1,12 @@
 {
-  "name": "always-on-home-organizer",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "deploy": "vercel --prod"
+    "start": "vercel dev"
   },
   "dependencies": {
-    "@vercel/blob": "latest",
-    "formidable": "latest",
-    "googleapis": "latest"
+    "@vercel/blob": "latest"
   },
   "devDependencies": {
-    "vercel": "latest"
+    "@vercel/node": "latest"
   }
 }

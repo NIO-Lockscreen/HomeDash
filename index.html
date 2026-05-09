@@ -592,6 +592,12 @@
       display: grid;
       grid-template-rows: minmax(0, 1fr) auto;
       gap: clamp(12px, 1.4vmin, 20px);
+      pointer-events: none;
+    }
+
+    .selected-event-flip:not(.is-flipped) .selected-event-front,
+    .selected-event-flip.is-flipped .selected-event-back {
+      pointer-events: auto;
     }
 
     .selected-event-back {
@@ -773,6 +779,12 @@
       backface-visibility: hidden;
       overflow: hidden;
       border-radius: inherit;
+      pointer-events: none;
+    }
+
+    .event-hero:not(.is-flipped) .hero-front,
+    .event-hero.is-flipped .hero-back {
+      pointer-events: auto;
     }
 
     .hero-front::after {
@@ -863,6 +875,15 @@
       align-items: center;
       border-top: 1px solid var(--line);
       padding-top: 12px;
+      position: relative;
+      z-index: 5;
+    }
+
+    .hero-back-actions button,
+    .selected-event-actions button {
+      position: relative;
+      z-index: 6;
+      pointer-events: auto;
     }
 
     .hero-back-return {
@@ -1298,6 +1319,153 @@
     }
 
 
+
+
+    .admin-event-simple {
+      cursor: pointer;
+      appearance: none;
+      text-align: left;
+      width: 100%;
+      transition: transform .18s ease, background .18s ease, border-color .18s ease;
+    }
+
+    .admin-event-simple:active { transform: scale(.99); }
+
+    .admin-event-simple .admin-event-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .admin-event-simple .admin-event-location {
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 12px;
+      margin-top: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .task-action-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 58;
+      display: grid;
+      place-items: end center;
+      padding: 14px;
+      background: rgba(33, 28, 22, .28);
+      backdrop-filter: blur(12px);
+    }
+
+    .task-action-sheet {
+      width: min(720px, 100%);
+      max-height: calc(100svh - 28px);
+      overflow: auto;
+      border-radius: 28px;
+      padding: 14px;
+      background: rgba(255, 252, 247, .96);
+      border: 1px solid rgba(255,255,255,.78);
+      box-shadow: 0 -24px 80px rgba(70,58,44,.22);
+      animation: sheetUp .24s ease both;
+    }
+
+    @keyframes sheetUp {
+      from { opacity: 0; transform: translateY(18px) scale(.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .task-action-head {
+      display: grid;
+      grid-template-columns: 78px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .task-action-head img {
+      width: 78px;
+      height: 62px;
+      border-radius: 18px;
+      object-fit: cover;
+      box-shadow: 0 10px 22px rgba(70,58,44,.12);
+    }
+
+    .task-action-title {
+      font-size: 22px;
+      font-weight: 950;
+      line-height: 1.08;
+      overflow-wrap: anywhere;
+    }
+
+    .task-action-meta {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.3;
+    }
+
+    .task-action-note {
+      white-space: pre-wrap;
+      color: var(--ink);
+      font-weight: 750;
+      line-height: 1.42;
+      padding: 12px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.66);
+      border: 1px solid var(--line);
+      margin-bottom: 12px;
+      max-height: 28svh;
+      overflow: auto;
+    }
+
+    .task-action-controls {
+      display: grid;
+      gap: 10px;
+    }
+
+    .task-action-controls label {
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      font-weight: 950;
+    }
+
+    .task-action-controls input {
+      margin-top: 6px;
+      width: 100%;
+      padding: 12px 13px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.82);
+      color: var(--ink);
+      font: inherit;
+      font-weight: 800;
+      outline: none;
+    }
+
+    .task-action-buttons {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .task-action-buttons .btn { width: 100%; }
+
+    .task-action-buttons .wide { grid-column: 1 / -1; }
+
+    @media (max-width: 560px) {
+      .task-action-overlay { padding: max(10px, env(safe-area-inset-top, 0px)) 10px max(10px, env(safe-area-inset-bottom, 0px)); }
+      .task-action-sheet { border-radius: 24px; }
+      .task-action-head { grid-template-columns: 66px minmax(0, 1fr) auto; }
+      .task-action-head img { width: 66px; height: 56px; border-radius: 16px; }
+      .task-action-title { font-size: 20px; }
+      .task-action-buttons { grid-template-columns: 1fr; }
+      .task-action-buttons .wide { grid-column: auto; }
+    }
     .config-overlay {
       position: fixed;
       inset: 0;
@@ -2193,6 +2361,12 @@
       <div id="adminEvents" class="admin-events"></div>
     </section>
 
+    <section id="taskActionOverlay" class="task-action-overlay hidden" aria-hidden="true">
+      <div class="task-action-sheet" role="dialog" aria-modal="true" aria-label="Task actions">
+        <div id="taskActionContent"></div>
+      </div>
+    </section>
+
     <section id="eventEditorCard" class="admin-card event-editor-card hidden">
       <div class="event-editor-head">
         <div>
@@ -2269,7 +2443,7 @@
       <div class="config-head">
         <div>
           <h2 id="configTitle" class="config-title">Organizer<br>Config</h2>
-          <div class="config-subtitle">Hold anywhere on the screen to open this menu. Google Calendar sync is off by default.</div>
+          <div class="config-subtitle">Hold anywhere on the screen to open this menu. Google Calendar sync has been removed for now.</div>
         </div>
         <button id="configCloseBtn" class="config-close" type="button" aria-label="Close config">×</button>
       </div>
@@ -2285,34 +2459,14 @@
         </section>
 
         <section class="config-section">
-          <h3 class="config-section-title">Google Calendar</h3>
-          <label class="toggle-row">
-            <span>Enable Google Calendar sync</span>
-            <input id="googleSyncInput" type="checkbox" />
-          </label>
-          <label>
-            Calendar ID
-            <input id="googleCalendarIdInput" placeholder="example: family123@group.calendar.google.com" />
-          </label>
-          <label>
-            Timezone
-            <input id="googleTimezoneInput" placeholder="Europe/Oslo" />
-          </label>
-          <label>
-            Service account JSON / base64 JSON
-            <textarea id="googleServiceAccountInput" class="config-secret" spellcheck="false" placeholder="Paste the Google service account key JSON here. Leave empty to keep existing key."></textarea>
-          </label>
-          <label class="checkbox-row">
-            <input id="clearGoogleCredentialsInput" type="checkbox" />
-            Clear saved Google service account key
-          </label>
-          <div id="googleConnectionStatus" class="config-help">Google Calendar sync is off.</div>
-          <div class="config-help">Create a service account in Google Cloud, share the calendar with the service account email, and give it permission to make changes to events. The key saved here is encrypted on the server using your ADMIN_PIN.</div>
+          <h3 class="config-section-title">Saving system</h3>
+          <div class="config-help">Tasks are saved to Vercel Blob only. Repeating tasks are stored as one master task with a repeat rule, not as hundreds of copies.</div>
+          <div id="localQueueStatus" class="config-help">Pending saves: 0</div>
         </section>
 
         <div class="button-row">
-          <button id="saveConfigBtn" class="btn" type="button">Save config</button>
-          <button id="reloadConfigBtn" class="btn secondary" type="button">Reload</button>
+          <button id="saveConfigBtn" class="btn" type="button">Save PIN</button>
+          <button id="reloadConfigBtn" class="btn secondary" type="button">Retry pending saves</button>
         </div>
         <div id="configStatus" class="status-line"></div>
       </div>
@@ -2353,7 +2507,7 @@
             Type DELETE
             <input id="dangerConfirmInput" autocomplete="off" placeholder="DELETE" />
           </label>
-          <div class="config-help">If Google Calendar sync is enabled, the server will also try to delete the connected Google Calendar events.</div>
+          <div class="config-help">This clears the shared Home Organizer list in Vercel Blob. It does not touch Google Calendar.</div>
         </section>
         <div class="button-row">
           <button id="deleteAllEventsBtn" class="btn danger" type="button">Delete all tasks/events</button>
@@ -2372,9 +2526,13 @@
     const COMPRESSED_UPLOAD_TARGET_BYTES = 3.6 * 1024 * 1024;
     const IMAGE_MAX_DIMENSION = 1600;
     const JPEG_QUALITY_STEPS = [0.82, 0.72, 0.62, 0.52, 0.44];
+    const PENDING_WRITES_KEY = 'homeOrganizerPendingWrites';
+    const LOCAL_EVENT_ID_PREFIX = 'local-';
 
     const state = {
       events: [],
+      serverEvents: [],
+      pendingWriteActive: false,
       weather: null,
       editingId: null,
       selectedDayKey: null,
@@ -2383,12 +2541,9 @@
       heroEventFlipped: false,
       selectedInstanceId: null,
       flippedAdminEventId: null,
+      activeAdminInstanceId: null,
       config: {
-        googleCalendarSyncEnabled: false,
-        googleCalendarId: '',
-        googleCalendarTimezone: 'Europe/Oslo',
-        hasGoogleServiceAccount: false,
-        serviceAccountSource: ''
+        localOnly: true
       },
       longPressTimer: null,
       longPressOpened: false,
@@ -2446,6 +2601,8 @@
       resetBtn: document.getElementById('resetBtn'),
       statusLine: document.getElementById('statusLine'),
       adminEvents: document.getElementById('adminEvents'),
+      taskActionOverlay: document.getElementById('taskActionOverlay'),
+      taskActionContent: document.getElementById('taskActionContent'),
       configOverlay: document.getElementById('configOverlay'),
       configCloseBtn: document.getElementById('configCloseBtn'),
       configPinInput: document.getElementById('configPinInput'),
@@ -2455,6 +2612,7 @@
       googleServiceAccountInput: document.getElementById('googleServiceAccountInput'),
       clearGoogleCredentialsInput: document.getElementById('clearGoogleCredentialsInput'),
       googleConnectionStatus: document.getElementById('googleConnectionStatus'),
+      localQueueStatus: document.getElementById('localQueueStatus'),
       saveConfigBtn: document.getElementById('saveConfigBtn'),
       reloadConfigBtn: document.getElementById('reloadConfigBtn'),
       configStatus: document.getElementById('configStatus'),
@@ -2507,6 +2665,17 @@
         hour12: showAmPm
       });
       return formatter.format(date);
+    }
+
+    function formatUpcomingDate(date) {
+      const now = new Date();
+      const options = { weekday: 'short', day: 'numeric', month: 'short' };
+      if (date.getFullYear() !== now.getFullYear()) options.year = 'numeric';
+      return new Intl.DateTimeFormat(undefined, options)
+        .format(date)
+        .replace(',', '')
+        .replace(/\s+/g, ' ')
+        .trim();
     }
 
     function splitTime(date) {
@@ -2796,12 +2965,12 @@
     }
 
 
-    function occurrenceByInstanceId(instanceId) {
+    function occurrenceByInstanceId(instanceId, options = {}) {
       if (!instanceId) return null;
       const now = new Date();
       const rangeStart = new Date(now.getTime() - 7 * 86400000);
       const rangeEnd = new Date(now.getTime() + 365 * 86400000);
-      return expandEventsInRange(rangeStart, rangeEnd, { includeCompleted: false })
+      return expandEventsInRange(rangeStart, rangeEnd, { includeCompleted: options.includeCompleted === true })
         .find(event => event._instanceId === instanceId) || null;
     }
 
@@ -2816,7 +2985,7 @@
     }
 
     function renderHeroEvent(event) {
-      if (!event) return;
+      if (!event || event._completed) return;
       const date = new Date(event.start);
       const dayLabel = sameDay(date, new Date()) ? 'Today' : new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(date);
       const repeat = repeatLabel(event);
@@ -2949,18 +3118,143 @@
       if (!adminMode && els.displayView.classList.contains('no-daily')) renderWeekView();
     }
 
+    function makeLocalEventId() {
+      const random = crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      return `${LOCAL_EVENT_ID_PREFIX}${random}`;
+    }
+
+    function getPendingWrites() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(PENDING_WRITES_KEY) || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function setPendingWrites(queue) {
+      localStorage.setItem(PENDING_WRITES_KEY, JSON.stringify(queue.slice(0, 200)));
+      updateLocalQueueStatus?.();
+    }
+
+    function queueWrite(op) {
+      const queue = getPendingWrites().filter(item => item.opId !== op.opId);
+      queue.push(op);
+      setPendingWrites(queue);
+    }
+
+    function removeQueuedWrite(opId) {
+      setPendingWrites(getPendingWrites().filter(item => item.opId !== opId));
+    }
+
+    function isRetryableError(error) {
+      return !error.status || error.status === 408 || error.status === 409 || error.status === 425 || error.status === 429 || error.status >= 500;
+    }
+
+    function applyPendingOps(baseEvents, queue = getPendingWrites()) {
+      let events = Array.isArray(baseEvents) ? [...baseEvents] : [];
+      queue.forEach(op => {
+        if (op.method === 'DELETE_ALL') {
+          events = [];
+          return;
+        }
+        if (op.method === 'DELETE') {
+          events = events.filter(event => event.id !== op.id);
+          return;
+        }
+        if ((op.method === 'POST' || op.method === 'PUT') && op.event) {
+          const pendingEvent = { ...op.event, _pendingLocalSave: true };
+          const index = events.findIndex(event => event.id === pendingEvent.id);
+          if (index === -1) events.push(pendingEvent);
+          else events[index] = { ...events[index], ...pendingEvent };
+        }
+      });
+      return events.sort((a, b) => new Date(a.start) - new Date(b.start));
+    }
+
+    function refreshEventsFromServerEvents() {
+      state.events = applyPendingOps(state.serverEvents);
+    }
+
+    async function performServerWrite(op) {
+      let url = '/api/events';
+      const options = { method: op.method, headers: { 'x-admin-pin': getPin() } };
+
+      if (op.method === 'DELETE_ALL') {
+        url = '/api/events?all=1';
+        options.method = 'DELETE';
+      } else if (op.method === 'DELETE') {
+        url = `/api/events?id=${encodeURIComponent(op.id)}`;
+        options.method = 'DELETE';
+      } else {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(op.event);
+      }
+
+      const response = await fetch(url, options);
+      let data = {};
+      try { data = await response.json(); } catch {}
+      if (!response.ok) {
+        const error = new Error(data.error || 'Server is busy. The change is saved on this device and will retry.');
+        error.status = response.status;
+        throw error;
+      }
+      return data;
+    }
+
+    async function processPendingWrites(options = {}) {
+      if (state.pendingWriteActive) return;
+      state.pendingWriteActive = true;
+      let fatalError = null;
+      try {
+        const queue = getPendingWrites();
+        for (const op of queue) {
+          try {
+            const data = await performServerWrite(op);
+            removeQueuedWrite(op.opId);
+            if (Array.isArray(data.events)) {
+              state.serverEvents = data.events;
+              refreshEventsFromServerEvents();
+            }
+          } catch (error) {
+            if (!isRetryableError(error)) {
+              removeQueuedWrite(op.opId);
+              refreshEventsFromServerEvents();
+              if (!options.silent) setStatus(error.message, true);
+              if (options.throwNonRetryable && (!options.targetOpId || options.targetOpId === op.opId)) {
+                fatalError = error;
+                break;
+              }
+              continue;
+            }
+            if (!options.silent) setStatus('Server is busy/offline. Saved on this device and will retry automatically.', true);
+            break;
+          }
+        }
+      } finally {
+        state.pendingWriteActive = false;
+        refreshEventsFromServerEvents();
+        updateLocalQueueStatus();
+        renderDisplay();
+        renderAdminEvents();
+      }
+      if (fatalError) throw fatalError;
+    }
+
     async function fetchEvents() {
       try {
         const response = await fetch(`/api/events?t=${Date.now()}`, { cache: 'no-store' });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Could not load events.');
-        state.events = Array.isArray(data.events) ? data.events : [];
+        state.serverEvents = Array.isArray(data.events) ? data.events : [];
+        refreshEventsFromServerEvents();
       } catch (error) {
         console.warn(error);
-        state.events = [];
+        refreshEventsFromServerEvents();
       }
       renderDisplay();
       renderAdminEvents();
+      processPendingWrites({ silent: true });
       const editParam = params.get('edit');
       if (adminMode && editParam && !state.editingId) setTimeout(() => editEvent(editParam), 50);
     }
@@ -2970,8 +3264,9 @@
       const floor = new Date(now.getTime() - 3 * 60 * 60 * 1000);
       const end = new Date(now.getTime() + 90 * 86400000);
       const events = expandEventsInRange(floor, end, { includeCompleted: false });
+      if (state.selectedInstanceId && !events.some(event => event._instanceId === state.selectedInstanceId)) state.selectedInstanceId = null;
 
-      const todays = events.filter(event => sameDay(event.date, now));
+      const todays = events.filter(event => sameDay(event.date, now) && !event._completed);
       const daily = todays.find(event => event.featured) || todays[0] || null;
       const selected = state.selectedInstanceId ? events.find(event => event._instanceId === state.selectedInstanceId) : null;
       const main = selected || daily;
@@ -3005,13 +3300,12 @@
 
       els.upcomingGrid.innerHTML = upcoming.map(event => {
         const date = new Date(event.start);
-        const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date);
-        const repeat = repeatLabel(event);
+        const exactDate = formatUpcomingDate(date);
         return `
-          <button class="mini-event" type="button" data-upcoming-pick="${htmlEscape(event._instanceId)}" aria-label="Open ${htmlEscape(event.title)}">
+          <button class="mini-event" type="button" data-upcoming-pick="${htmlEscape(event._instanceId)}" aria-label="Open ${htmlEscape(event.title)} on ${htmlEscape(exactDate)}">
             <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}">
             <span class="mini-copy">
-              <span class="mini-time">${weekday} · ${formatTime(date, false)}${repeat ? ` · ${htmlEscape(repeat)}` : ''}</span>
+              <span class="mini-time">${htmlEscape(exactDate)} · ${formatTime(date, false)}</span>
               <span class="mini-title">${htmlEscape(event.title)}</span>
             </span>
           </button>
@@ -3297,21 +3591,25 @@
       setDangerStatus('Deleting all tasks/events…');
       if (els.deleteAllEventsBtn) els.deleteAllEventsBtn.disabled = true;
       try {
-        const response = await fetch('/api/events?all=1', {
-          method: 'DELETE',
-          headers: { 'x-admin-pin': pin }
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Could not delete all events.');
-        state.events = [];
+        const op = {
+          opId: `delete-all-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          method: 'DELETE_ALL',
+          createdAt: new Date().toISOString()
+        };
+        queueWrite(op);
+        state.serverEvents = [];
+        refreshEventsFromServerEvents();
         state.selectedDayKey = null;
         state.selectedInstanceId = null;
         state.heroEventFlipped = false;
         state.selectedEventFlipped = false;
         renderAdminEvents();
         renderDisplay();
-        setDangerStatus('All tasks/events deleted.');
-        setTimeout(closeDangerMenu, 650);
+        await processPendingWrites({ silent: false, throwNonRetryable: true, targetOpId: op.opId });
+        setDangerStatus(getPendingWrites().some(item => item.opId === op.opId)
+          ? 'Deleted on this device. Server is busy, so deletion will retry automatically.'
+          : 'All tasks/events deleted.');
+        setTimeout(closeDangerMenu, 850);
       } catch (error) {
         setDangerStatus(error.message || 'Could not delete all events.', true);
       } finally {
@@ -3321,6 +3619,18 @@
 
     function getPin() {
       return localStorage.getItem('homeOrganizerAdminPin') || '';
+    }
+
+    function ensureDisplayActionPin() {
+      if (adminMode) return true;
+      const existingPin = getPin().trim();
+      if (existingPin) return true;
+      const pin = prompt('Enter the admin PIN to change this task:');
+      if (!pin || !pin.trim()) return false;
+      localStorage.setItem('homeOrganizerAdminPin', pin.trim());
+      if (els.pinInput) els.pinInput.value = pin.trim();
+      if (els.configPinInput) els.configPinInput.value = pin.trim();
+      return true;
     }
 
     function setStatus(message, isError = false) {
@@ -3374,32 +3684,19 @@
       els.configStatus.style.color = isError ? '#8d4138' : 'var(--muted)';
     }
 
-    function describeGoogleConfig(config = state.config) {
-      if (!els.googleConnectionStatus) return;
-      const enabled = config.googleCalendarSyncEnabled === true;
-      const hasCalendar = Boolean(config.googleCalendarId);
-      const hasKey = Boolean(config.hasGoogleServiceAccount);
-      const keyText = hasKey
-        ? `Key saved${config.serviceAccountSource ? ` via ${config.serviceAccountSource}` : ''}`
-        : 'No service account key saved';
-      els.googleConnectionStatus.textContent = enabled
-        ? `Sync ON. ${hasCalendar ? 'Calendar ID set' : 'Calendar ID missing'}. ${keyText}.`
-        : `Sync OFF. ${hasCalendar ? 'Calendar ID set' : 'Calendar ID not set'}. ${keyText}.`;
+    function updateLocalQueueStatus() {
+      const count = getPendingWrites().length;
+      if (els.localQueueStatus) {
+        els.localQueueStatus.textContent = count
+          ? `Pending saves waiting to sync: ${count}`
+          : 'Pending saves: 0. Everything on this device has been sent.';
+      }
     }
 
     function fillConfigForm() {
       if (!els.configOverlay) return;
-      const config = state.config;
-      els.configPinInput.value = getPin();
-      els.googleSyncInput.checked = config.googleCalendarSyncEnabled === true;
-      els.googleCalendarIdInput.value = config.googleCalendarId || '';
-      els.googleTimezoneInput.value = config.googleCalendarTimezone || 'Europe/Oslo';
-      els.googleServiceAccountInput.value = '';
-      els.googleServiceAccountInput.placeholder = config.hasGoogleServiceAccount
-        ? 'A key is already saved. Leave empty to keep it, or paste a new key to replace it.'
-        : 'Paste the Google service account key JSON here. Leave empty if you use Vercel env variables.';
-      els.clearGoogleCredentialsInput.checked = false;
-      describeGoogleConfig(config);
+      if (els.configPinInput) els.configPinInput.value = getPin();
+      updateLocalQueueStatus();
     }
 
     function openConfigMenu() {
@@ -3407,7 +3704,7 @@
       fillConfigForm();
       els.configOverlay.classList.remove('hidden');
       document.body.classList.add('config-open');
-      setConfigStatus('');
+      setConfigStatus('Local-only mode. Google Calendar sync is removed.');
       setTimeout(() => els.configPinInput?.focus?.(), 50);
     }
 
@@ -3418,76 +3715,38 @@
     }
 
     async function loadConfig() {
-      try {
-        const response = await fetch(`/api/config?t=${Date.now()}`, { cache: 'no-store' });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Could not load config.');
-        state.config = { ...state.config, ...(data.config || {}) };
-        fillConfigForm();
-        return state.config;
-      } catch (error) {
-        console.warn(error);
-        setConfigStatus(error.message, true);
-        return state.config;
-      }
+      fillConfigForm();
+      return state.config;
     }
 
     async function saveConfig() {
-      const pin = (els.configPinInput.value || '').trim() || getPin();
+      const pin = (els.configPinInput?.value || '').trim() || getPin();
       if (!pin) {
         setConfigStatus('Enter the admin PIN first.', true);
         return;
       }
       localStorage.setItem('homeOrganizerAdminPin', pin);
       if (els.pinInput) els.pinInput.value = pin;
-
-      els.saveConfigBtn.disabled = true;
-      setConfigStatus('Saving config…');
-      try {
-        const payload = {
-          googleCalendarSyncEnabled: els.googleSyncInput.checked,
-          googleCalendarId: els.googleCalendarIdInput.value.trim(),
-          googleCalendarTimezone: els.googleTimezoneInput.value.trim() || 'Europe/Oslo',
-          googleServiceAccountSecret: els.googleServiceAccountInput.value.trim(),
-          clearGoogleServiceAccount: els.clearGoogleCredentialsInput.checked
-        };
-
-        const response = await fetch('/api/config', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-admin-pin': pin
-          },
-          body: JSON.stringify(payload)
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Could not save config.');
-        state.config = { ...state.config, ...(data.config || {}) };
-        fillConfigForm();
-        setConfigStatus(state.config.googleCalendarSyncEnabled ? 'Config saved. New/edited admin events will sync to Google Calendar.' : 'Config saved. Google Calendar sync is off.');
-      } catch (error) {
-        setConfigStatus(error.message, true);
-      } finally {
-        els.saveConfigBtn.disabled = false;
-      }
+      setConfigStatus('PIN saved on this device.');
+      updateLocalQueueStatus();
     }
 
     function bindConfigMenu() {
       if (!els.configOverlay) return;
-      els.configCloseBtn.addEventListener('click', closeConfigMenu);
+      els.configCloseBtn?.addEventListener('click', closeConfigMenu);
       els.configOverlay.addEventListener('click', event => {
         if (event.target === els.configOverlay) closeConfigMenu();
       });
       window.addEventListener('keydown', event => {
         if (event.key === 'Escape' && !els.configOverlay.classList.contains('hidden')) closeConfigMenu();
       });
-      els.saveConfigBtn.addEventListener('click', saveConfig);
-      els.reloadConfigBtn.addEventListener('click', async () => {
-        setConfigStatus('Reloading config…');
-        await loadConfig();
-        setConfigStatus('Config reloaded.');
+      els.saveConfigBtn?.addEventListener('click', saveConfig);
+      els.reloadConfigBtn?.addEventListener('click', async () => {
+        setConfigStatus('Retrying pending saves…');
+        await processPendingWrites({ silent: false });
+        updateLocalQueueStatus();
+        setConfigStatus(getPendingWrites().length ? 'Some saves are still pending. I will keep retrying.' : 'No pending saves.');
       });
-      els.googleSyncInput.addEventListener('change', () => describeGoogleConfig({ ...state.config, googleCalendarSyncEnabled: els.googleSyncInput.checked }));
 
       const startHold = event => {
         if (event.target.closest?.('.config-modal, input, textarea, button, select, a')) return;
@@ -3651,29 +3910,43 @@
     }
 
     async function saveEvent(event) {
-      const method = event.id ? 'PUT' : 'POST';
-      const response = await fetch('/api/events', {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-pin': getPin()
-        },
-        body: JSON.stringify(event)
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Could not save event.');
-      state.events = data.events || state.events;
-      return data;
+      const isUpdate = Boolean(event.id);
+      const eventToSave = { ...event, id: event.id || makeLocalEventId() };
+      const op = {
+        opId: `write-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        method: isUpdate ? 'PUT' : 'POST',
+        event: eventToSave,
+        createdAt: new Date().toISOString()
+      };
+
+      queueWrite(op);
+      refreshEventsFromServerEvents();
+      renderDisplay();
+      renderAdminEvents();
+
+      await processPendingWrites({ silent: true, throwNonRetryable: true, targetOpId: op.opId });
+      const queued = getPendingWrites().some(item => item.opId === op.opId);
+      return {
+        event: eventToSave,
+        events: state.events,
+        queued,
+        localSaved: true
+      };
     }
 
     async function deleteEvent(id) {
-      const response = await fetch(`/api/events?id=${encodeURIComponent(id)}`, {
+      const op = {
+        opId: `delete-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         method: 'DELETE',
-        headers: { 'x-admin-pin': getPin() }
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Could not delete event.');
-      state.events = data.events || [];
+        id,
+        createdAt: new Date().toISOString()
+      };
+
+      queueWrite(op);
+      refreshEventsFromServerEvents();
+      renderDisplay();
+      renderAdminEvents();
+      await processPendingWrites({ silent: true, throwNonRetryable: true, targetOpId: op.opId });
     }
 
     async function deleteOccurrence(instanceId) {
@@ -3729,32 +4002,66 @@ Cancel = choose whether to delete the whole series.`);
 
     function renderAdminEventCard(event) {
       const sourceId = event._sourceId || event.id;
-      const repeat = repeatLabel(event);
       const completeText = event._completed ? '<span class="complete-badge">Done</span>' : '';
-      const repeatText = repeat ? `<span class="repeat-badge">${htmlEscape(repeat)}</span>` : '';
       const dateText = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(event.date);
-      const noteText = event.note || 'No note added. Tap edit to add details.';
+      const locationText = event.location ? `<div class="admin-event-location">${htmlEscape(event.location)}</div>` : '';
       return `
-        <article class="admin-event-simple${event._completed ? ' admin-event-complete' : ''}" data-admin-card="${htmlEscape(event._instanceId)}">
+        <button class="admin-event-simple${event._completed ? ' admin-event-complete' : ''}" type="button" data-admin-card="${htmlEscape(event._instanceId)}" aria-label="Open actions for ${htmlEscape(event.title)}">
           <div class="admin-event-main">
             <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}">
             <div>
-              <div class="admin-event-title">${htmlEscape(event.title)} ${event.featured ? '· Featured' : ''}${repeatText}${completeText}</div>
-              <div class="admin-event-meta">${dateText}${event.location ? ` · ${htmlEscape(event.location)}` : ''}</div>
+              <div class="admin-event-title">${htmlEscape(event.title)} ${event.featured ? '· Featured' : ''}${completeText}</div>
+              <div class="admin-event-meta">${htmlEscape(dateText)}</div>
+              ${locationText}
             </div>
           </div>
-          <div class="admin-event-note">${htmlEscape(noteText)}</div>
-          <div class="inline-date-row">
-            <input type="datetime-local" value="${htmlEscape(toLocalInputValue(event.start))}" data-date-input="${htmlEscape(event._instanceId)}" aria-label="New date for ${htmlEscape(event.title)}">
-            <button class="btn secondary" type="button" data-change-date="${htmlEscape(event._instanceId)}">Change date</button>
-          </div>
-          <div class="admin-actions">
-            <button class="btn secondary" type="button" data-edit="${htmlEscape(sourceId)}">Edit</button>
-            <button class="btn secondary" type="button" data-complete="${htmlEscape(event._instanceId)}">${event._completed ? 'Undo complete' : 'Complete'}</button>
-            <button class="btn danger" type="button" data-delete-instance="${htmlEscape(event._instanceId)}">Delete</button>
-          </div>
-        </article>
+        </button>
       `;
+    }
+
+    function closeAdminTaskActions() {
+      state.activeAdminInstanceId = null;
+      if (els.taskActionOverlay) {
+        els.taskActionOverlay.classList.add('hidden');
+        els.taskActionOverlay.setAttribute('aria-hidden', 'true');
+      }
+      if (els.taskActionContent) els.taskActionContent.innerHTML = '';
+    }
+
+    function openAdminTaskActions(instanceId) {
+      const event = occurrenceByInstanceId(instanceId, { includeCompleted: true });
+      if (!event || !els.taskActionOverlay || !els.taskActionContent) return;
+      state.activeAdminInstanceId = instanceId;
+      const sourceId = event._sourceId || event.id;
+      const dateText = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(event.date);
+      const noteText = event.note || 'No extra notes were added to this task.';
+      const recurringText = event._isRecurring ? '<div class="task-action-meta">Repeating task. Delete will ask if you want this one occurrence or the whole series.</div>' : '';
+      els.taskActionContent.innerHTML = `
+        <div class="task-action-head">
+          <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}">
+          <div>
+            <div class="task-action-title">${htmlEscape(event.title)}</div>
+            <div class="task-action-meta">${htmlEscape(dateText)}${event.location ? ` · ${htmlEscape(event.location)}` : ''}</div>
+            ${recurringText}
+          </div>
+          <button class="btn secondary" type="button" data-action-close>Close</button>
+        </div>
+        <div class="task-action-note">${htmlEscape(noteText)}</div>
+        <div class="task-action-controls">
+          <label>
+            Change date/time
+            <input type="datetime-local" value="${htmlEscape(toLocalInputValue(event.start))}" data-action-date aria-label="New date for ${htmlEscape(event.title)}">
+          </label>
+          <div class="task-action-buttons">
+            <button class="btn secondary" type="button" data-action-change-date>Change date</button>
+            <button class="btn secondary" type="button" data-action-edit="${htmlEscape(sourceId)}">Edit all details</button>
+            <button class="btn secondary" type="button" data-action-complete>${event._completed ? 'Undo complete' : 'Mark as complete'}</button>
+            <button class="btn danger" type="button" data-action-delete>Delete</button>
+          </div>
+        </div>
+      `;
+      els.taskActionOverlay.classList.remove('hidden');
+      els.taskActionOverlay.setAttribute('aria-hidden', 'false');
     }
 
     function renderAdminEvents() {
@@ -3832,18 +4139,33 @@ Cancel = choose whether to delete the whole series.`);
       if (!source) throw new Error('Task not found.');
       const repeat = source.repeat || 'none';
       const payload = { ...source };
+      let willBeCompleted = false;
 
       if (repeat === 'none') {
-        payload.completed = !Boolean(source.completed);
+        willBeCompleted = !Boolean(source.completed);
+        payload.completed = willBeCompleted;
       } else {
         const dates = Array.isArray(source.completedDates) ? [...source.completedDates] : [];
         const index = dates.indexOf(occurrenceKey);
-        if (index >= 0) dates.splice(index, 1);
-        else dates.push(occurrenceKey);
+        if (index >= 0) {
+          dates.splice(index, 1);
+          willBeCompleted = false;
+        } else {
+          dates.push(occurrenceKey);
+          willBeCompleted = true;
+        }
         payload.completedDates = dates;
       }
 
       const result = await saveEvent(payload);
+      if (willBeCompleted) {
+        const completedEvent = occurrenceByInstanceId(instanceId);
+        if (completedEvent && sameDay(completedEvent.date, new Date())) {
+          state.heroEventFlipped = false;
+        }
+        if (state.selectedInstanceId === instanceId) state.selectedInstanceId = null;
+        if (state.activeAdminInstanceId === instanceId) state.activeAdminInstanceId = null;
+      }
       renderAdminEvents();
       renderDisplay();
       return result;
@@ -3869,6 +4191,64 @@ Cancel = choose whether to delete the whole series.`);
       renderAdminEvents();
       renderDisplay();
       return result;
+    }
+
+
+    async function handleAdminTaskActionClick(event) {
+      if (!els.taskActionOverlay || els.taskActionOverlay.classList.contains('hidden')) return;
+      const activeId = state.activeAdminInstanceId;
+      if (!activeId) return;
+
+      const close = event.target.closest('[data-action-close]');
+      const edit = event.target.closest('[data-action-edit]')?.dataset.actionEdit;
+      const changeDate = event.target.closest('[data-action-change-date]');
+      const complete = event.target.closest('[data-action-complete]');
+      const del = event.target.closest('[data-action-delete]');
+
+      try {
+        if (close) {
+          closeAdminTaskActions();
+          return;
+        }
+
+        if (edit) {
+          closeAdminTaskActions();
+          editEvent(edit);
+          return;
+        }
+
+        if (changeDate) {
+          const input = els.taskActionOverlay.querySelector('[data-action-date]');
+          setStatus('Changing date…');
+          await changeEventDate(activeId, input?.value);
+          closeAdminTaskActions();
+          setStatus('Date changed.');
+          return;
+        }
+
+        if (complete) {
+          setStatus('Updating completion…');
+          await toggleComplete(activeId);
+          closeAdminTaskActions();
+          setStatus('Task completion updated.');
+          return;
+        }
+
+        if (del) {
+          setStatus('Deleting…');
+          const didDelete = await deleteTaskWithChoice(activeId);
+          if (!didDelete) {
+            setStatus('Delete cancelled.');
+            return;
+          }
+          closeAdminTaskActions();
+          renderAdminEvents();
+          renderDisplay();
+          setStatus(getPendingWrites().length ? 'Deleted locally. Server is busy, so it will retry.' : 'Deleted.');
+        }
+      } catch (error) {
+        setStatus(error.message, true);
+      }
     }
 
     function bindAdmin() {
@@ -3917,15 +4297,12 @@ Cancel = choose whether to delete the whole series.`);
             featured: els.featuredInput.checked
           };
           const saved = await saveEvent(payload);
-          if (saved.googleCalendar?.synced) {
-            setStatus('Saved to the shared Google Calendar. The display will update within a minute.');
-          } else if (saved.googleCalendar?.disabled) {
-            setStatus(saved.googleCalendar?.reason === 'sync-off' ? 'Saved locally. Google Calendar sync is off.' : 'Saved locally. Google Calendar is not configured yet.', saved.googleCalendar?.reason !== 'sync-off');
-          } else {
-            setStatus('Saved. It will update on the display within a minute.');
-          }
+          setStatus(saved.queued
+            ? 'Saved on this phone. Server is busy/offline, so it will retry automatically.'
+            : 'Saved. It will update on the display within a minute.');
           resetForm();
           closeEventEditor({ reset: false });
+          closeAdminTaskActions();
           renderAdminEvents();
         } catch (error) {
           setStatus(error.message, true);
@@ -3937,48 +4314,21 @@ Cancel = choose whether to delete the whole series.`);
       els.resetBtn.addEventListener('click', resetForm);
 
       els.adminEvents.addEventListener('click', async event => {
-        const editId = event.target.closest('[data-edit]')?.dataset.edit;
-        const deleteInstanceId = event.target.closest('[data-delete-instance]')?.dataset.deleteInstance;
-        const completeId = event.target.closest('[data-complete]')?.dataset.complete;
-        const changeDateId = event.target.closest('[data-change-date]')?.dataset.changeDate;
+        const cardId = event.target.closest('[data-admin-card]')?.dataset.adminCard;
+        if (cardId) openAdminTaskActions(cardId);
+      });
 
-        try {
-          if (editId) {
-            editEvent(editId);
-            return;
-          }
+      els.taskActionOverlay?.addEventListener('click', async event => {
+        if (event.target === els.taskActionOverlay) {
+          closeAdminTaskActions();
+          return;
+        }
+        await handleAdminTaskActionClick(event);
+      });
 
-          if (deleteInstanceId) {
-            setStatus('Deleting…');
-            const didDelete = await deleteTaskWithChoice(deleteInstanceId);
-            if (!didDelete) {
-              setStatus('Delete cancelled.');
-              return;
-            }
-            state.flippedAdminEventId = null;
-            renderAdminEvents();
-            renderDisplay();
-            setStatus('Deleted from the shared calendar.');
-            return;
-          }
-
-          if (completeId) {
-            setStatus('Updating completion…');
-            await toggleComplete(completeId);
-            setStatus('Task completion updated.');
-            return;
-          }
-
-          if (changeDateId) {
-            const input = els.adminEvents.querySelector(`[data-date-input="${CSS.escape(changeDateId)}"]`);
-            setStatus('Changing date…');
-            await changeEventDate(changeDateId, input?.value);
-            setStatus('Date changed.');
-            return;
-          }
-
-        } catch (error) {
-          setStatus(error.message, true);
+      window.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && els.taskActionOverlay && !els.taskActionOverlay.classList.contains('hidden')) {
+          closeAdminTaskActions();
         }
       });
 
@@ -4066,10 +4416,11 @@ Cancel = choose whether to delete the whole series.`);
           const editId = event.target.closest('[data-hero-edit]')?.dataset.heroEdit;
           const deleteInstanceId = event.target.closest('[data-hero-delete-instance]')?.dataset.heroDeleteInstance;
           const close = event.target.closest('[data-hero-close]');
-          if (completeId || editId || deleteInstanceId || close) event.stopPropagation();
+          if (completeId || editId || deleteInstanceId || close || event.target.closest('button, input, textarea, select, a')) event.stopPropagation();
 
           try {
             if (completeId) {
+              if (!ensureDisplayActionPin()) return;
               await toggleComplete(completeId);
               state.heroEventFlipped = false;
               renderDisplay();
@@ -4080,6 +4431,7 @@ Cancel = choose whether to delete the whole series.`);
               return;
             }
             if (deleteInstanceId) {
+              if (!ensureDisplayActionPin()) return;
               const didDelete = await deleteTaskWithChoice(deleteInstanceId);
               if (didDelete) clearSelectedDayPreview();
               return;
@@ -4108,7 +4460,7 @@ Cancel = choose whether to delete the whole series.`);
           const deleteInstanceId = event.target.closest('[data-display-delete-instance]')?.dataset.displayDeleteInstance;
           const close = event.target.closest('[data-selected-close]');
 
-          if (pickId || completeId || editId || deleteInstanceId || close) event.stopPropagation();
+          if (pickId || completeId || editId || deleteInstanceId || close || event.target.closest('button, input, textarea, select, a')) event.stopPropagation();
 
           try {
             if (pickId) {
@@ -4118,6 +4470,7 @@ Cancel = choose whether to delete the whole series.`);
               return;
             }
             if (completeId) {
+              if (!ensureDisplayActionPin()) return;
               await toggleComplete(completeId);
               state.selectedEventFlipped = false;
               renderDisplay();
@@ -4128,6 +4481,7 @@ Cancel = choose whether to delete the whole series.`);
               return;
             }
             if (deleteInstanceId) {
+              if (!ensureDisplayActionPin()) return;
               const didDelete = await deleteTaskWithChoice(deleteInstanceId);
               if (didDelete) clearSelectedDayPreview();
               return;
@@ -4152,6 +4506,8 @@ Cancel = choose whether to delete the whole series.`);
       setInterval(fetchWeather, 30 * 60 * 1000);
       fetchEvents();
       setInterval(fetchEvents, REFRESH_EVENTS_MS);
+      setInterval(() => processPendingWrites({ silent: true }), 15_000);
+      window.addEventListener('online', () => processPendingWrites({ silent: true }));
       if (adminMode) bindAdmin();
     }
 
