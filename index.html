@@ -159,6 +159,30 @@
       background: rgba(255,255,255,0.58);
       color: var(--muted);
       box-shadow: 0 8px 18px rgba(70, 58, 44, 0.05);
+      appearance: none;
+      font: inherit;
+      text-align: center;
+    }
+
+    .week-day.has-event {
+      cursor: pointer;
+      background: rgba(255,255,255,0.76);
+    }
+
+    .week-day.has-event:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 22px rgba(70, 58, 44, 0.09);
+      border-color: rgba(47,43,39,0.2);
+    }
+
+    .week-day.selected {
+      outline: 3px solid rgba(47,43,39,0.14);
+      border-color: rgba(47,43,39,0.28);
+    }
+
+    .week-day:focus-visible {
+      outline: 3px solid rgba(47,43,39,0.22);
+      outline-offset: 3px;
     }
 
     .week-day-name {
@@ -220,7 +244,7 @@
       transition: opacity 450ms ease;
     }
 
-    .kiosk-shell.no-daily .weather-effect { opacity: 0.82; }
+    .kiosk-shell.no-daily .weather-effect { opacity: 0.95; }
     .kiosk-shell.no-daily .weather-card {
       background:
         radial-gradient(circle at 30% 18%, rgba(255,255,255,0.98), rgba(255,255,255,0.66) 45%, rgba(255,255,255,0.48) 100%);
@@ -332,6 +356,207 @@
       89% { box-shadow: inset 0 0 0 999px rgba(255,255,255,0.35); }
       91% { box-shadow: inset 0 0 0 999px rgba(255,255,255,0.03); }
       93% { box-shadow: inset 0 0 0 999px rgba(255,255,255,0.22); }
+    }
+
+
+    .weather-effect .drop,
+    .weather-effect .flake,
+    .weather-effect .mist,
+    .weather-effect .cloud-puff,
+    .weather-effect .sun-glow,
+    .weather-effect .bolt {
+      position: absolute;
+      display: block;
+      pointer-events: none;
+      will-change: transform, opacity;
+    }
+
+    .weather-effect .drop {
+      left: var(--x);
+      top: -26%;
+      width: var(--w, 2px);
+      height: var(--h, 64px);
+      border-radius: 999px;
+      background: linear-gradient(180deg, rgba(92, 112, 130, 0), rgba(92, 112, 130, 0.58));
+      transform: translateY(-20%) rotate(18deg);
+      animation: realRainFall var(--dur, 1150ms) linear infinite;
+      animation-delay: var(--delay, 0ms);
+      opacity: var(--o, .8);
+    }
+
+    .weather-effect.drizzle .drop {
+      height: var(--h, 34px);
+      width: 1px;
+      opacity: var(--o, .45);
+      animation-duration: var(--dur, 1800ms);
+    }
+
+    .weather-effect .flake {
+      left: var(--x);
+      top: -12%;
+      width: var(--size, 7px);
+      height: var(--size, 7px);
+      border-radius: 50%;
+      background: rgba(255,255,255,.92);
+      box-shadow: 0 0 10px rgba(255,255,255,.5);
+      animation: realSnowFall var(--dur, 9s) linear infinite;
+      animation-delay: var(--delay, 0s);
+      opacity: var(--o, .85);
+    }
+
+    .weather-effect .mist {
+      left: -20%;
+      width: 140%;
+      height: clamp(18px, 2.2vmin, 32px);
+      top: var(--y);
+      border-radius: 999px;
+      background: rgba(177,170,160,var(--o,.18));
+      filter: blur(8px);
+      animation: realFogDrift var(--dur, 16s) ease-in-out infinite alternate;
+      animation-delay: var(--delay, 0s);
+    }
+
+    .weather-effect .cloud-puff {
+      width: var(--size, 180px);
+      height: calc(var(--size, 180px) * .44);
+      left: var(--x);
+      top: var(--y);
+      border-radius: 999px;
+      background: rgba(188,181,171,var(--o,.22));
+      filter: blur(10px);
+      animation: realCloudDrift var(--dur, 18s) ease-in-out infinite alternate;
+      animation-delay: var(--delay, 0s);
+    }
+
+    .weather-effect .sun-glow {
+      right: -16%;
+      top: -24%;
+      width: clamp(220px, 38%, 420px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,221,145,.55), rgba(255,221,145,.22) 44%, rgba(255,221,145,0) 70%);
+      animation: realSunBreathe 5.5s ease-in-out infinite;
+    }
+
+    .weather-effect .bolt {
+      right: 20%;
+      top: 14%;
+      width: 74px;
+      height: 122px;
+      opacity: 0;
+      background: linear-gradient(135deg, transparent 0 34%, rgba(255, 245, 184, .95) 35% 47%, transparent 48% 100%);
+      clip-path: polygon(45% 0, 70% 0, 56% 42%, 82% 42%, 30% 100%, 44% 54%, 18% 54%);
+      filter: drop-shadow(0 0 18px rgba(255,245,184,.8));
+      animation: realLightning 5s linear infinite;
+    }
+
+    @keyframes realRainFall {
+      from { transform: translate3d(0, -30%, 0) rotate(18deg); }
+      to { transform: translate3d(-10vmin, 128vh, 0) rotate(18deg); }
+    }
+
+    @keyframes realSnowFall {
+      from { transform: translate3d(0, -20%, 0) rotate(0deg); }
+      to { transform: translate3d(var(--drift, 24px), 120vh, 0) rotate(240deg); }
+    }
+
+    @keyframes realFogDrift {
+      from { transform: translateX(-6%); }
+      to { transform: translateX(6%); }
+    }
+
+    @keyframes realCloudDrift {
+      from { transform: translateX(-5%) scale(1); }
+      to { transform: translateX(6%) scale(1.05); }
+    }
+
+    @keyframes realSunBreathe {
+      0%,100% { transform: scale(1); opacity: .85; }
+      50% { transform: scale(1.08); opacity: 1; }
+    }
+
+    @keyframes realLightning {
+      0%, 86%, 100% { opacity: 0; }
+      88% { opacity: 1; }
+      89% { opacity: .08; }
+      91% { opacity: .95; }
+      94% { opacity: 0; }
+    }
+
+    .weather-content {
+      display: grid;
+      gap: clamp(12px, 1.4vmin, 20px);
+      align-content: center;
+      min-height: 0;
+    }
+
+    .weather-card.show-selected-event .weather-content,
+    .weather-card.show-selected-event .weather-effect {
+      display: none;
+    }
+
+    .selected-event-panel {
+      position: relative;
+      z-index: 3;
+      display: none;
+      min-height: 100%;
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: clamp(12px, 1.4vmin, 20px);
+    }
+
+    .weather-card.show-selected-event .selected-event-panel {
+      display: grid;
+    }
+
+    .selected-event-image {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      object-fit: cover;
+      border-radius: calc(var(--radius-xl) - 8px);
+      box-shadow: 0 12px 26px rgba(70, 58, 44, 0.1);
+      filter: saturate(.92) contrast(.96);
+    }
+
+    .selected-event-copy {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .selected-event-kicker {
+      color: var(--muted);
+      font-weight: 950;
+      font-size: clamp(12px, .9vw, 15px);
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+
+    .selected-event-title {
+      font-family: var(--serif);
+      font-size: clamp(34px, min(3.2vw, 5.3vh), 72px);
+      line-height: .96;
+      letter-spacing: -.055em;
+      margin: 0;
+    }
+
+    .selected-event-meta,
+    .selected-event-note,
+    .selected-event-return {
+      color: var(--muted);
+      font-weight: 750;
+      font-size: clamp(13px, 1vw, 17px);
+      line-height: 1.35;
+    }
+
+    .selected-event-list {
+      display: grid;
+      gap: 6px;
+      padding-top: 8px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-weight: 800;
+      font-size: clamp(12px, .9vw, 15px);
     }
 
     .current-weather {
@@ -711,14 +936,17 @@
 
       <article id="weatherCard" class="weather-card">
         <div id="weatherEffect" class="weather-effect partly" aria-hidden="true"></div>
-        <div class="current-weather">
-          <div id="weatherIcon" class="weather-icon">🌤️</div>
-          <div>
-            <div id="weatherTemp" class="weather-temp">--°</div>
-            <div id="weatherDesc" class="weather-desc">Loading weather</div>
+        <div id="weatherContent" class="weather-content">
+          <div class="current-weather">
+            <div id="weatherIcon" class="weather-icon">🌤️</div>
+            <div>
+              <div id="weatherTemp" class="weather-temp">--°</div>
+              <div id="weatherDesc" class="weather-desc">Loading weather</div>
+            </div>
           </div>
+          <div id="forecastRow" class="forecast-row"></div>
         </div>
-        <div id="forecastRow" class="forecast-row"></div>
+        <div id="selectedEventPanel" class="selected-event-panel" aria-live="polite"></div>
       </article>
     </section>
 
@@ -826,7 +1054,9 @@
     const state = {
       events: [],
       weather: null,
-      editingId: null
+      editingId: null,
+      selectedDayKey: null,
+      selectedDayTimer: null
     };
 
     const els = {
@@ -837,6 +1067,8 @@
       dateDisplay: document.getElementById('dateDisplay'),
       weatherCard: document.getElementById('weatherCard'),
       weatherEffect: document.getElementById('weatherEffect'),
+      weatherContent: document.getElementById('weatherContent'),
+      selectedEventPanel: document.getElementById('selectedEventPanel'),
       weatherIcon: document.getElementById('weatherIcon'),
       weatherTemp: document.getElementById('weatherTemp'),
       weatherDesc: document.getElementById('weatherDesc'),
@@ -920,6 +1152,16 @@
 
     function sameDay(a, b) {
       return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    }
+
+    function dateKey(date) {
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    }
+
+    function dateFromKey(key) {
+      const [year, month, day] = String(key || '').split('-').map(Number);
+      if (!year || !month || !day) return null;
+      return new Date(year, month - 1, day);
     }
 
     function todayStart() {
@@ -1027,38 +1269,100 @@
       return copy;
     }
 
+    function eventsForDayKey(dayKey) {
+      return state.events
+        .map(event => ({ ...event, date: new Date(event.start) }))
+        .filter(event => !Number.isNaN(event.date) && dateKey(event.date) === dayKey)
+        .sort((a, b) => a.date - b.date);
+    }
+
     function renderWeekView() {
       if (!els.weekView) return;
       const now = new Date();
       const monday = mondayOfWeek(now);
-      const days = Array.from({ length: 7 }, (_, index) => {
+      const days = Array.from({ length: 14 }, (_, index) => {
         const date = new Date(monday);
         date.setDate(monday.getDate() + index);
         return date;
       });
 
-      const eventsByDay = days.map(day => state.events.some(event => {
-        const eventDate = new Date(event.start);
-        return !Number.isNaN(eventDate) && sameDay(eventDate, day);
-      }));
+      const firstWeek = getISOWeek(days[0]);
+      const secondWeek = getISOWeek(days[7]);
+      const title = firstWeek === secondWeek ? `Week ${firstWeek}` : `Week ${firstWeek} / ${secondWeek}`;
 
       els.weekView.innerHTML = `
-        <div class="week-view-title">Week ${getISOWeek(now)}</div>
+        <div class="week-view-title">${title}</div>
         <div class="week-strip">
-          ${days.map((day, index) => {
+          ${days.map(day => {
+            const key = dateKey(day);
+            const dayEvents = eventsForDayKey(key);
             const isToday = sameDay(day, now);
-            const hasEvent = eventsByDay[index];
+            const hasEvent = dayEvents.length > 0;
+            const isSelected = state.selectedDayKey === key;
             const dayName = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(day);
+            const label = hasEvent
+              ? `${dayName} ${day.getDate()}, ${dayEvents.length} event${dayEvents.length === 1 ? '' : 's'}`
+              : `${dayName} ${day.getDate()}, no event`;
             return `
-              <div class="week-day${isToday ? ' today' : ''}${hasEvent ? ' has-event' : ''}">
+              <button class="week-day${isToday ? ' today' : ''}${hasEvent ? ' has-event' : ''}${isSelected ? ' selected' : ''}" type="button" data-day="${key}" ${hasEvent ? '' : 'disabled'} aria-label="${htmlEscape(label)}">
                 <div class="week-day-name">${htmlEscape(dayName)}</div>
                 <div class="week-day-number">${day.getDate()}</div>
                 <div class="week-event-dot"></div>
-              </div>
+              </button>
             `;
           }).join('')}
         </div>
       `;
+    }
+
+    function hideSelectedEventPanel() {
+      els.weatherCard.classList.remove('show-selected-event');
+      if (els.selectedEventPanel) els.selectedEventPanel.innerHTML = '';
+    }
+
+    function renderSelectedEventPanel(events) {
+      if (!events.length) {
+        hideSelectedEventPanel();
+        return;
+      }
+
+      const first = events[0];
+      const date = new Date(first.start);
+      const otherEvents = events.slice(1, 4);
+      const dayLabel = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(date);
+      const timeLabel = formatTime(date, true);
+      els.weatherCard.classList.add('show-selected-event');
+      els.selectedEventPanel.innerHTML = `
+        <img class="selected-event-image" alt="" src="${htmlEscape(first.imageUrl || placeholderFor(first.id, first.title))}">
+        <div class="selected-event-copy">
+          <div class="selected-event-kicker">${htmlEscape(dayLabel)} · ${htmlEscape(timeLabel)}</div>
+          <h2 class="selected-event-title">${htmlEscape(first.title)}</h2>
+          <div class="selected-event-meta">${htmlEscape(first.location || first.note || 'Shared calendar event')}</div>
+          ${first.location && first.note ? `<div class="selected-event-note">${htmlEscape(first.note)}</div>` : ''}
+          ${otherEvents.length ? `
+            <div class="selected-event-list">
+              ${otherEvents.map(event => `<div>${htmlEscape(formatTime(new Date(event.start), true))} · ${htmlEscape(event.title)}</div>`).join('')}
+            </div>
+          ` : ''}
+          <div class="selected-event-return">Returns to today automatically after 5 minutes.</div>
+        </div>
+      `;
+    }
+
+    function clearSelectedDayPreview() {
+      state.selectedDayKey = null;
+      if (state.selectedDayTimer) clearTimeout(state.selectedDayTimer);
+      state.selectedDayTimer = null;
+      renderDisplay();
+    }
+
+    function selectDayPreview(dayKey) {
+      const events = eventsForDayKey(dayKey);
+      if (!events.length) return;
+      state.selectedDayKey = dayKey;
+      if (state.selectedDayTimer) clearTimeout(state.selectedDayTimer);
+      state.selectedDayTimer = setTimeout(clearSelectedDayPreview, 5 * 60 * 1000);
+      renderDisplay();
     }
 
     function setMode() {
@@ -1110,7 +1414,14 @@
       if (adminMode) return;
       const { daily, upcoming } = getDisplayEvents();
       els.displayView.classList.toggle('no-daily', !daily);
-      if (!daily) renderWeekView();
+      if (!daily) {
+        renderWeekView();
+        const selectedEvents = state.selectedDayKey ? eventsForDayKey(state.selectedDayKey) : [];
+        if (selectedEvents.length) renderSelectedEventPanel(selectedEvents);
+        else hideSelectedEventPanel();
+      } else {
+        hideSelectedEventPanel();
+      }
       fitKioskToScreen();
 
       if (daily) {
@@ -1160,6 +1471,66 @@
       renderWeather();
     }
 
+    function renderWeatherEffect(code) {
+      if (!els.weatherEffect) return;
+      const effect = weatherCodeToEffect(code);
+      els.weatherEffect.className = `weather-effect ${effect}`;
+
+      if (effect === 'rain' || effect === 'drizzle' || effect === 'thunder') {
+        const count = effect === 'drizzle' ? 34 : 48;
+        els.weatherEffect.innerHTML = Array.from({ length: count }, (_, index) => {
+          const x = (index * 37) % 104;
+          const dur = effect === 'drizzle' ? 1500 + (index % 8) * 110 : 820 + (index % 7) * 95;
+          const delay = -((index * 173) % 1800);
+          const height = effect === 'drizzle' ? 24 + (index % 5) * 4 : 46 + (index % 6) * 8;
+          const width = effect === 'drizzle' ? 1 : 1 + (index % 2);
+          const opacity = effect === 'drizzle' ? 0.32 + (index % 4) * 0.06 : 0.42 + (index % 5) * 0.08;
+          return `<span class="drop" style="--x:${x}%;--dur:${dur}ms;--delay:${delay}ms;--h:${height}px;--w:${width}px;--o:${opacity}"></span>`;
+        }).join('') + (effect === 'thunder' ? '<span class="bolt"></span>' : '');
+        return;
+      }
+
+      if (effect === 'snow') {
+        els.weatherEffect.innerHTML = Array.from({ length: 34 }, (_, index) => {
+          const x = (index * 29) % 102;
+          const size = 4 + (index % 5) * 1.5;
+          const dur = 6200 + (index % 10) * 540;
+          const delay = -((index * 307) % 7400);
+          const drift = ((index % 2 ? 1 : -1) * (18 + (index % 5) * 8));
+          const opacity = 0.42 + (index % 6) * 0.08;
+          return `<span class="flake" style="--x:${x}%;--size:${size}px;--dur:${dur}ms;--delay:${delay}ms;--drift:${drift}px;--o:${opacity}"></span>`;
+        }).join('');
+        return;
+      }
+
+      if (effect === 'fog') {
+        els.weatherEffect.innerHTML = Array.from({ length: 7 }, (_, index) => {
+          const y = 14 + index * 12;
+          const dur = 13000 + index * 950;
+          const delay = -index * 1100;
+          const opacity = 0.1 + index * 0.018;
+          return `<span class="mist" style="--y:${y}%;--dur:${dur}ms;--delay:${delay}ms;--o:${opacity}"></span>`;
+        }).join('');
+        return;
+      }
+
+      if (effect === 'clouds' || effect === 'partly') {
+        const cloudHtml = Array.from({ length: effect === 'partly' ? 3 : 6 }, (_, index) => {
+          const x = -8 + ((index * 28) % 112);
+          const y = 16 + ((index * 17) % 58);
+          const size = 120 + (index % 4) * 58;
+          const dur = 14000 + index * 1700;
+          const delay = -index * 1400;
+          const opacity = effect === 'partly' ? 0.12 + index * 0.035 : 0.18 + index * 0.025;
+          return `<span class="cloud-puff" style="--x:${x}%;--y:${y}%;--size:${size}px;--dur:${dur}ms;--delay:${delay}ms;--o:${opacity}"></span>`;
+        }).join('');
+        els.weatherEffect.innerHTML = (effect === 'partly' ? '<span class="sun-glow"></span>' : '') + cloudHtml;
+        return;
+      }
+
+      els.weatherEffect.innerHTML = '<span class="sun-glow"></span>';
+    }
+
     function renderWeather() {
       const fallback = {
         current: { temperature_2m: 20, weather_code: 2 },
@@ -1177,9 +1548,7 @@
       els.weatherIcon.textContent = weatherCodeToIcon(code);
       els.weatherTemp.textContent = `${temp}°`;
       els.weatherDesc.textContent = `${weatherCodeToText(code)} · ${WEATHER_CONFIG.name}`;
-      if (els.weatherEffect) {
-        els.weatherEffect.className = `weather-effect ${weatherCodeToEffect(code)}`;
-      }
+      renderWeatherEffect(code);
 
       const rows = (weather.daily?.time || []).slice(1, 5).map((day, index) => {
         const dayDate = new Date(`${day}T12:00:00`);
@@ -1492,6 +1861,13 @@
       setMode();
       window.addEventListener('resize', fitKioskToScreen);
       window.addEventListener('orientationchange', () => setTimeout(fitKioskToScreen, 250));
+      if (els.weekView) {
+        els.weekView.addEventListener('click', event => {
+          const dayButton = event.target.closest('.week-day.has-event');
+          if (!dayButton) return;
+          selectDayPreview(dayButton.dataset.day);
+        });
+      }
       updateClock();
       setInterval(updateClock, 1000);
       fetchWeather();
