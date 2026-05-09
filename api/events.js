@@ -42,6 +42,13 @@ function parseDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function cleanPercent(value, existingValue, fallback = null) {
+  const raw = value ?? existingValue;
+  const number = Number(raw);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(number * 10) / 10));
+}
+
 function normalizeDateKeys(values, existing = []) {
   const source = Array.isArray(values) ? values : existing;
   return [...new Set(source
@@ -60,6 +67,9 @@ function cleanEvent(input, existing = {}) {
 
   const end = String(input.end || '').trim();
   const imageUrl = String(input.imageUrl || '').trim();
+  const imageFocusX = cleanPercent(input.imageFocusX, existing.imageFocusX, 50);
+  const imageFocusY = cleanPercent(input.imageFocusY, existing.imageFocusY, 38);
+  const imageFocusSource = String(input.imageFocusSource || existing.imageFocusSource || '').trim().slice(0, 40);
   const allowedRepeats = new Set(['none', 'yearly', 'weekly', 'biweekly']);
   const repeat = allowedRepeats.has(String(input.repeat || existing.repeat || 'none'))
     ? String(input.repeat || existing.repeat || 'none')
@@ -79,6 +89,9 @@ function cleanEvent(input, existing = {}) {
     location: String(input.location || '').trim().slice(0, 90),
     note: String(input.note || '').trim().slice(0, 300),
     imageUrl,
+    imageFocusX,
+    imageFocusY,
+    imageFocusSource,
     featured: Boolean(input.featured),
     updatedAt: new Date().toISOString(),
     createdAt: existing.createdAt || new Date().toISOString()

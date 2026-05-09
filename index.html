@@ -1014,6 +1014,34 @@
       -webkit-box-orient: vertical;
     }
 
+
+
+    .event-hero img,
+    .selected-event-image,
+    .mini-event img,
+    .admin-event-simple img,
+    .task-action-head img {
+      object-position: var(--image-focus-x, 50%) var(--image-focus-y, 38%);
+    }
+
+    .event-hero {
+      isolation: isolate;
+    }
+
+    .event-hero img {
+      pointer-events: none;
+    }
+
+    .face-crop-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+      color: var(--muted);
+      font-weight: 800;
+      font-size: 12px;
+    }
+
     .empty-upcoming {
       display: grid;
       place-items: center;
@@ -1067,14 +1095,14 @@
     }
 
     .desktop-return-btn {
-      display: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       min-width: 190px;
       min-height: 56px;
       font-size: 15px;
       box-shadow: 0 14px 28px rgba(47,43,39,0.18);
     }
-
-    body.desktop-admin .desktop-return-btn { display: inline-flex; align-items: center; justify-content: center; }
 
     .admin-title {
       margin: 0;
@@ -1625,7 +1653,7 @@
 
 
     /* Phone admin mode: compact, no horizontal overflow, no giant controls */
-    @media (max-width: 780px), (pointer: coarse) {
+    @media (max-width: 780px), ((pointer: coarse) and (max-height: 520px)) {
       html,
       body {
         width: 100%;
@@ -1681,6 +1709,14 @@
         padding: 7px 9px;
         font-size: 14px;
         line-height: 1;
+      }
+
+      .desktop-return-btn {
+        min-width: 0;
+        min-height: 42px;
+        padding: 10px 12px;
+        font-size: 14px;
+        white-space: nowrap;
       }
 
       .admin-card {
@@ -2278,7 +2314,7 @@
     .weather-week-desc { color: var(--muted); font-weight: 800; font-size: clamp(11px, .85vw, 13px); line-height: 1.22; }
     .weather-week-day.today .weather-week-desc { color: rgba(255,255,255,.72); }
 
-    @media (max-width: 780px), (pointer: coarse) {
+    @media (max-width: 780px), ((pointer: coarse) and (max-height: 520px)) {
       .event-editor-card {
         position: static !important;
         left: auto !important;
@@ -2319,7 +2355,7 @@
 <body>
   <main id="displayView" class="kiosk-shell" aria-live="polite">
     <section class="left-stack">
-      <article class="clock-card">
+      <article id="clockCard" class="clock-card">
         <div>
           <div class="time-line"><span id="timeDisplay">10:42</span><span id="ampmDisplay" class="ampm" aria-hidden="true"></span></div>
           <div id="dateDisplay" class="date-line">Monday, May 12</div>
@@ -2373,7 +2409,7 @@
       </div>
       <div class="admin-header-actions">
         <div class="pill" id="adminClock">--:--</div>
-        <button id="returnToDisplayBtn" class="btn desktop-return-btn" type="button">Back to normal view</button>
+        <button id="returnToDisplayBtn" class="btn desktop-return-btn" type="button">View home screen</button>
       </div>
     </header>
 
@@ -2593,12 +2629,15 @@
       longPressOpened: false,
       weatherFocusDate: null,
       dangerHoldTimer: null,
-      dangerHoldOpened: false
+      dangerHoldOpened: false,
+      pendingImageFocus: null,
+      imageFocusToken: 0
     };
 
     const els = {
       displayView: document.getElementById('displayView'),
       adminView: document.getElementById('adminView'),
+      clockCard: document.getElementById('clockCard'),
       timeDisplay: document.getElementById('timeDisplay'),
       ampmDisplay: document.getElementById('ampmDisplay'),
       dateDisplay: document.getElementById('dateDisplay'),
@@ -2677,7 +2716,7 @@
     const params = new URLSearchParams(location.search);
     const forceAdmin = params.has('admin');
     const forceDisplay = params.has('display');
-    const isPhoneLike = matchMedia('(max-width: 780px), (pointer: coarse)').matches;
+    const isPhoneLike = matchMedia('(max-width: 780px), ((pointer: coarse) and (max-height: 520px))').matches;
     const adminMode = forceAdmin || (!forceDisplay && isPhoneLike);
     if (adminMode && !isPhoneLike) document.body.classList.add('desktop-admin');
 
@@ -3030,6 +3069,119 @@
       ].filter(Boolean).join('\n\n');
     }
 
+
+    function clampPercent(value, fallback) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return fallback;
+      return Math.max(0, Math.min(100, Math.round(number * 10) / 10));
+    }
+
+    function imageFocusStyle(event, fallbackY = 38) {
+      const hasImage = Boolean(event?.imageUrl);
+      const x = clampPercent(event?.imageFocusX, 50);
+      const y = clampPercent(event?.imageFocusY, hasImage ? fallbackY : 50);
+      return `--image-focus-x:${x}%;--image-focus-y:${y}%;`;
+    }
+
+    function applyImageFocus(imageElement, event, fallbackY = 38) {
+      if (!imageElement) return;
+      const x = clampPercent(event?.imageFocusX, 50);
+      const y = clampPercent(event?.imageFocusY, event?.imageUrl ? fallbackY : 50);
+      imageElement.style.setProperty('--image-focus-x', `${x}%`);
+      imageElement.style.setProperty('--image-focus-y', `${y}%`);
+    }
+
+    function currentImageFocusPayload() {
+      if (!state.pendingImageFocus) return {};
+      return {
+        imageFocusX: clampPercent(state.pendingImageFocus.imageFocusX, 50),
+        imageFocusY: clampPercent(state.pendingImageFocus.imageFocusY, 38),
+        imageFocusSource: state.pendingImageFocus.imageFocusSource || 'manual'
+      };
+    }
+
+    function focusFromEvent(event) {
+      if (!event || !Number.isFinite(Number(event.imageFocusX)) || !Number.isFinite(Number(event.imageFocusY))) return null;
+      return {
+        imageFocusX: clampPercent(event.imageFocusX, 50),
+        imageFocusY: clampPercent(event.imageFocusY, 38),
+        imageFocusSource: event.imageFocusSource || 'saved'
+      };
+    }
+
+    function facesToFocus(faces, image) {
+      if (!faces || !faces.length || !image) return null;
+      const naturalWidth = image.naturalWidth || image.width;
+      const naturalHeight = image.naturalHeight || image.height;
+      if (!naturalWidth || !naturalHeight) return null;
+
+      let left = Infinity;
+      let top = Infinity;
+      let right = -Infinity;
+      let bottom = -Infinity;
+
+      faces.forEach(face => {
+        const box = face.boundingBox || face;
+        const x = Number(box.x ?? box.left ?? 0);
+        const y = Number(box.y ?? box.top ?? 0);
+        const width = Number(box.width ?? 0);
+        const height = Number(box.height ?? 0);
+        if (!Number.isFinite(x + y + width + height) || width <= 0 || height <= 0) return;
+        left = Math.min(left, x);
+        top = Math.min(top, y);
+        right = Math.max(right, x + width);
+        bottom = Math.max(bottom, y + height);
+      });
+
+      if (!Number.isFinite(left) || !Number.isFinite(top) || right <= left || bottom <= top) return null;
+      const centerX = ((left + right) / 2 / naturalWidth) * 100;
+      const centerY = ((top + bottom) / 2 / naturalHeight) * 100;
+
+      return {
+        imageFocusX: clampPercent(centerX, 50),
+        imageFocusY: Math.max(18, Math.min(62, clampPercent(centerY, 38))),
+        imageFocusSource: 'face-detector'
+      };
+    }
+
+    async function detectImageFocusFromFile(file) {
+      if (!file || !file.type?.startsWith('image/')) return null;
+
+      if (!('FaceDetector' in window)) {
+        return { imageFocusX: 50, imageFocusY: 38, imageFocusSource: 'fallback-human-crop' };
+      }
+
+      try {
+        const image = await loadImage(file);
+        const detector = new FaceDetector({ maxDetectedFaces: 10, fastMode: true });
+        const faces = await detector.detect(image);
+        return facesToFocus(faces, image) || { imageFocusX: 50, imageFocusY: 38, imageFocusSource: 'fallback-human-crop' };
+      } catch (error) {
+        console.warn('Face crop detection unavailable:', error);
+        return { imageFocusX: 50, imageFocusY: 38, imageFocusSource: 'fallback-human-crop' };
+      }
+    }
+
+    async function updateImageFocusPreview(file) {
+      state.pendingImageFocus = null;
+      const token = ++state.imageFocusToken;
+      if (!file) return;
+
+      const baseMessage = file.size > MAX_UPLOAD_BYTES
+        ? `${file.name} selected (${formatBytes(file.size)}). It will be compressed before upload.`
+        : `${file.name} selected (${formatBytes(file.size)}).`;
+      els.imageStatus.textContent = `${baseMessage} Looking for faces to crop neatly…`;
+
+      const focus = await detectImageFocusFromFile(file);
+      if (token !== state.imageFocusToken) return;
+      state.pendingImageFocus = focus;
+      if (focus?.imageFocusSource === 'face-detector') {
+        els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">✓ Face crop saved for dashboard cards.</span>`;
+      } else {
+        els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">Face detection unavailable here — using a portrait-friendly crop.</span>`;
+      }
+    }
+
     function renderHeroEvent(event) {
       if (!event || event._completed) return;
       const date = new Date(event.start);
@@ -3037,6 +3189,7 @@
       const repeat = repeatLabel(event);
       els.heroImage.src = event.imageUrl || placeholderFor(event.id, event.title);
       els.heroImage.alt = event.title;
+      applyImageFocus(els.heroImage, event);
       els.heroKicker.textContent = `${dayLabel} · ${formatTime(date, false)}${repeat ? ` · ${repeat}` : ''}`;
       els.heroTitle.textContent = event.title;
       els.heroLocation.textContent = event.location || event.note || 'Shared calendar task';
@@ -3079,7 +3232,7 @@
         <div class="selected-event-flip${state.selectedEventFlipped ? ' is-flipped' : ''}" data-selected-flip>
           <div class="selected-event-inner">
             <div class="selected-event-face selected-event-front">
-              <img class="selected-event-image" alt="" src="${htmlEscape(first.imageUrl || placeholderFor(first.id, first.title))}">
+              <img class="selected-event-image" alt="" src="${htmlEscape(first.imageUrl || placeholderFor(first.id, first.title))}" style="${imageFocusStyle(first)}">
               <div class="selected-event-copy">
                 <div class="selected-event-kicker">${htmlEscape(dayLabel)} · ${htmlEscape(timeLabel)}${repeat ? ` · ${htmlEscape(repeat)}` : ''}</div>
                 <h2 class="selected-event-title">${htmlEscape(first.title)}</h2>
@@ -3127,10 +3280,11 @@
     function selectDayPreview(dayKey) {
       const events = eventsForDayKey(dayKey);
       if (!events.length) return;
+      const firstEvent = [...events].sort((a, b) => new Date(a.start) - new Date(b.start))[0];
       state.selectedDayKey = dayKey;
       state.selectedEventFlipped = false;
       state.heroEventFlipped = false;
-      state.selectedInstanceId = null;
+      state.selectedInstanceId = firstEvent?._instanceId || null;
       startSelectionReturnTimer();
       renderDisplay();
     }
@@ -3328,21 +3482,19 @@
     function renderDisplay() {
       if (adminMode) return;
       const { daily, main, upcoming } = getDisplayEvents();
-      els.displayView.classList.toggle('no-daily', !daily);
+      const hasMainEvent = Boolean(main);
+      els.displayView.classList.toggle('no-daily', !hasMainEvent);
       state.weatherFocusDate = main ? new Date(main.date || main.start) : new Date();
       renderWeather();
 
-      if (!daily) {
+      if (!hasMainEvent) {
         renderWeekView();
-        const selectedEvents = state.selectedDayKey ? eventsForDayKey(state.selectedDayKey) : [];
-        if (selectedEvents.length) renderSelectedEventPanel(selectedEvents);
-        else hideSelectedEventPanel();
+        hideSelectedEventPanel();
       } else {
         hideSelectedEventPanel();
+        renderHeroEvent(main);
       }
       fitKioskToScreen();
-
-      if (daily && main) renderHeroEvent(main);
 
       if (!upcoming.length) {
         els.upcomingGrid.innerHTML = '<div class="empty-upcoming" style="grid-column:1/-1">No upcoming events yet</div>';
@@ -3354,7 +3506,7 @@
         const exactDate = formatUpcomingDate(date);
         return `
           <button class="mini-event" type="button" data-upcoming-pick="${htmlEscape(event._instanceId)}" aria-label="Open ${htmlEscape(event.title)} on ${htmlEscape(exactDate)}">
-            <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}">
+            <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}" style="${imageFocusStyle(event)}">
             <span class="mini-copy">
               <span class="mini-time">${htmlEscape(exactDate)} · ${formatTime(date, false)}</span>
               <span class="mini-title">${htmlEscape(event.title)}</span>
@@ -3837,6 +3989,8 @@
 
     function resetForm() {
       state.editingId = null;
+      state.pendingImageFocus = null;
+      state.imageFocusToken += 1;
       els.eventForm.reset();
       els.eventId.value = '';
       els.imageUrlInput.value = '';
@@ -3936,6 +4090,13 @@
     async function uploadImageIfNeeded() {
       const file = els.imageInput.files?.[0];
       if (!file) return els.imageUrlInput.value;
+
+      if (!state.pendingImageFocus) {
+        const token = ++state.imageFocusToken;
+        els.imageStatus.textContent = 'Looking for faces before upload…';
+        const focus = await detectImageFocusFromFile(file);
+        if (token === state.imageFocusToken) state.pendingImageFocus = focus;
+      }
 
       const uploadFile = await compressImageForUpload(file);
       if (uploadFile.size > MAX_UPLOAD_BYTES) {
@@ -4059,7 +4220,7 @@ Cancel = choose whether to delete the whole series.`);
       return `
         <button class="admin-event-simple${event._completed ? ' admin-event-complete' : ''}" type="button" data-admin-card="${htmlEscape(event._instanceId)}" aria-label="Open actions for ${htmlEscape(event.title)}">
           <div class="admin-event-main">
-            <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}">
+            <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}" style="${imageFocusStyle(event)}">
             <div>
               <div class="admin-event-title">${htmlEscape(event.title)} ${event.featured ? '· Featured' : ''}${completeText}</div>
               <div class="admin-event-meta">${htmlEscape(dateText)}</div>
@@ -4089,7 +4250,7 @@ Cancel = choose whether to delete the whole series.`);
       const recurringText = event._isRecurring ? '<div class="task-action-meta">Repeating task. Delete will ask if you want this one occurrence or the whole series.</div>' : '';
       els.taskActionContent.innerHTML = `
         <div class="task-action-head">
-          <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}">
+          <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}" style="${imageFocusStyle(event)}">
           <div>
             <div class="task-action-title">${htmlEscape(event.title)}</div>
             <div class="task-action-meta">${htmlEscape(dateText)}${event.location ? ` · ${htmlEscape(event.location)}` : ''}</div>
@@ -4178,6 +4339,8 @@ Cancel = choose whether to delete the whole series.`);
       els.imageUrlInput.value = event.imageUrl || '';
       els.featuredInput.checked = Boolean(event.featured);
       els.imageInput.value = '';
+      state.pendingImageFocus = focusFromEvent(event);
+      state.imageFocusToken += 1;
       els.imageStatus.textContent = event.imageUrl ? 'Current image will be kept unless you upload a new one.' : 'No image selected. A calm placeholder will be used.';
       els.saveEventBtn.textContent = 'Update event';
       if (els.eventEditorTitle) els.eventEditorTitle.textContent = 'Edit task/event';
@@ -4302,6 +4465,54 @@ Cancel = choose whether to delete the whole series.`);
       }
     }
 
+    function goToDisplayMode() {
+      const url = new URL(location.href);
+      url.searchParams.delete('admin');
+      url.searchParams.set('display', '1');
+      location.href = `${url.pathname}${url.search}${url.hash}`;
+    }
+
+    async function toggleFullscreen() {
+      if (adminMode) return;
+      try {
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+          setTimeout(fitKioskToScreen, 120);
+          return;
+        }
+        const target = document.documentElement;
+        if (target.requestFullscreen) {
+          await target.requestFullscreen({ navigationUI: 'hide' });
+        }
+        setTimeout(fitKioskToScreen, 120);
+      } catch (error) {
+        console.warn('Fullscreen request failed:', error);
+      }
+    }
+
+    function bindFullscreenShortcut() {
+      const clock = els.clockCard;
+      if (!clock) return;
+      let lastPress = 0;
+      const maybeToggle = event => {
+        if (adminMode) return;
+        const now = Date.now();
+        if (now - lastPress < 420) {
+          event.preventDefault?.();
+          toggleFullscreen();
+          lastPress = 0;
+        } else {
+          lastPress = now;
+        }
+      };
+      clock.addEventListener('dblclick', event => {
+        event.preventDefault();
+        toggleFullscreen();
+      });
+      clock.addEventListener('pointerup', maybeToggle);
+      document.addEventListener('fullscreenchange', () => setTimeout(fitKioskToScreen, 120));
+    }
+
     function bindAdmin() {
       els.pinInput.value = getPin();
       els.savePinBtn.addEventListener('click', () => {
@@ -4318,13 +4529,15 @@ Cancel = choose whether to delete the whole series.`);
       els.imageInput.addEventListener('change', () => {
         const file = els.imageInput.files?.[0];
         if (!file) {
-          els.imageStatus.textContent = 'No image selected. A calm placeholder will be used.';
+          state.pendingImageFocus = null;
+          state.imageFocusToken += 1;
+          els.imageStatus.textContent = els.imageUrlInput.value
+            ? 'Current image will be kept unless you upload a new one.'
+            : 'No image selected. A calm placeholder will be used.';
           return;
         }
 
-        els.imageStatus.textContent = file.size > MAX_UPLOAD_BYTES
-          ? `${file.name} selected (${formatBytes(file.size)}). It will be compressed before upload.`
-          : `${file.name} selected (${formatBytes(file.size)}).`;
+        updateImageFocusPreview(file);
       });
 
       els.eventForm.addEventListener('submit', async event => {
@@ -4345,6 +4558,7 @@ Cancel = choose whether to delete the whole series.`);
             note: els.noteInput.value,
             repeat: els.repeatInput?.value || 'none',
             imageUrl,
+            ...currentImageFocusPayload(),
             featured: els.featuredInput.checked
           };
           const saved = await saveEvent(payload);
@@ -4495,6 +4709,8 @@ Cancel = choose whether to delete the whole series.`);
       bindConfigMenu();
       bindWeatherOverlay();
       bindDangerMenu();
+      bindFullscreenShortcut();
+      els.returnToDisplayBtn?.addEventListener('click', goToDisplayMode);
       document.addEventListener('click', event => {
         handleHeroBackActionClick(event);
       }, true);
