@@ -154,6 +154,7 @@ function makeOccurrence(event, occurrenceStart, index) {
     title: event.title,
     note: event.note || '',
     location: event.location || '',
+    imageUrl: event.imageUrl || '',
     occurrenceKey: `${dateKeyInTimeZone(occurrenceStart)}-${index}`,
     start: occurrenceStart.toISOString(),
     end: duration ? new Date(occurrenceStart.getTime() + duration).toISOString() : '',
@@ -246,9 +247,11 @@ function buildDesiredReminders(events, options = {}) {
         title: event.title,
         note: event.note || '',
         location: event.location || '',
+        imageUrl: event.imageUrl || '',
         recipients: reminder.recipients,
         occurrenceKey: 'created',
         eventAt: event.start,
+        eventEnd: event.end || '',
         remindAt: now.toISOString(),
       });
     }
@@ -274,9 +277,11 @@ function buildDesiredReminders(events, options = {}) {
         title: event.title,
         note: event.note || '',
         location: event.location || '',
+        imageUrl: event.imageUrl || '',
         recipients: reminder.recipients,
         occurrenceKey: occurrence.occurrenceKey,
         eventAt: occurrence.start,
+        eventEnd: occurrence.end || '',
         remindAt: reminderTime.remindAt.toISOString(),
       });
     }
@@ -339,28 +344,113 @@ function requireResendConfig() {
   if (!process.env.REMINDER_FROM) throw new Error('REMINDER_FROM is missing in Vercel environment variables.');
 }
 
+
+function absoluteSiteUrl() {
+  const explicit = process.env.PUBLIC_SITE_URL || process.env.ORGANIZER_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL;
+  if (explicit) return String(explicit).replace(/\/$/, '');
+  if (process.env.VERCEL_URL) return `https://${String(process.env.VERCEL_URL).replace(/\/$/, '')}`;
+  return '';
+}
+
+function toCalendarParam(value) {
+  return encodeURIComponent(String(value || ''));
+}
+
+function calendarDownloadUrl(reminder) {
+  const base = absoluteSiteUrl();
+  if (!base) return '';
+  const start = reminder.eventAt || reminder.remindAt;
+  const end = reminder.eventEnd || '';
+  const params = [
+    `title=${toCalendarParam(reminder.title || 'Family task')}`,
+    `start=${toCalendarParam(start)}`,
+    `end=${toCalendarParam(end)}`,
+    `location=${toCalendarParam(reminder.location || '')}`,
+    `note=${toCalendarParam(reminder.note || '')}`,
+  ].join('&');
+  return `${base}/api/calendar-ics?${params}`;
+}
+
+function safeImageUrl(value) {
+  const url = String(value || '').trim();
+  if (!/^https:\/\//i.test(url)) return '';
+  return url;
+}
+
+function buildEmailShell({ eyebrow, headline, title, when, location, note, imageUrl, calendarUrl }) {
+  const image = imageUrl ? `
+    <img src="${escapeHtml(imageUrl)}" alt="" style="display:block; width:100%; max-height:260px; object-fit:cover; border-radius:22px; margin:0 0 18px; border:1px solid #eadfce;" />
+  ` : '';
+
+  const locationLine = location ? `
+    <tr>
+      <td style="padding:7px 0; color:#8a7d6f; width:72px; vertical-align:top; font-weight:700;">Where</td>
+      <td style="padding:7px 0; color:#2f2b27;">${escapeHtml(location)}</td>
+    </tr>
+  ` : '';
+
+  const noteBlock = note ? `
+    <div style="margin-top:16px; padding:14px 16px; border-radius:18px; background:#fffaf2; border:1px solid #efe4d2; color:#51473e;">
+      ${escapeHtml(note).replaceAll('\n', '<br>')}
+    </div>
+  ` : '';
+
+  const calendarButton = calendarUrl ? `
+    <div style="margin-top:20px;">
+      <a href="${escapeHtml(calendarUrl)}" style="display:inline-block; padding:12px 16px; border-radius:999px; background:#2f2b27; color:#fffaf2; text-decoration:none; font-weight:800; font-size:14px;">
+        Save to this device calendar
+      </a>
+    </div>
+    <p style="margin:10px 0 0; color:#8a7d6f; font-size:12px;">This opens a small calendar file your phone or PC can add to its local calendar.</p>
+  ` : '';
+
+  return `
+    <div style="margin:0; padding:0; background:#f4efe7; font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif; color:#2f2b27; line-height:1.5;">
+      <div style="max-width:620px; margin:0 auto; padding:28px 14px;">
+        <div style="background:#fffdf8; border:1px solid #e6dccd; border-radius:28px; padding:22px; box-shadow:0 18px 50px rgba(47,43,39,.10);">
+          ${image}
+          <div style="font-size:12px; font-weight:900; color:#9a8062; text-transform:uppercase; letter-spacing:.12em;">${escapeHtml(eyebrow)}</div>
+          <h1 style="margin:8px 0 8px; font-size:30px; line-height:1.08; letter-spacing:-.03em; color:#2f2b27;">${escapeHtml(headline)}</h1>
+          <div style="margin:0 0 16px; font-size:20px; font-weight:850; color:#443b33;">${escapeHtml(title)}</div>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%; border-top:1px solid #efe4d2; border-bottom:1px solid #efe4d2; padding:8px 0;">
+            <tr>
+              <td style="padding:7px 0; color:#8a7d6f; width:72px; vertical-align:top; font-weight:700;">When</td>
+              <td style="padding:7px 0; color:#2f2b27;">${escapeHtml(when)}</td>
+            </tr>
+            ${locationLine}
+          </table>
+          ${noteBlock}
+          ${calendarButton}
+          <p style="margin:22px 0 0; color:#9b8f82; font-size:12px;">Sent by your Family Organizer dashboard.</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function buildEmail(reminder) {
-  const title = escapeHtml(reminder.title || 'Family reminder');
-  const note = reminder.note ? `<p style="margin: 12px 0 0;">${escapeHtml(reminder.note)}</p>` : '';
-  const location = reminder.location ? `<p style="margin: 8px 0 0;"><strong>Where:</strong> ${escapeHtml(reminder.location)}</p>` : '';
-  const when = escapeHtml(formatDateTime(reminder.eventAt));
+  const rawTitle = reminder.title || 'Family task';
+  const rawNote = reminder.note || '';
+  const rawLocation = reminder.location || '';
+  const when = formatDateTime(reminder.eventAt);
+  const imageUrl = safeImageUrl(reminder.imageUrl);
+  const calendarUrl = calendarDownloadUrl(reminder);
+  const calendarText = calendarUrl ? `\n\nSave to calendar: ${calendarUrl}` : '';
 
   if (reminder.type === 'created') {
     return {
-      subject: `New task created: ${reminder.title || 'Family task'}`,
-      text: `New task created: ${reminder.title || 'Family task'}\n\nWhen: ${formatDateTime(reminder.eventAt)}\n${reminder.location ? `Where: ${reminder.location}\n` : ''}${reminder.note || ''}`,
-      html: `
-        <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; color: #2f2b27; line-height: 1.5;">
-          <div style="max-width: 560px; padding: 22px; border: 1px solid #e5ddd0; border-radius: 22px; background: #fffaf2;">
-            <div style="font-size: 13px; font-weight: 800; color: #8a7d6f; text-transform: uppercase; letter-spacing: .08em;">Family Organizer</div>
-            <h1 style="margin: 8px 0 10px; font-size: 26px; line-height: 1.15;">New task created</h1>
-            <p style="margin: 0; font-size: 18px;"><strong>${title}</strong></p>
-            <p style="margin: 8px 0 0;"><strong>When:</strong> ${when}</p>
-            ${location}
-            ${note}
-          </div>
-        </div>
-      `,
+      subject: `New task: ${rawTitle}`,
+      text: `New task created: ${rawTitle}\n\nWhen: ${when}\n${rawLocation ? `Where: ${rawLocation}\n` : ''}${rawNote || ''}${calendarText}`,
+      html: buildEmailShell({
+        eyebrow: 'Family Organizer',
+        headline: 'New task created',
+        title: rawTitle,
+        when,
+        location: rawLocation,
+        note: rawNote,
+        imageUrl,
+        calendarUrl,
+      }),
     };
   }
 
@@ -369,20 +459,18 @@ function buildEmail(reminder) {
     : 'Remember this task today';
 
   return {
-    subject: `${message}: ${reminder.title || 'Family task'}`,
-    text: `${message}: ${reminder.title || 'Family task'}\n\nWhen: ${formatDateTime(reminder.eventAt)}\n${reminder.location ? `Where: ${reminder.location}\n` : ''}${reminder.note || ''}`,
-    html: `
-      <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; color: #2f2b27; line-height: 1.5;">
-        <div style="max-width: 560px; padding: 22px; border: 1px solid #e5ddd0; border-radius: 22px; background: #fffaf2;">
-          <div style="font-size: 13px; font-weight: 800; color: #8a7d6f; text-transform: uppercase; letter-spacing: .08em;">Family Organizer</div>
-          <h1 style="margin: 8px 0 10px; font-size: 26px; line-height: 1.15;">${escapeHtml(message)}</h1>
-          <p style="margin: 0; font-size: 18px;"><strong>${title}</strong></p>
-          <p style="margin: 8px 0 0;"><strong>When:</strong> ${when}</p>
-          ${location}
-          ${note}
-        </div>
-      </div>
-    `,
+    subject: `${message}: ${rawTitle}`,
+    text: `${message}: ${rawTitle}\n\nWhen: ${when}\n${rawLocation ? `Where: ${rawLocation}\n` : ''}${rawNote || ''}${calendarText}`,
+    html: buildEmailShell({
+      eyebrow: 'Family Organizer reminder',
+      headline: message,
+      title: rawTitle,
+      when,
+      location: rawLocation,
+      note: rawNote,
+      imageUrl,
+      calendarUrl,
+    }),
   };
 }
 

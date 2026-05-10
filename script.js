@@ -714,20 +714,111 @@
       };
     }
 
+    function textBoxesToFocus(boxes, image) {
+      if (!boxes || !boxes.length || !image) return null;
+      const naturalWidth = image.naturalWidth || image.width;
+      const naturalHeight = image.naturalHeight || image.height;
+      if (!naturalWidth || !naturalHeight) return null;
+
+      let left = Infinity;
+      let top = Infinity;
+      let right = -Infinity;
+      let bottom = -Infinity;
+      let usableCount = 0;
+      let totalTextLength = 0;
+
+      boxes.forEach(item => {
+        const text = String(item.text || item.rawValue || '').trim();
+        const confidence = Number(item.confidence ?? item.conf ?? 100);
+        const box = item.bbox || item.boundingBox || item;
+        if (text.length < 2 || confidence < 35 || !box) return;
+
+        const x0 = Number(box.x0 ?? box.x ?? box.left ?? 0);
+        const y0 = Number(box.y0 ?? box.y ?? box.top ?? 0);
+        const x1 = Number(box.x1 ?? ((box.x ?? box.left ?? 0) + (box.width ?? 0)));
+        const y1 = Number(box.y1 ?? ((box.y ?? box.top ?? 0) + (box.height ?? 0)));
+        if (!Number.isFinite(x0 + y0 + x1 + y1) || x1 <= x0 || y1 <= y0) return;
+
+        left = Math.min(left, x0);
+        top = Math.min(top, y0);
+        right = Math.max(right, x1);
+        bottom = Math.max(bottom, y1);
+        usableCount += 1;
+        totalTextLength += text.length;
+      });
+
+      // Avoid letting one tiny accidental OCR mark override a useful face crop.
+      if (usableCount < 1 || totalTextLength < 4) return null;
+      if (!Number.isFinite(left) || !Number.isFinite(top) || right <= left || bottom <= top) return null;
+
+      const boxWidth = right - left;
+      const boxHeight = bottom - top;
+      const coversEnough = (boxWidth * boxHeight) / (naturalWidth * naturalHeight) > 0.004;
+      if (!coversEnough && totalTextLength < 8) return null;
+
+      const centerX = ((left + right) / 2 / naturalWidth) * 100;
+      const centerY = ((top + bottom) / 2 / naturalHeight) * 100;
+
+      return {
+        imageFocusX: clampPercent(centerX, 50),
+        imageFocusY: Math.max(12, Math.min(88, clampPercent(centerY, 38))),
+        imageFocusSource: 'text-detector'
+      };
+    }
+
+    async function detectTextFocusFromImage(file, image) {
+      if (!file || !image) return null;
+
+      // Fast path where supported by the browser.
+      if ('TextDetector' in window) {
+        try {
+          const detector = new TextDetector();
+          const detections = await detector.detect(image);
+          const nativeFocus = textBoxesToFocus(detections, image);
+          if (nativeFocus) return nativeFocus;
+        } catch (error) {
+          console.warn('Native text crop detection unavailable:', error);
+        }
+      }
+
+      // Wider browser fallback. Tesseract is loaded from CDN when online.
+      if (window.Tesseract?.recognize) {
+        try {
+          const result = await window.Tesseract.recognize(file, 'eng');
+          const words = result?.data?.words || [];
+          return textBoxesToFocus(words, image);
+        } catch (error) {
+          console.warn('OCR text crop detection unavailable:', error);
+        }
+      }
+
+      return null;
+    }
+
     async function detectImageFocusFromFile(file) {
       if (!file || !file.type?.startsWith('image/')) return null;
 
-      if (!('FaceDetector' in window)) {
-        return { imageFocusX: 50, imageFocusY: 38, imageFocusSource: 'fallback-human-crop' };
-      }
-
       try {
         const image = await loadImage(file);
-        const detector = new FaceDetector({ maxDetectedFaces: 10, fastMode: true });
-        const faces = await detector.detect(image);
-        return facesToFocus(faces, image) || { imageFocusX: 50, imageFocusY: 38, imageFocusSource: 'fallback-human-crop' };
+
+        // Best crop priority: readable text first, then faces, then a safe fallback.
+        const textFocus = await detectTextFocusFromImage(file, image);
+        if (textFocus) return textFocus;
+
+        if ('FaceDetector' in window) {
+          try {
+            const detector = new FaceDetector({ maxDetectedFaces: 10, fastMode: true });
+            const faces = await detector.detect(image);
+            const faceFocus = facesToFocus(faces, image);
+            if (faceFocus) return faceFocus;
+          } catch (error) {
+            console.warn('Face crop detection unavailable:', error);
+          }
+        }
+
+        return { imageFocusX: 50, imageFocusY: 38, imageFocusSource: 'fallback-human-crop' };
       } catch (error) {
-        console.warn('Face crop detection unavailable:', error);
+        console.warn('Image focus detection unavailable:', error);
         return { imageFocusX: 50, imageFocusY: 38, imageFocusSource: 'fallback-human-crop' };
       }
     }
@@ -740,15 +831,17 @@
       const baseMessage = file.size > MAX_UPLOAD_BYTES
         ? `${file.name} selected (${formatBytes(file.size)}). It will be compressed before upload.`
         : `${file.name} selected (${formatBytes(file.size)}).`;
-      els.imageStatus.textContent = `${baseMessage} Looking for faces to crop neatly…`;
+      els.imageStatus.textContent = `${baseMessage} Looking for text or faces to crop neatly…`;
 
       const focus = await detectImageFocusFromFile(file);
       if (token !== state.imageFocusToken) return;
       state.pendingImageFocus = focus;
-      if (focus?.imageFocusSource === 'face-detector') {
+      if (focus?.imageFocusSource === 'text-detector') {
+        els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">✓ Text crop saved for dashboard cards.</span>`;
+      } else if (focus?.imageFocusSource === 'face-detector') {
         els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">✓ Face crop saved for dashboard cards.</span>`;
       } else {
-        els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">Face detection unavailable here — using a portrait-friendly crop.</span>`;
+        els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">Using a clean fallback crop.</span>`;
       }
     }
 
@@ -1825,7 +1918,7 @@
 
       if (!state.pendingImageFocus) {
         const token = ++state.imageFocusToken;
-        els.imageStatus.textContent = 'Looking for faces before upload…';
+        els.imageStatus.textContent = 'Looking for text or faces before upload…';
         const focus = await detectImageFocusFromFile(file);
         if (token === state.imageFocusToken) state.pendingImageFocus = focus;
       }
