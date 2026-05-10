@@ -1115,7 +1115,7 @@
 
     .upcoming-card {
       grid-column: 1 / -1;
-      padding: clamp(14px, 1.55vmin, 22px);
+      padding: clamp(16px, 1.8vmin, 24px);
       min-height: 0;
       overflow: hidden;
       display: grid;
@@ -1314,7 +1314,10 @@
 
     .kiosk-shell.no-daily {
       grid-template-columns: 1fr;
-      grid-template-rows: minmax(0, 1fr) minmax(150px, 0.26fr);
+      /* When no daily hero is shown, use more of the free lower area for the
+         upcoming strip so the cards can breathe and text stays comfortably
+         visible. */
+      grid-template-rows: minmax(0, 1fr) clamp(250px, 31vmin, 380px);
     }
 
     .kiosk-shell.no-daily .left-stack {
