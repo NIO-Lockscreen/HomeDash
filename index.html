@@ -86,7 +86,7 @@
       border-radius: 20px;
       padding: 12px 14px;
       display: grid;
-      gap: 8px;
+      gap: 10px;
       color: var(--ink);
     }
 
@@ -97,6 +97,37 @@
       gap: 10px;
       font-weight: 950;
       letter-spacing: -.02em;
+    }
+
+    .email-recipient-summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: clamp(12px, .9vw, 14px);
+      color: rgba(47,43,39,.76);
+      font-weight: 850;
+    }
+
+    .email-recipient-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      border: 1px solid rgba(154,128,98,.18);
+      border-radius: 999px;
+      padding: 5px 10px;
+      background: rgba(255,255,255,.62);
+      color: rgba(47,43,39,.86);
+      font-size: 12px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+
+    .email-recipient-chip small {
+      color: rgba(47,43,39,.55);
+      font-size: 10px;
+      font-weight: 850;
     }
 
     .email-pill {
@@ -129,34 +160,103 @@
 
     .email-add-box {
       display: grid;
-      gap: 8px;
-      margin-top: 2px;
+      gap: 9px;
+      margin-top: 1px;
+    }
+
+    .email-add-heading {
+      color: rgba(47,43,39,.72);
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: .08em;
+      text-transform: uppercase;
     }
 
     .email-add-list {
       display: grid;
-      gap: 6px;
-      max-height: 110px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      max-height: 148px;
       overflow: auto;
-      padding-right: 3px;
+      padding-right: 2px;
     }
 
     .email-add-row {
-      display: flex;
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
       align-items: center;
-      gap: 8px;
-      font-weight: 850;
-      color: rgba(47,43,39,.82);
-      font-size: 13px;
+      gap: 9px;
+      width: 100%;
+      min-width: 0;
+      border: 1px solid rgba(154,128,98,.18);
+      border-radius: 16px;
+      background: rgba(255,255,255,.62);
+      padding: 10px 11px;
+      color: rgba(47,43,39,.84);
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(70,58,44,.035);
     }
 
-    .email-add-row input[type="checkbox"] { accent-color: var(--ink); }
+    .email-add-row:hover,
+    .email-add-row:focus-within {
+      background: rgba(255,255,255,.82);
+      border-color: rgba(154,128,98,.32);
+    }
+
+    .email-add-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      accent-color: var(--ink);
+    }
+
+    .email-add-person {
+      display: grid;
+      gap: 1px;
+      min-width: 0;
+      text-align: left;
+      line-height: 1.18;
+    }
+
+    .email-add-person strong {
+      display: block;
+      font-size: 13px;
+      font-weight: 950;
+      color: rgba(47,43,39,.9);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .email-add-person small {
+      display: block;
+      font-size: 10px;
+      font-weight: 850;
+      color: rgba(47,43,39,.58);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .email-add-empty {
+      border: 1px dashed rgba(154,128,98,.28);
+      border-radius: 16px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,.45);
+      color: rgba(47,43,39,.64);
+      font-size: 12px;
+      font-weight: 850;
+    }
 
     .email-add-new {
       display: flex;
       gap: 8px;
       align-items: center;
       flex-wrap: wrap;
+    }
+
+    @media (max-width: 720px) {
+      .email-add-list { grid-template-columns: 1fr; }
     }
 
     .email-add-new input {
@@ -3543,20 +3643,25 @@
 
       const existingSet = new Set(recipients);
       const extraContacts = HARD_CODED_REMINDER_CONTACTS.filter(contact => !existingSet.has(normalizeReminderEmail(contact.email)));
+      const recipientSummary = recipients.length
+        ? `<div class="email-recipient-summary"><span>Recipients:</span>${reminderRecipientNames(recipients).map(name => `<span class="email-recipient-chip">${htmlEscape(name)}</span>`).join('')}</div>`
+        : '<div class="email-recipient-summary"><span>Recipients:</span><span class="email-recipient-chip"><small>None yet</small></span></div>';
       const contactRows = extraContacts.length
         ? `<div class="email-add-list">${extraContacts.map(contact => `
             <label class="email-add-row">
               <input type="checkbox" data-display-email-recipient value="${htmlEscape(normalizeReminderEmail(contact.email))}">
-              <span>${htmlEscape(contact.name)} <small>${htmlEscape(contact.email)}</small></span>
+              <span class="email-add-person">
+                <strong>${htmlEscape(contact.name)}</strong>
+                <small>${htmlEscape(contact.email)}</small>
+              </span>
             </label>
           `).join('')}</div>`
-        : '<div class="email-status-lines"><div>Both Therese and Thomas are already on this task.</div></div>';
-      const addTitle = enabled ? 'Add selected recipients' : 'Add reminders';
+        : '<div class="email-add-empty">Both Therese and Thomas are already on this task.</div>';
+      const addTitle = enabled ? 'Add selected' : 'Add reminders';
       const addHelp = enabled
-        ? 'Add another person. Only the new recipient gets the task-created email now; everyone on the list gets the task-day reminder.'
-        : 'Add reminders from this task card. It will send a task-created email now, then the task-day reminder.';
+        ? 'Choose who else should get this task. Only newly added people get the task-created email now.'
+        : 'Choose who should get a task-created email now and the task-day reminder later.';
       const pill = enabled ? '<span class="email-pill">On</span>' : '<span class="email-pill off">Off</span>';
-      const recipientText = enabled ? reminderRecipientNames(recipients).join(', ') : 'none yet';
 
       return `
         <div class="email-status-card" data-email-reminder-panel="${htmlEscape(context)}" data-email-source-id="${htmlEscape(sourceId)}">
@@ -3564,12 +3669,13 @@
             <span>Email reminders</span>
             ${pill}
           </div>
+          ${recipientSummary}
           <div class="email-status-lines">
-            <div>Recipients: ${htmlEscape(recipientText)}</div>
-            <div>${enabled ? (creationSent ? `Task-created email sent ${htmlEscape(formatReminderDateTime(new Date(reminder.creationEmailSentAt)))}` : 'Task-created email will show as sent after the server confirms it.') : htmlEscape(addHelp)}</div>
+            <div>${enabled ? (creationSent ? `Task-created email sent ${htmlEscape(formatReminderDateTime(new Date(reminder.creationEmailSentAt)))}` : 'Task-created email will show as sent after the server confirms it.') : 'Email reminders are off for this task.'}</div>
             <div>${htmlEscape(taskReminderText)}</div>
           </div>
           <div class="email-add-box">
+            <div class="email-add-heading">${enabled ? 'Add recipient' : 'Turn on reminders'}</div>
             <div class="email-status-lines"><div>${htmlEscape(addHelp)}</div></div>
             ${contactRows}
             <div class="email-add-new">
