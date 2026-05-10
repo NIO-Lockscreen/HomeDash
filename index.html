@@ -61,7 +61,7 @@
       padding: clamp(16px, 2.2vmin, 34px);
       display: grid;
       grid-template-columns: minmax(300px, 0.96fr) minmax(430px, 1.44fr);
-      grid-template-rows: minmax(0, 1fr) minmax(150px, 0.28fr);
+      grid-template-rows: minmax(0, 0.96fr) minmax(160px, 0.31fr);
       gap: clamp(16px, 2.1vmin, 30px);
       backdrop-filter: blur(18px);
       overflow: hidden;
@@ -1112,7 +1112,7 @@
 
     .upcoming-card {
       grid-column: 1 / -1;
-      padding: clamp(16px, 1.8vmin, 26px);
+      padding: clamp(14px, 1.55vmin, 22px);
       min-height: 0;
       overflow: hidden;
       display: grid;
@@ -1126,7 +1126,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      margin-bottom: 14px;
+      margin-bottom: clamp(8px, 1vmin, 13px);
     }
 
     .upcoming-head .section-title { margin: 0; }
@@ -1182,7 +1182,7 @@
     .upcoming-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: clamp(12px, 1.35vw, 20px);
+      gap: clamp(10px, 1.05vw, 16px);
       min-height: 0;
       align-items: stretch;
     }
@@ -1190,7 +1190,8 @@
     .mini-event {
       position: relative;
       min-width: 0;
-      min-height: clamp(112px, 13vmin, 178px);
+      min-height: clamp(126px, 14.5vmin, 190px);
+      aspect-ratio: 1.92 / 1;
       overflow: hidden;
       border: 0;
       border-radius: var(--radius-md);
@@ -1217,31 +1218,34 @@
       object-fit: cover;
       display: block;
       filter: saturate(0.9) contrast(0.95);
-      transform: scale(1.01);
+      transform: scale(var(--image-scale, 1.01));
+      transition: transform .22s ease, filter .22s ease;
     }
 
     .mini-event::after {
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(180deg, rgba(0,0,0,.02) 15%, rgba(0,0,0,.68) 100%);
+      background: linear-gradient(180deg, rgba(0,0,0,.03) 10%, rgba(0,0,0,.12) 38%, rgba(0,0,0,.84) 100%);
       z-index: 1;
     }
 
     .mini-copy {
       position: absolute;
-      left: 12px;
-      right: 12px;
-      bottom: 11px;
+      left: clamp(9px, .85vw, 13px);
+      right: clamp(9px, .85vw, 13px);
+      bottom: clamp(8px, .85vw, 12px);
       z-index: 2;
       text-shadow: 0 2px 12px rgba(0,0,0,.24);
+      display: grid;
+      gap: 4px;
     }
 
     .mini-time {
-      color: rgba(255,255,255,.88);
+      color: rgba(255,255,255,.9);
       font-size: clamp(11px, .9vw, 13px);
       font-weight: 900;
-      margin-bottom: 4px;
+      margin-bottom: 0;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1252,12 +1256,13 @@
     .mini-title {
       color: white;
       font-weight: 950;
-      font-size: clamp(15px, 1.15vw, 20px);
-      line-height: 1.08;
+      font-size: clamp(14px, 1.02vw, 19px);
+      line-height: 1.12;
       overflow: hidden;
       display: -webkit-box;
-      -webkit-line-clamp: 2;
+      -webkit-line-clamp: 3;
       -webkit-box-orient: vertical;
+      max-height: calc(1.12em * 3);
     }
 
 
@@ -2678,7 +2683,7 @@
       }
       .left-stack { grid-template-columns: 1fr 1fr; grid-template-rows: auto; }
       .event-hero { min-height: 360px; }
-      .upcoming-grid { grid-template-columns: repeat(2, 1fr); }
+      .upcoming-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .kiosk-shell.no-daily .left-stack { grid-template-columns: 1fr; grid-template-rows: auto auto; }
       .kiosk-shell.no-daily .time-line { font-size: clamp(92px, 18vw, 170px); }
     }
@@ -3176,12 +3181,16 @@
   <script>
     const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
     const REFRESH_EVENTS_MS = 10_000;
-    const DISPLAY_EVENT_LIMIT = 4;
+    const DEFAULT_UPCOMING_LIMIT = 4;
     const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
     const COMPRESSED_UPLOAD_TARGET_BYTES = 3.6 * 1024 * 1024;
     const IMAGE_MAX_DIMENSION = 1600;
     const JPEG_QUALITY_STEPS = [0.82, 0.72, 0.62, 0.52, 0.44];
     const PENDING_WRITES_KEY = 'homeOrganizerPendingWrites';
+    const LOCAL_COMPLETION_OVERRIDES_KEY = 'homeOrganizerCompletionOverrides';
+    const LOCAL_EVENT_MIRROR_KEY = 'homeOrganizerLocalEventMirror';
+    const LOCAL_EVENT_MIRROR_TTL_MS = 24 * 60 * 60 * 1000;
+    const LOCAL_EVENT_MIRROR_MIN_HOLD_MS = 2 * 60 * 1000;
     const LOCAL_EVENT_ID_PREFIX = 'local-';
     const LAST_WRITE_SIGNAL_KEY = 'homeOrganizerLastWrite';
     const HARD_CODED_REMINDER_CONTACTS = [
@@ -4425,6 +4434,169 @@
       updateLocalQueueStatus?.();
     }
 
+    function getCompletionOverrides() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(LOCAL_COMPLETION_OVERRIDES_KEY) || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function setCompletionOverrides(overrides) {
+      const now = Date.now();
+      const cleaned = {};
+      Object.entries(overrides || {}).forEach(([id, value]) => {
+        const updatedAtMs = Number(value?.updatedAtMs || 0);
+        // Keep local completion decisions for up to one day. In normal use they are cleared
+        // as soon as the server returns the same completed state.
+        if (updatedAtMs && now - updatedAtMs < 24 * 60 * 60 * 1000) cleaned[id] = value;
+      });
+      localStorage.setItem(LOCAL_COMPLETION_OVERRIDES_KEY, JSON.stringify(cleaned));
+    }
+
+
+    function getLocalEventMirror() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(LOCAL_EVENT_MIRROR_KEY) || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function setLocalEventMirror(mirror) {
+      const now = Date.now();
+      const cleanedEntries = Object.entries(mirror || {})
+        .filter(([id, value]) => id && value?.event && Number(value.savedAtMs || 0) && now - Number(value.savedAtMs || 0) < LOCAL_EVENT_MIRROR_TTL_MS)
+        .slice(-200);
+      localStorage.setItem(LOCAL_EVENT_MIRROR_KEY, JSON.stringify(Object.fromEntries(cleanedEntries)));
+    }
+
+    function rememberLocalEvent(event, opId, method = 'POST') {
+      if (!event?.id) return;
+      const mirror = getLocalEventMirror();
+      mirror[event.id] = {
+        event: { ...event },
+        opId: opId || '',
+        method,
+        savedAtMs: Date.now()
+      };
+      setLocalEventMirror(mirror);
+    }
+
+    function forgetLocalEvent(id) {
+      if (!id) return;
+      const mirror = getLocalEventMirror();
+      if (!mirror[id]) return;
+      delete mirror[id];
+      setLocalEventMirror(mirror);
+    }
+
+    function comparableEventSnapshot(event = {}) {
+      const reminder = event.emailReminder && typeof event.emailReminder === 'object' ? event.emailReminder : {};
+      return {
+        id: String(event.id || ''),
+        title: String(event.title || ''),
+        start: String(event.start || ''),
+        end: String(event.end || ''),
+        repeat: String(event.repeat || 'none'),
+        completed: Boolean(event.completed),
+        completedDates: Array.isArray(event.completedDates) ? [...new Set(event.completedDates.map(String))].sort() : [],
+        excludedDates: Array.isArray(event.excludedDates) ? [...new Set(event.excludedDates.map(String))].sort() : [],
+        location: String(event.location || ''),
+        note: String(event.note || ''),
+        imageUrl: String(event.imageUrl || ''),
+        featured: Boolean(event.featured),
+        emailReminder: {
+          enabled: Boolean(reminder.enabled),
+          recipients: Array.isArray(reminder.recipients) ? [...new Set(reminder.recipients.map(String))].sort() : []
+        }
+      };
+    }
+
+    function serverEventConfirmsLocalMirror(serverEvent, localEvent) {
+      if (!serverEvent || !localEvent || String(serverEvent.id) !== String(localEvent.id)) return false;
+      return JSON.stringify(comparableEventSnapshot(serverEvent)) === JSON.stringify(comparableEventSnapshot(localEvent));
+    }
+
+    function cleanupConfirmedLocalEventMirror(serverEvents = state.serverEvents) {
+      const mirror = getLocalEventMirror();
+      let changed = false;
+      const now = Date.now();
+      Object.entries(mirror).forEach(([id, value]) => {
+        const savedAtMs = Number(value?.savedAtMs || 0);
+        const heldLongEnough = savedAtMs && now - savedAtMs >= LOCAL_EVENT_MIRROR_MIN_HOLD_MS;
+        const serverEvent = (serverEvents || []).find(event => String(event.id) === String(id));
+        if (heldLongEnough && serverEventConfirmsLocalMirror(serverEvent, value.event)) {
+          delete mirror[id];
+          changed = true;
+        }
+      });
+      if (changed) setLocalEventMirror(mirror);
+    }
+
+    function arraysEqualSet(a = [], b = []) {
+      const aa = [...new Set(a)].sort();
+      const bb = [...new Set(b)].sort();
+      return aa.length === bb.length && aa.every((value, index) => value === bb[index]);
+    }
+
+    function serverMatchesCompletionOverride(event, override) {
+      if (!event || !override) return false;
+      if ((event.repeat || 'none') === 'none') return Boolean(event.completed) === Boolean(override.completed);
+      return arraysEqualSet(Array.isArray(event.completedDates) ? event.completedDates : [], Array.isArray(override.completedDates) ? override.completedDates : []);
+    }
+
+    function cleanupConfirmedCompletionOverrides(serverEvents = state.serverEvents) {
+      const overrides = getCompletionOverrides();
+      let changed = false;
+      Object.entries(overrides).forEach(([id, override]) => {
+        const serverEvent = (serverEvents || []).find(event => String(event.id) === String(id));
+        if (serverMatchesCompletionOverride(serverEvent, override)) {
+          delete overrides[id];
+          changed = true;
+        }
+      });
+      if (changed) setCompletionOverrides(overrides);
+    }
+
+    function saveCompletionOverride(event) {
+      if (!event?.id) return;
+      const overrides = getCompletionOverrides();
+      if ((event.repeat || 'none') === 'none') {
+        overrides[event.id] = {
+          repeat: 'none',
+          completed: Boolean(event.completed),
+          updatedAtMs: Date.now()
+        };
+      } else {
+        overrides[event.id] = {
+          repeat: event.repeat || 'weekly',
+          completedDates: Array.isArray(event.completedDates) ? [...event.completedDates] : [],
+          updatedAtMs: Date.now()
+        };
+      }
+      setCompletionOverrides(overrides);
+    }
+
+    function applyCompletionOverrides(events) {
+      const overrides = getCompletionOverrides();
+      if (!Object.keys(overrides).length) return events;
+      return (events || []).map(event => {
+        const override = overrides[event.id];
+        if (!override) return event;
+        if ((event.repeat || 'none') === 'none') {
+          return { ...event, completed: Boolean(override.completed), _localCompletionPending: true };
+        }
+        return {
+          ...event,
+          completedDates: Array.isArray(override.completedDates) ? [...override.completedDates] : [],
+          _localCompletionPending: true
+        };
+      });
+    }
+
     function queueWrite(op) {
       const queue = getPendingWrites().filter(item => item.opId !== op.opId);
       queue.push(op);
@@ -4439,25 +4611,39 @@
       return !error.status || error.status === 408 || error.status === 409 || error.status === 425 || error.status === 429 || error.status >= 500;
     }
 
+    function upsertLocalVisibleEvent(events, event, extra = {}) {
+      if (!event?.id) return events;
+      const visibleEvent = { ...event, ...extra };
+      const index = events.findIndex(item => String(item.id) === String(visibleEvent.id));
+      if (index === -1) events.push(visibleEvent);
+      else events[index] = { ...events[index], ...visibleEvent };
+      return events;
+    }
+
     function applyPendingOps(baseEvents, queue = getPendingWrites()) {
       let events = Array.isArray(baseEvents) ? [...baseEvents] : [];
+
+      // Local mirror keeps just-created/just-edited tasks visible even if a server refresh
+      // briefly returns the older Blob file before the write is visible everywhere.
+      Object.values(getLocalEventMirror()).forEach(value => {
+        if (value?.event) events = upsertLocalVisibleEvent(events, value.event, { _pendingLocalSave: true, _localMirrorSave: true });
+      });
+
       queue.forEach(op => {
         if (op.method === 'DELETE_ALL') {
           events = [];
           return;
         }
         if (op.method === 'DELETE') {
-          events = events.filter(event => event.id !== op.id);
+          events = events.filter(event => String(event.id) !== String(op.id));
+          forgetLocalEvent(op.id);
           return;
         }
         if ((op.method === 'POST' || op.method === 'PUT') && op.event) {
-          const pendingEvent = { ...op.event, _pendingLocalSave: true };
-          const index = events.findIndex(event => event.id === pendingEvent.id);
-          if (index === -1) events.push(pendingEvent);
-          else events[index] = { ...events[index], ...pendingEvent };
+          events = upsertLocalVisibleEvent(events, op.event, { _pendingLocalSave: true });
         }
       });
-      return events.sort((a, b) => new Date(a.start) - new Date(b.start));
+      return applyCompletionOverrides(events).sort((a, b) => new Date(a.start) - new Date(b.start));
     }
 
     function signalOtherOpenViewsToRefresh() {
@@ -4465,6 +4651,8 @@
     }
 
     function refreshEventsFromServerEvents() {
+      cleanupConfirmedCompletionOverrides(state.serverEvents);
+      cleanupConfirmedLocalEventMirror(state.serverEvents);
       state.events = applyPendingOps(state.serverEvents);
     }
 
@@ -4504,6 +4692,9 @@
           try {
             const data = await performServerWrite(op);
             if (data.reminderSync) state.lastReminderSync = data.reminderSync;
+            if (op.event && data.event && String(data.event.id) === String(op.event.id)) {
+              rememberLocalEvent(data.event, op.opId, op.method);
+            }
             const serverHasSavedEvent = !op.event || !Array.isArray(data.events) || data.events.some(event => String(event.id) === String(op.event.id));
             if (serverHasSavedEvent) removeQueuedWrite(op.opId);
             if (Array.isArray(data.events)) {
@@ -4514,6 +4705,7 @@
           } catch (error) {
             if (!isRetryableError(error)) {
               removeQueuedWrite(op.opId);
+              if (op.event?.id) forgetLocalEvent(op.event.id);
               refreshEventsFromServerEvents();
               if (!options.silent) setStatus(error.message, true);
               if (options.throwNonRetryable && (!options.targetOpId || options.targetOpId === op.opId)) {
@@ -4554,6 +4746,29 @@
       if (adminMode && editParam && !state.editingId) setTimeout(() => editEvent(editParam), 50);
     }
 
+
+    function getUpcomingDisplayLimit() {
+      return DEFAULT_UPCOMING_LIMIT;
+    }
+
+    function upcomingImageFocusStyle(event) {
+      const hasImage = Boolean(event?.imageUrl);
+      const source = String(event?.imageFocusSource || '');
+      const x = clampPercent(event?.imageFocusX, 50);
+      let y = clampPercent(event?.imageFocusY, hasImage ? 38 : 50);
+      let scale = 1.01;
+      if (source === 'text-detector') {
+        y = Math.max(8, y - 8);
+        scale = 1;
+      } else if (source === 'face-detector') {
+        y = Math.max(16, Math.min(64, y - 2));
+        scale = 1.02;
+      } else {
+        y = Math.max(24, Math.min(70, y));
+      }
+      return `--image-focus-x:${x}%;--image-focus-y:${y}%;--image-scale:${scale};`;
+    }
+
     function getDisplayEvents() {
       const now = new Date();
       // Daily view should keep showing today's tasks for the full calendar day.
@@ -4571,23 +4786,24 @@
       const main = selected || daily;
       if (!selected && daily && todays.length > 1 && !state.todayCycleTimer) state.selectedInstanceId = daily._instanceId;
       const allUpcoming = events.filter(event => !main || event._instanceId !== main._instanceId);
-      const maxUpcomingPage = Math.max(0, Math.ceil(allUpcoming.length / DISPLAY_EVENT_LIMIT) - 1);
+      const upcomingLimit = getUpcomingDisplayLimit();
+      const maxUpcomingPage = Math.max(0, Math.ceil(allUpcoming.length / upcomingLimit) - 1);
       if (state.upcomingPage > maxUpcomingPage) state.upcomingPage = maxUpcomingPage;
-      const startIndex = state.upcomingPage * DISPLAY_EVENT_LIMIT;
-      const upcoming = allUpcoming.slice(startIndex, startIndex + DISPLAY_EVENT_LIMIT);
-      return { daily, main, upcoming, allUpcomingCount: allUpcoming.length, upcomingPage: state.upcomingPage, maxUpcomingPage };
+      const startIndex = state.upcomingPage * upcomingLimit;
+      const upcoming = allUpcoming.slice(startIndex, startIndex + upcomingLimit);
+      return { daily, main, upcoming, allUpcomingCount: allUpcoming.length, upcomingPage: state.upcomingPage, maxUpcomingPage, upcomingLimit };
     }
 
 
 
-    function renderUpcomingPager(total, page, maxPage) {
+    function renderUpcomingPager(total, page, maxPage, upcomingLimit = getUpcomingDisplayLimit()) {
       if (!els.upcomingPager) return;
-      if (total <= DISPLAY_EVENT_LIMIT) {
+      if (total <= upcomingLimit) {
         els.upcomingPager.innerHTML = '';
         return;
       }
-      const currentStart = page * DISPLAY_EVENT_LIMIT + 1;
-      const currentEnd = Math.min(total, currentStart + DISPLAY_EVENT_LIMIT - 1);
+      const currentStart = page * upcomingLimit + 1;
+      const currentEnd = Math.min(total, currentStart + upcomingLimit - 1);
       els.upcomingPager.innerHTML = `
         <button class="upcoming-arrow" type="button" data-upcoming-page="prev" ${page <= 0 ? 'disabled' : ''} aria-label="Previous upcoming tasks">‹</button>
         <span class="upcoming-page-count">${currentStart}-${currentEnd} / ${total}</span>
@@ -4597,7 +4813,7 @@
 
     function renderDisplay() {
       if (adminMode) return;
-      const { daily, main, upcoming, allUpcomingCount, upcomingPage, maxUpcomingPage } = getDisplayEvents();
+      const { daily, main, upcoming, allUpcomingCount, upcomingPage, maxUpcomingPage, upcomingLimit } = getDisplayEvents();
       const hasMainEvent = Boolean(main);
       els.displayView.classList.toggle('no-daily', !hasMainEvent);
       els.displayView.classList.toggle('daily-calendar-mode', Boolean(hasMainEvent && state.dailyCalendarMode));
@@ -4613,21 +4829,23 @@
         renderHeroEvent(main);
       }
       fitKioskToScreen();
-      renderUpcomingPager(allUpcomingCount, upcomingPage, maxUpcomingPage);
+      renderUpcomingPager(allUpcomingCount, upcomingPage, maxUpcomingPage, upcomingLimit);
 
       if (!upcoming.length) {
+        if (els.upcomingGrid) els.upcomingGrid.style.setProperty('--upcoming-cols', String(getUpcomingDisplayLimit()));
         els.upcomingGrid.innerHTML = '<div class="empty-upcoming" style="grid-column:1/-1">No upcoming events yet</div>';
         ensureTodayTaskCycle();
         return;
       }
 
       ensureTodayTaskCycle();
+      if (els.upcomingGrid) els.upcomingGrid.style.setProperty('--upcoming-cols', String(upcomingLimit));
       els.upcomingGrid.innerHTML = upcoming.map(event => {
         const date = new Date(event.start);
         const exactDate = formatUpcomingDate(date);
         return `
           <button class="mini-event" type="button" data-upcoming-pick="${htmlEscape(event._instanceId)}" aria-label="Open ${htmlEscape(event.title)} on ${htmlEscape(exactDate)}">
-            <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}" style="${imageFocusStyle(event)}">
+            <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}" style="${upcomingImageFocusStyle(event)}">
             <span class="mini-copy">
               <span class="mini-time">${htmlEscape(exactDate)} · ${formatTime(date, false)}</span>
               <span class="mini-title">${htmlEscape(event.title)}</span>
@@ -5264,6 +5482,7 @@
 
       // Optimistic local save: show the task immediately on this device,
       // then sync to the server in the background.
+      rememberLocalEvent(eventToSave, op.opId, op.method);
       queueWrite(op);
       refreshEventsFromServerEvents();
       renderDisplay();
@@ -5294,6 +5513,7 @@
         createdAt: new Date().toISOString()
       };
 
+      rememberLocalEvent(eventToSave, op.opId, op.method);
       queueWrite(op);
       refreshEventsFromServerEvents();
       renderDisplay();
@@ -5567,6 +5787,13 @@ Cancel = choose whether to delete the whole series.`);
         }
         payload.completedDates = dates;
       }
+
+      // Save the completion change locally before the server request starts, so the task
+      // stays hidden/visible exactly as chosen even while Blob/Vercel is still catching up.
+      saveCompletionOverride(payload);
+      refreshEventsFromServerEvents();
+      renderAdminEvents();
+      renderDisplay();
 
       const result = await saveEvent(payload);
       if (willBeCompleted) {
@@ -6138,7 +6365,7 @@ Cancel = choose whether to delete the whole series.`);
 
     function init() {
       setMode();
-      window.addEventListener('resize', fitKioskToScreen);
+      window.addEventListener('resize', () => { fitKioskToScreen(); if (!adminMode) renderDisplay(); });
       window.addEventListener('orientationchange', () => setTimeout(fitKioskToScreen, 250));
       bindConfigMenu();
       bindWeatherOverlay();
