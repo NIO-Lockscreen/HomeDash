@@ -22,9 +22,11 @@ function getReminderConfig(event) {
     ? [...new Set(reminder.recipients.map(normalizeEmail).filter(isValidEmail))]
     : [];
 
+  const creationEmailSentAt = String(reminder.creationEmailSentAt || '').trim();
   return {
     enabled: Boolean(reminder.enabled) && recipients.length > 0,
     recipients,
+    creationEmailSentAt: /^\d{4}-\d{2}-\d{2}T/.test(creationEmailSentAt) ? creationEmailSentAt : '',
   };
 }
 
@@ -226,6 +228,9 @@ function buildDesiredReminders(events, options = {}) {
   const newEventIdSet = Array.isArray(options.newEventIds) && options.newEventIds.length
     ? new Set(options.newEventIds.map(String))
     : new Set();
+  const createdRecipientsByEvent = options.createdRecipientsByEvent && typeof options.createdRecipientsByEvent === 'object'
+    ? options.createdRecipientsByEvent
+    : {};
   const eventIdFilter = Array.isArray(options.eventIds) && options.eventIds.length
     ? new Set(options.eventIds.map(String))
     : null;
@@ -239,21 +244,27 @@ function buildDesiredReminders(events, options = {}) {
     const reminder = getReminderConfig(event);
     if (!reminder.enabled) continue;
 
-    if (newEventIdSet.has(String(event.id)) && !reminder.creationEmailSentAt) {
-      addDesiredReminder(desired, {
-        key: creationReminderKey(event.id, reminder),
-        type: 'created',
-        eventId: event.id,
-        title: event.title,
-        note: event.note || '',
-        location: event.location || '',
-        imageUrl: event.imageUrl || '',
-        recipients: reminder.recipients,
-        occurrenceKey: 'created',
-        eventAt: event.start,
-        eventEnd: event.end || '',
-        remindAt: now.toISOString(),
-      });
+    if (newEventIdSet.has(String(event.id))) {
+      const createdRecipients = Array.isArray(createdRecipientsByEvent[event.id])
+        ? [...new Set(createdRecipientsByEvent[event.id].map(normalizeEmail).filter(isValidEmail))]
+        : (!reminder.creationEmailSentAt ? reminder.recipients : []);
+      if (createdRecipients.length) {
+        const creationReminder = { ...reminder, recipients: createdRecipients };
+        addDesiredReminder(desired, {
+          key: creationReminderKey(event.id, creationReminder),
+          type: 'created',
+          eventId: event.id,
+          title: event.title,
+          note: event.note || '',
+          location: event.location || '',
+          imageUrl: event.imageUrl || '',
+          recipients: createdRecipients,
+          occurrenceKey: 'created',
+          eventAt: event.start,
+          eventEnd: event.end || '',
+          remindAt: now.toISOString(),
+        });
+      }
     }
 
     const occurrences = expandEventOccurrences(event, rangeStart, rangeEnd);
@@ -542,6 +553,7 @@ export async function syncReminderSchedulesForEvents(events, options = {}) {
     skipped: 0,
     errors: [],
     createdSentEventIds: [],
+    createdSentRecipientsByEvent: {},
   };
 
   for (const [key, existing] of currentEntries) {
@@ -573,7 +585,13 @@ export async function syncReminderSchedulesForEvents(events, options = {}) {
       };
       if (sent.sentImmediately) result.sentNow += 1;
       else result.scheduled += 1;
-      if (reminder.type === 'created') result.createdSentEventIds.push(String(reminder.eventId));
+      if (reminder.type === 'created') {
+        result.createdSentEventIds.push(String(reminder.eventId));
+        const eventKey = String(reminder.eventId);
+        result.createdSentRecipientsByEvent[eventKey] = [
+          ...new Set([...(result.createdSentRecipientsByEvent[eventKey] || []), ...reminder.recipients])
+        ];
+      }
     } catch (error) {
       result.errors.push({ key, error: error.message });
     }

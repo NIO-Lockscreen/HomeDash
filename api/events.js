@@ -76,10 +76,17 @@ function cleanEmailReminder(input = {}, existing = {}) {
       ? [...new Set(existingSource.recipients.map(cleanEmail).filter(isValidEmail))].slice(0, 12)
       : [];
   const creationEmailSentAt = String(source.creationEmailSentAt || existingSource.creationEmailSentAt || '').trim();
+  const createdRecipientsSource = Array.isArray(source.createdRecipients)
+    ? source.createdRecipients
+    : Array.isArray(existingSource.createdRecipients)
+      ? existingSource.createdRecipients
+      : (creationEmailSentAt && Array.isArray(existingSource.recipients) ? existingSource.recipients : []);
+  const createdRecipients = [...new Set(createdRecipientsSource.map(cleanEmail).filter(isValidEmail))].slice(0, 60);
   return {
-    enabled: Boolean(source.enabled) && recipients.length > 0,
+    enabled: Boolean(source.enabled ?? existingSource.enabled) && recipients.length > 0,
     recipients,
-    creationEmailSentAt: /^\d{4}-\d{2}-\d{2}T/.test(creationEmailSentAt) ? creationEmailSentAt : ''
+    creationEmailSentAt: /^\d{4}-\d{2}-\d{2}T/.test(creationEmailSentAt) ? creationEmailSentAt : '',
+    createdRecipients
   };
 }
 
@@ -89,6 +96,36 @@ async function safeSyncReminders(events, options) {
   } catch (error) {
     return { ok: false, error: error.message || 'Reminder sync failed.' };
   }
+}
+
+function reminderRecipients(event) {
+  return Array.isArray(event?.emailReminder?.recipients)
+    ? [...new Set(event.emailReminder.recipients.map(cleanEmail).filter(isValidEmail))]
+    : [];
+}
+
+function reminderCreatedRecipients(event) {
+  const reminder = event?.emailReminder || {};
+  if (Array.isArray(reminder.createdRecipients) && reminder.createdRecipients.length) {
+    return [...new Set(reminder.createdRecipients.map(cleanEmail).filter(isValidEmail))];
+  }
+  if (reminder.creationEmailSentAt) return reminderRecipients(event);
+  return [];
+}
+
+function newlyAddedReminderRecipients(previousEvent, nextEvent) {
+  const previousCreated = new Set(reminderCreatedRecipients(previousEvent));
+  return reminderRecipients(nextEvent).filter(email => !previousCreated.has(email));
+}
+
+function markCreatedRecipients(event, recipients) {
+  const existing = reminderCreatedRecipients(event);
+  const merged = [...new Set([...existing, ...(recipients || []).map(cleanEmail).filter(isValidEmail)])];
+  event.emailReminder = {
+    ...(event.emailReminder || {}),
+    creationEmailSentAt: event.emailReminder?.creationEmailSentAt || new Date().toISOString(),
+    createdRecipients: merged,
+  };
 }
 
 function cleanEvent(input, existing = {}) {
@@ -225,9 +262,15 @@ export default async function handler(req, res) {
       else events[existingIndex] = event;
       const next = sortEvents(events);
       await saveEvents(next);
-      const reminderSync = await safeSyncReminders(next, { eventIds: [event.id], newEventIds: existingIndex === -1 ? [event.id] : [] });
-      if (existingIndex === -1 && reminderSync?.createdSentEventIds?.map(String).includes(String(event.id))) {
-        event.emailReminder = { ...(event.emailReminder || {}), creationEmailSentAt: new Date().toISOString() };
+      const createdRecipientsToSend = existingIndex === -1 ? reminderRecipients(event) : newlyAddedReminderRecipients(previousEvent, event);
+      const reminderSync = await safeSyncReminders(next, {
+        eventIds: [event.id],
+        newEventIds: createdRecipientsToSend.length ? [event.id] : [],
+        createdRecipientsByEvent: createdRecipientsToSend.length ? { [event.id]: createdRecipientsToSend } : {}
+      });
+      const sentCreatedRecipients = reminderSync?.createdSentRecipientsByEvent?.[event.id] || [];
+      if (sentCreatedRecipients.length) {
+        markCreatedRecipients(event, sentCreatedRecipients);
         const savedIndex = next.findIndex(item => String(item.id) === String(event.id));
         if (savedIndex !== -1) {
           next[savedIndex] = event;
@@ -248,16 +291,19 @@ export default async function handler(req, res) {
         return;
       }
       const previousEvent = events[index];
-      const wasReminderEnabled = Boolean(previousEvent?.emailReminder?.enabled) && Array.isArray(previousEvent?.emailReminder?.recipients) && previousEvent.emailReminder.recipients.length > 0;
       const event = cleanEvent(payload, previousEvent);
-      const isReminderEnabled = Boolean(event?.emailReminder?.enabled) && Array.isArray(event?.emailReminder?.recipients) && event.emailReminder.recipients.length > 0;
-      const shouldSendCreatedEmailOnEnable = !wasReminderEnabled && isReminderEnabled && !event.emailReminder.creationEmailSentAt;
+      const createdRecipientsToSend = newlyAddedReminderRecipients(previousEvent, event);
       events[index] = event;
       const next = sortEvents(events);
       await saveEvents(next);
-      const reminderSync = await safeSyncReminders(next, { eventIds: [event.id], newEventIds: shouldSendCreatedEmailOnEnable ? [event.id] : [] });
-      if (shouldSendCreatedEmailOnEnable && reminderSync?.createdSentEventIds?.map(String).includes(String(event.id))) {
-        event.emailReminder = { ...(event.emailReminder || {}), creationEmailSentAt: new Date().toISOString() };
+      const reminderSync = await safeSyncReminders(next, {
+        eventIds: [event.id],
+        newEventIds: createdRecipientsToSend.length ? [event.id] : [],
+        createdRecipientsByEvent: createdRecipientsToSend.length ? { [event.id]: createdRecipientsToSend } : {}
+      });
+      const sentCreatedRecipients = reminderSync?.createdSentRecipientsByEvent?.[event.id] || [];
+      if (sentCreatedRecipients.length) {
+        markCreatedRecipients(event, sentCreatedRecipients);
         const savedIndex = next.findIndex(item => String(item.id) === String(event.id));
         if (savedIndex !== -1) {
           next[savedIndex] = event;
