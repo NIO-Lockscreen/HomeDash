@@ -3988,12 +3988,40 @@
       imageElement.style.setProperty('--image-focus-y', `${y}%`);
     }
 
+    function normalizeFocusBox(box) {
+      if (!box || typeof box !== 'object') return null;
+      const left = clampPercent(box.left, 0);
+      const top = clampPercent(box.top, 0);
+      const right = clampPercent(box.right, 100);
+      const bottom = clampPercent(box.bottom, 100);
+      if (!Number.isFinite(left + top + right + bottom) || right <= left || bottom <= top) return null;
+      return { left, top, right, bottom };
+    }
+
+    function focusPayloadExtras(source) {
+      if (!source || typeof source !== 'object') return {};
+      const extras = {};
+      const focusBox = normalizeFocusBox(source.imageFocusBox);
+      if (focusBox) extras.imageFocusBox = focusBox;
+
+      const naturalWidth = Number(source.imageNaturalWidth);
+      const naturalHeight = Number(source.imageNaturalHeight);
+      if (Number.isFinite(naturalWidth) && naturalWidth > 0) extras.imageNaturalWidth = Math.round(naturalWidth);
+      if (Number.isFinite(naturalHeight) && naturalHeight > 0) extras.imageNaturalHeight = Math.round(naturalHeight);
+
+      const faceCount = Number(source.imageFocusFacesCount);
+      if (Number.isFinite(faceCount) && faceCount > 0) extras.imageFocusFacesCount = Math.round(faceCount);
+
+      return extras;
+    }
+
     function currentImageFocusPayload() {
       if (!state.pendingImageFocus) return {};
       return {
         imageFocusX: clampPercent(state.pendingImageFocus.imageFocusX, 50),
         imageFocusY: clampPercent(state.pendingImageFocus.imageFocusY, 38),
-        imageFocusSource: state.pendingImageFocus.imageFocusSource || 'manual'
+        imageFocusSource: state.pendingImageFocus.imageFocusSource || 'manual',
+        ...focusPayloadExtras(state.pendingImageFocus)
       };
     }
 
@@ -4002,7 +4030,8 @@
       return {
         imageFocusX: clampPercent(event.imageFocusX, 50),
         imageFocusY: clampPercent(event.imageFocusY, 38),
-        imageFocusSource: event.imageFocusSource || 'saved'
+        imageFocusSource: event.imageFocusSource || 'saved',
+        ...focusPayloadExtras(event)
       };
     }
 
@@ -4016,6 +4045,7 @@
       let top = Infinity;
       let right = -Infinity;
       let bottom = -Infinity;
+      let usableFaces = 0;
 
       faces.forEach(face => {
         const box = face.boundingBox || face;
@@ -4024,20 +4054,30 @@
         const width = Number(box.width ?? 0);
         const height = Number(box.height ?? 0);
         if (!Number.isFinite(x + y + width + height) || width <= 0 || height <= 0) return;
+        usableFaces += 1;
         left = Math.min(left, x);
         top = Math.min(top, y);
         right = Math.max(right, x + width);
         bottom = Math.max(bottom, y + height);
       });
 
-      if (!Number.isFinite(left) || !Number.isFinite(top) || right <= left || bottom <= top) return null;
+      if (!usableFaces || !Number.isFinite(left) || !Number.isFinite(top) || right <= left || bottom <= top) return null;
       const centerX = ((left + right) / 2 / naturalWidth) * 100;
       const centerY = ((top + bottom) / 2 / naturalHeight) * 100;
 
       return {
         imageFocusX: clampPercent(centerX, 50),
         imageFocusY: Math.max(18, Math.min(62, clampPercent(centerY, 38))),
-        imageFocusSource: 'face-detector'
+        imageFocusSource: 'face-detector',
+        imageFocusFacesCount: usableFaces,
+        imageNaturalWidth: naturalWidth,
+        imageNaturalHeight: naturalHeight,
+        imageFocusBox: {
+          left: clampPercent((left / naturalWidth) * 100, 0),
+          top: clampPercent((top / naturalHeight) * 100, 0),
+          right: clampPercent((right / naturalWidth) * 100, 100),
+          bottom: clampPercent((bottom / naturalHeight) * 100, 100)
+        }
       };
     }
 
@@ -4089,7 +4129,15 @@
       return {
         imageFocusX: clampPercent(centerX, 50),
         imageFocusY: Math.max(12, Math.min(88, clampPercent(centerY, 38))),
-        imageFocusSource: 'text-detector'
+        imageFocusSource: 'text-detector',
+        imageNaturalWidth: naturalWidth,
+        imageNaturalHeight: naturalHeight,
+        imageFocusBox: {
+          left: clampPercent((left / naturalWidth) * 100, 0),
+          top: clampPercent((top / naturalHeight) * 100, 0),
+          right: clampPercent((right / naturalWidth) * 100, 100),
+          bottom: clampPercent((bottom / naturalHeight) * 100, 100)
+        }
       };
     }
 
@@ -4166,7 +4214,11 @@
       if (focus?.imageFocusSource === 'text-detector') {
         els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">✓ Text crop saved for dashboard cards.</span>`;
       } else if (focus?.imageFocusSource === 'face-detector') {
-        els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">✓ Face crop saved for dashboard cards.</span>`;
+        const faceCount = Number(focus?.imageFocusFacesCount || 0);
+        const faceMessage = faceCount > 1
+          ? '✓ Smart group crop saved to keep more faces in view.'
+          : '✓ Face crop saved for dashboard cards.';
+        els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">${faceMessage}</span>`;
       } else {
         els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">Using a clean fallback crop.</span>`;
       }
@@ -4866,11 +4918,87 @@
       return DEFAULT_UPCOMING_LIMIT;
     }
 
+    function getUpcomingCardAspectRatio() {
+      const grid = els.upcomingGrid;
+      const cols = Math.max(1, getUpcomingDisplayLimit());
+      if (grid) {
+        const styles = getComputedStyle(grid);
+        const gap = parseFloat(styles.columnGap || styles.gap || '0') || 0;
+        const width = (grid.clientWidth - gap * Math.max(0, cols - 1)) / cols;
+        const height = grid.clientHeight || grid.offsetHeight;
+        if (width > 0 && height > 0) return width / height;
+      }
+      return 2.35;
+    }
+
+    function smartCoverFocusFromEvent(event, targetAspect, fallbackX = 50, fallbackY = 38) {
+      const focusBox = normalizeFocusBox(event?.imageFocusBox);
+      const naturalWidth = Number(event?.imageNaturalWidth);
+      const naturalHeight = Number(event?.imageNaturalHeight);
+      if (!focusBox || !Number.isFinite(naturalWidth) || !Number.isFinite(naturalHeight) || naturalWidth <= 0 || naturalHeight <= 0 || !Number.isFinite(targetAspect) || targetAspect <= 0) {
+        return { x: clampPercent(fallbackX, 50), y: clampPercent(fallbackY, 38) };
+      }
+
+      const source = String(event?.imageFocusSource || '');
+      const leftBase = (focusBox.left / 100) * naturalWidth;
+      const topBase = (focusBox.top / 100) * naturalHeight;
+      const rightBase = (focusBox.right / 100) * naturalWidth;
+      const bottomBase = (focusBox.bottom / 100) * naturalHeight;
+      const boxWidth = Math.max(1, rightBase - leftBase);
+      const boxHeight = Math.max(1, bottomBase - topBase);
+      const faceCount = Math.max(1, Number(event?.imageFocusFacesCount || 0));
+      const paddingFactor = source === 'text-detector'
+        ? 0.12
+        : faceCount > 1
+          ? 0.06
+          : 0.1;
+
+      const left = Math.max(0, leftBase - Math.max(naturalWidth * 0.02, boxWidth * paddingFactor));
+      const right = Math.min(naturalWidth, rightBase + Math.max(naturalWidth * 0.02, boxWidth * paddingFactor));
+      const top = Math.max(0, topBase - Math.max(naturalHeight * 0.02, boxHeight * (source === 'text-detector' ? 0.14 : 0.08)));
+      const bottom = Math.min(naturalHeight, bottomBase + Math.max(naturalHeight * 0.02, boxHeight * (source === 'text-detector' ? 0.14 : 0.08)));
+
+      const imageAspect = naturalWidth / naturalHeight;
+      const visibleWidth = imageAspect > targetAspect ? naturalHeight * targetAspect : naturalWidth;
+      const visibleHeight = imageAspect < targetAspect ? naturalWidth / targetAspect : naturalHeight;
+
+      const desiredCenterX = (left + right) / 2;
+      const desiredCenterY = (top + bottom) / 2;
+
+      const overallMinCenterX = visibleWidth / 2;
+      const overallMaxCenterX = naturalWidth - visibleWidth / 2;
+      const overallMinCenterY = visibleHeight / 2;
+      const overallMaxCenterY = naturalHeight - visibleHeight / 2;
+
+      let centerX = desiredCenterX;
+      let centerY = desiredCenterY;
+
+      if ((right - left) <= visibleWidth) {
+        const allowedMinX = right - visibleWidth / 2;
+        const allowedMaxX = left + visibleWidth / 2;
+        centerX = Math.min(allowedMaxX, Math.max(allowedMinX, desiredCenterX));
+      }
+      if ((bottom - top) <= visibleHeight) {
+        const allowedMinY = bottom - visibleHeight / 2;
+        const allowedMaxY = top + visibleHeight / 2;
+        centerY = Math.min(allowedMaxY, Math.max(allowedMinY, desiredCenterY));
+      }
+
+      centerX = Math.min(overallMaxCenterX, Math.max(overallMinCenterX, centerX));
+      centerY = Math.min(overallMaxCenterY, Math.max(overallMinCenterY, centerY));
+
+      return {
+        x: clampPercent((centerX / naturalWidth) * 100, fallbackX),
+        y: clampPercent((centerY / naturalHeight) * 100, fallbackY)
+      };
+    }
+
     function upcomingImageFocusStyle(event) {
       const hasImage = Boolean(event?.imageUrl);
       const source = String(event?.imageFocusSource || '');
-      const x = clampPercent(event?.imageFocusX, 50);
-      let y = clampPercent(event?.imageFocusY, hasImage ? 38 : 50);
+      const smartFocus = smartCoverFocusFromEvent(event, getUpcomingCardAspectRatio(), event?.imageFocusX, event?.imageFocusY);
+      const x = clampPercent(smartFocus.x, 50);
+      let y = clampPercent(smartFocus.y, hasImage ? 38 : 50);
       let scale = 1.01;
       if (source === 'text-detector') {
         // Keep detected poster/text areas in frame without pushing them so high
@@ -4878,8 +5006,9 @@
         y = Math.max(12, Math.min(62, y - 2));
         scale = 1;
       } else if (source === 'face-detector') {
-        y = Math.max(16, Math.min(64, y - 2));
-        scale = 1.02;
+        const faceCount = Number(event?.imageFocusFacesCount || 0);
+        y = Math.max(16, Math.min(64, y - 1));
+        scale = faceCount > 1 ? 1 : 1.02;
       } else {
         y = Math.max(24, Math.min(70, y));
       }
