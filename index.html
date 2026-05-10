@@ -2775,6 +2775,10 @@
     .motion-dimmer-toggle:hover,
     .motion-dimmer-toggle.is-on { opacity: .95; }
 
+    .motion-dimmer-toggle.is-boot-hidden {
+      display: none !important;
+    }
+
     .motion-camera-video {
       position: fixed;
       width: 1px;
@@ -5908,6 +5912,7 @@ Cancel = choose whether to delete the whole series.`);
       ctx: null,
       previousFrame: null,
       timer: null,
+      bootHideTimer: null,
       button: null,
       overlay: null,
     };
@@ -5916,6 +5921,18 @@ Cancel = choose whether to delete the whole series.`);
       if (!motionDimmer.button) return;
       motionDimmer.button.textContent = motionDimmer.enabled ? 'Camera dimmer on' : 'Camera dimmer off';
       motionDimmer.button.classList.toggle('is-on', motionDimmer.enabled);
+    }
+
+    function hideMotionDimmerBootButton() {
+      if (!motionDimmer.button) return;
+      motionDimmer.button.classList.add('is-boot-hidden');
+      motionDimmer.button.setAttribute('aria-hidden', 'true');
+      motionDimmer.button.tabIndex = -1;
+    }
+
+    function startMotionDimmerBootVisibilityTimer() {
+      clearTimeout(motionDimmer.bootHideTimer);
+      motionDimmer.bootHideTimer = setTimeout(hideMotionDimmerBootButton, 30 * 1000);
     }
 
     async function setScreenBrightnessPercent(percent) {
@@ -6055,6 +6072,7 @@ Cancel = choose whether to delete the whole series.`);
       motionDimmer.button.className = 'motion-dimmer-toggle';
       motionDimmer.button.addEventListener('click', toggleMotionDimmer);
       document.body.appendChild(motionDimmer.button);
+      startMotionDimmerBootVisibilityTimer();
 
       motionDimmer.enabled = localStorage.getItem(MOTION_DIMMER_ENABLED_KEY) === '1';
       updateMotionDimmerButton();
