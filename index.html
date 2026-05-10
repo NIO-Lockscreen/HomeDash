@@ -3564,11 +3564,11 @@
               const hasEvent = dayEvents.length > 0;
               const dayName = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(day);
               return `
-                <div class="daily-calendar-day${isToday ? ' today' : ''}${hasEvent ? ' has-event' : ''}">
+                <button class="daily-calendar-day${isToday ? ' today' : ''}${hasEvent ? ' has-event' : ''}" type="button" data-daily-calendar-day="${key}" ${hasEvent ? '' : 'disabled'} aria-label="${htmlEscape(`${dayName} ${day.getDate()}, ${dayEvents.length} task${dayEvents.length === 1 ? '' : 's'}`)}">
                   <div class="daily-calendar-name">${htmlEscape(dayName)}</div>
                   <div class="daily-calendar-number">${day.getDate()}</div>
                   <div class="daily-calendar-count">${hasEvent ? `${dayEvents.length} task${dayEvents.length === 1 ? '' : 's'}` : ''}</div>
-                </div>
+                </button>
               `;
             }).join('')}
           </div>
@@ -5431,7 +5431,8 @@ Cancel = choose whether to delete the whole series.`);
 
     function bindWeatherOverlay() {
       els.weatherCard?.addEventListener('click', event => {
-        if (event.target.closest?.('.selected-event-panel, button, a')) return;
+        if (event.target.closest?.('.selected-event-panel, .daily-calendar-panel, button, a')) return;
+        if (state.dailyCalendarMode) return;
         openWeatherOverlay();
       });
       els.weatherOverlayCloseBtn?.addEventListener('click', closeWeatherOverlay);
@@ -5727,6 +5728,18 @@ Cancel = choose whether to delete the whole series.`);
           if (!dayButton) return;
           event.stopPropagation();
           selectDayPreview(dayButton.dataset.day);
+        });
+      }
+      if (els.dailyCalendarPanel) {
+        els.dailyCalendarPanel.addEventListener('pointerup', event => {
+          if (event.target.closest('[data-daily-calendar-day]')) event.stopPropagation();
+        });
+        els.dailyCalendarPanel.addEventListener('click', event => {
+          const dayButton = event.target.closest('[data-daily-calendar-day]');
+          if (!dayButton || dayButton.disabled) return;
+          event.preventDefault();
+          event.stopPropagation();
+          selectDayPreview(dayButton.dataset.dailyCalendarDay);
         });
       }
       if (els.upcomingPager) {
