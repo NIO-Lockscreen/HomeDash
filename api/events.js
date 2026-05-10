@@ -3,6 +3,9 @@ import crypto from 'crypto';
 import { syncReminderSchedulesForEvents } from './_reminders.js';
 
 const EVENTS_PATH = 'home-organizer/events.json';
+const EVENTS_CACHE_MS = 60 * 1000;
+let eventsCache = null;
+let eventsCacheAt = 0;
 const HARD_CODED_REMINDER_RECIPIENTS = new Set(['theresesaksgard@hotmail.com', 'diemetrix@gmail.com']);
 
 function send(res, status, payload) {
@@ -176,25 +179,42 @@ function sortEvents(events) {
   return [...events].sort((a, b) => new Date(a.start) - new Date(b.start));
 }
 
-async function loadEvents() {
+async function loadEvents(options = {}) {
+  const force = Boolean(options.force);
+  const now = Date.now();
+  if (!force && Array.isArray(eventsCache) && now - eventsCacheAt < EVENTS_CACHE_MS) {
+    return eventsCache;
+  }
+
   try {
     const meta = await head(EVENTS_PATH);
-    const response = await fetch(`${meta.url}?v=${Date.now()}`, { cache: 'no-store' });
-    if (!response.ok) return [];
+    const response = await fetch(meta.url, { cache: 'no-store' });
+    if (!response.ok) return Array.isArray(eventsCache) ? eventsCache : [];
     const parsed = await response.json();
-    return Array.isArray(parsed.events) ? parsed.events : [];
+    const events = Array.isArray(parsed.events) ? parsed.events : [];
+    eventsCache = events;
+    eventsCacheAt = now;
+    return events;
   } catch {
-    return [];
+    return Array.isArray(eventsCache) ? eventsCache : [];
   }
 }
 
+function rememberEventsCache(events) {
+  eventsCache = sortEvents(events);
+  eventsCacheAt = Date.now();
+  return eventsCache;
+}
+
 async function saveEvents(events) {
-  await put(EVENTS_PATH, JSON.stringify({ updatedAt: new Date().toISOString(), events: sortEvents(events) }, null, 2), {
+  const sorted = sortEvents(events);
+  await put(EVENTS_PATH, JSON.stringify({ updatedAt: new Date().toISOString(), events: sorted }, null, 2), {
     access: 'public',
     allowOverwrite: true,
     contentType: 'application/json; charset=utf-8',
     cacheControlMaxAge: 0
   });
+  rememberEventsCache(sorted);
 }
 
 function isOrganizerBlobImage(value) {
@@ -247,7 +267,15 @@ async function deleteUnusedImages(urls) {
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      send(res, 200, { events: await loadEvents() });
+      const url = new URL(req.url, `https://${req.headers.host}`);
+      const fresh = url.searchParams.get('fresh') === '1';
+      res.setHeader(
+        'Cache-Control',
+        fresh
+          ? 'no-store, max-age=0'
+          : 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400'
+      );
+      send(res, 200, { events: await loadEvents({ force: fresh }) });
       return;
     }
 
@@ -255,7 +283,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       const payload = JSON.parse(await readBody(req) || '{}');
-      const events = await loadEvents();
+      const events = await loadEvents({ force: true });
       const existingIndex = payload.id ? events.findIndex(event => event.id === payload.id) : -1;
       const previousEvent = existingIndex === -1 ? null : events[existingIndex];
       const event = cleanEvent(payload, previousEvent || {});
@@ -285,7 +313,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'PUT') {
       const payload = JSON.parse(await readBody(req) || '{}');
-      const events = await loadEvents();
+      const events = await loadEvents({ force: true });
       const index = events.findIndex(event => event.id === payload.id);
       if (index === -1) {
         send(res, 404, { error: 'Event not found.' });
@@ -318,7 +346,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'DELETE') {
       const url = new URL(req.url, `https://${req.headers.host}`);
-      const events = await loadEvents();
+      const events = await loadEvents({ force: true });
       if (url.searchParams.get('all') === '1') {
         const imagesToDelete = imageUrlsFromEvents(events);
         await saveEvents([]);

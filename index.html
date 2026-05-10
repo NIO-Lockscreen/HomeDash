@@ -61,7 +61,10 @@
       padding: clamp(16px, 2.2vmin, 34px);
       display: grid;
       grid-template-columns: minmax(300px, 0.96fr) minmax(430px, 1.44fr);
-      grid-template-rows: minmax(0, 0.96fr) minmax(160px, 0.31fr);
+      /* Give the upcoming strip a real reserved height so the 4 cards never
+         get clipped underneath the rounded panel. The top modules still get
+         the remaining space, but the bottom row no longer collapses too far. */
+      grid-template-rows: minmax(0, 1fr) clamp(246px, 26vmin, 330px);
       gap: clamp(16px, 2.1vmin, 30px);
       backdrop-filter: blur(18px);
       overflow: hidden;
@@ -1117,6 +1120,7 @@
       overflow: hidden;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
+      align-content: stretch;
     }
 
 
@@ -1182,16 +1186,18 @@
     .upcoming-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-auto-rows: minmax(0, 1fr);
       gap: clamp(10px, 1.05vw, 16px);
       min-height: 0;
+      height: 100%;
       align-items: stretch;
     }
 
     .mini-event {
       position: relative;
       min-width: 0;
-      min-height: clamp(126px, 14.5vmin, 190px);
-      aspect-ratio: 1.92 / 1;
+      min-height: 0;
+      height: 100%;
       overflow: hidden;
       border: 0;
       border-radius: var(--radius-md);
@@ -1226,19 +1232,22 @@
       content: '';
       position: absolute;
       inset: 0;
-      background: linear-gradient(180deg, rgba(0,0,0,.03) 10%, rgba(0,0,0,.12) 38%, rgba(0,0,0,.84) 100%);
+      background:
+        linear-gradient(180deg, rgba(0,0,0,.02) 0%, rgba(0,0,0,.10) 34%, rgba(0,0,0,.82) 100%),
+        linear-gradient(0deg, rgba(0,0,0,.42) 0%, rgba(0,0,0,0) 54%);
       z-index: 1;
     }
 
     .mini-copy {
       position: absolute;
-      left: clamp(9px, .85vw, 13px);
-      right: clamp(9px, .85vw, 13px);
-      bottom: clamp(8px, .85vw, 12px);
+      left: clamp(10px, .9vw, 15px);
+      right: clamp(10px, .9vw, 15px);
+      bottom: clamp(10px, .9vw, 15px);
       z-index: 2;
-      text-shadow: 0 2px 12px rgba(0,0,0,.24);
+      text-shadow: 0 2px 12px rgba(0,0,0,.38);
       display: grid;
       gap: 4px;
+      min-width: 0;
     }
 
     .mini-time {
@@ -1256,13 +1265,13 @@
     .mini-title {
       color: white;
       font-weight: 950;
-      font-size: clamp(14px, 1.02vw, 19px);
-      line-height: 1.12;
+      font-size: clamp(13px, .98vw, 18px);
+      line-height: 1.13;
       overflow: hidden;
       display: -webkit-box;
       -webkit-line-clamp: 3;
       -webkit-box-orient: vertical;
-      max-height: calc(1.12em * 3);
+      max-height: calc(1.13em * 3);
     }
 
 
@@ -3180,12 +3189,19 @@
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script>
     const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
-    const REFRESH_EVENTS_MS = 10_000;
+    // Blob-efficient sync: no polling. Load fresh events on page boot, at midnight,
+    // on deliberate interaction, or when needed for a write/retry.
+    const INTERACTION_FETCH_DEBOUNCE_MS = 800;
+    const MIN_DISPLAY_FETCH_GAP_MS = 60 * 1000;
+    const MIN_ADMIN_FETCH_GAP_MS = 20 * 1000;
+    const LOCAL_EVENTS_CACHE_KEY = 'homeOrganizerEventsCacheV2';
+    const LOCAL_EVENTS_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
     const DEFAULT_UPCOMING_LIMIT = 4;
     const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
-    const COMPRESSED_UPLOAD_TARGET_BYTES = 3.6 * 1024 * 1024;
-    const IMAGE_MAX_DIMENSION = 1600;
-    const JPEG_QUALITY_STEPS = [0.82, 0.72, 0.62, 0.52, 0.44];
+    const IMAGE_UPLOAD_PASSTHROUGH_BYTES = 450 * 1024;
+    const COMPRESSED_UPLOAD_TARGET_BYTES = 650 * 1024;
+    const IMAGE_MAX_DIMENSION = 1280;
+    const JPEG_QUALITY_STEPS = [0.78, 0.7, 0.62, 0.54, 0.46, 0.38, 0.32];
     const PENDING_WRITES_KEY = 'homeOrganizerPendingWrites';
     const LOCAL_COMPLETION_OVERRIDES_KEY = 'homeOrganizerCompletionOverrides';
     const LOCAL_EVENT_MIRROR_KEY = 'homeOrganizerLocalEventMirror';
@@ -3202,6 +3218,8 @@
       events: [],
       serverEvents: [],
       pendingWriteActive: false,
+      eventFetchActive: false,
+      lastEventFetchAt: 0,
       weather: null,
       editingId: null,
       selectedDayKey: null,
@@ -4420,6 +4438,85 @@
       return `${LOCAL_EVENT_ID_PREFIX}${random}`;
     }
 
+    function minEventFetchGapMs() {
+      return adminMode ? MIN_ADMIN_FETCH_GAP_MS : MIN_DISPLAY_FETCH_GAP_MS;
+    }
+
+    function msUntilNextMidnight() {
+      const now = new Date();
+      const next = new Date(now);
+      next.setHours(24, 0, 5, 0);
+      return Math.max(1000, next.getTime() - now.getTime());
+    }
+
+    function scheduleNextMidnightEventRefresh() {
+      window.setTimeout(async () => {
+        await fetchEvents({ force: true, reason: 'midnight' });
+        await processPendingWrites({ silent: true });
+        scheduleNextMidnightEventRefresh();
+      }, msUntilNextMidnight());
+    }
+
+    function requestInteractionRefresh() {
+      const now = Date.now();
+      if (state.interactionRefreshTimer) clearTimeout(state.interactionRefreshTimer);
+      state.interactionRefreshTimer = window.setTimeout(async () => {
+        if (state.eventFetchActive) return;
+        if (state.lastEventFetchAt && now - state.lastEventFetchAt < minEventFetchGapMs()) return;
+        await fetchEvents({ reason: 'interaction' });
+        await processPendingWrites({ silent: true });
+      }, INTERACTION_FETCH_DEBOUNCE_MS);
+    }
+
+    function bindInteractionRefresh() {
+      const handler = event => {
+        // Ignore synthetic events and the app's own timed re-renders. Real pointer/touch/keyboard
+        // use is the signal that the dashboard should spend a Blob read.
+        if (event.isTrusted === false) return;
+        requestInteractionRefresh();
+      };
+      document.addEventListener('pointerdown', handler, { passive: true, capture: true });
+      document.addEventListener('touchstart', handler, { passive: true, capture: true });
+      document.addEventListener('keydown', handler, { passive: true, capture: true });
+    }
+
+    function getCachedEventPayload() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(LOCAL_EVENTS_CACHE_KEY) || 'null');
+        if (!parsed || !Array.isArray(parsed.events)) return null;
+        const savedAtMs = Number(parsed.savedAtMs || 0);
+        if (!savedAtMs || Date.now() - savedAtMs > LOCAL_EVENTS_CACHE_MAX_AGE_MS) return null;
+        return parsed;
+      } catch {
+        return null;
+      }
+    }
+
+    function rememberCachedEvents(events) {
+      try {
+        localStorage.setItem(LOCAL_EVENTS_CACHE_KEY, JSON.stringify({
+          savedAtMs: Date.now(),
+          events: Array.isArray(events) ? events : []
+        }));
+      } catch {}
+    }
+
+    function hydrateEventsFromLocalCache() {
+      const cached = getCachedEventPayload();
+      if (!cached) return false;
+      state.serverEvents = cached.events;
+      refreshEventsFromServerEvents();
+      renderDisplay();
+      renderAdminEvents();
+      return true;
+    }
+
+    function renderFromLocalState() {
+      refreshEventsFromServerEvents();
+      renderDisplay();
+      renderAdminEvents();
+    }
+
     function getPendingWrites() {
       try {
         const parsed = JSON.parse(localStorage.getItem(PENDING_WRITES_KEY) || '[]');
@@ -4699,6 +4796,7 @@
             if (serverHasSavedEvent) removeQueuedWrite(op.opId);
             if (Array.isArray(data.events)) {
               state.serverEvents = data.events;
+              rememberCachedEvents(state.serverEvents);
               refreshEventsFromServerEvents();
               signalOtherOpenViewsToRefresh();
             }
@@ -4728,16 +4826,30 @@
       if (fatalError) throw fatalError;
     }
 
-    async function fetchEvents() {
+    async function fetchEvents(options = {}) {
+      const now = Date.now();
+      if (state.eventFetchActive) return;
+      if (!options.force && state.lastEventFetchAt && now - state.lastEventFetchAt < minEventFetchGapMs()) {
+        renderFromLocalState();
+        return;
+      }
+
+      state.eventFetchActive = true;
+      state.lastEventFetchAt = now;
       try {
-        const response = await fetch(`/api/events?t=${Date.now()}`, { cache: 'no-store' });
+        const url = options.force ? `/api/events?fresh=1&t=${Date.now()}` : '/api/events';
+        const response = await fetch(url, { cache: options.force ? 'no-store' : 'default' });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Could not load events.');
         state.serverEvents = Array.isArray(data.events) ? data.events : [];
+        rememberCachedEvents(state.serverEvents);
         refreshEventsFromServerEvents();
       } catch (error) {
         console.warn(error);
-        refreshEventsFromServerEvents();
+        if (!state.serverEvents.length) hydrateEventsFromLocalCache();
+        else refreshEventsFromServerEvents();
+      } finally {
+        state.eventFetchActive = false;
       }
       renderDisplay();
       renderAdminEvents();
@@ -4758,7 +4870,9 @@
       let y = clampPercent(event?.imageFocusY, hasImage ? 38 : 50);
       let scale = 1.01;
       if (source === 'text-detector') {
-        y = Math.max(8, y - 8);
+        // Keep detected poster/text areas in frame without pushing them so high
+        // that the bottom overlay hides the readable part.
+        y = Math.max(12, Math.min(62, y - 2));
         scale = 1;
       } else if (source === 'face-detector') {
         y = Math.max(16, Math.min(64, y - 2));
@@ -5384,9 +5498,17 @@
     }
 
     async function compressImageForUpload(file) {
-      if (file.size <= MAX_UPLOAD_BYTES) return file;
+      if (file.type === 'image/gif') {
+        if (file.size <= MAX_UPLOAD_BYTES) return file;
+        throw new Error('GIFs must be under 4 MB. Use a smaller GIF or a still image.');
+      }
 
-      els.imageStatus.textContent = `Compressing ${formatBytes(file.size)} image on this phone…`;
+      if (file.size <= IMAGE_UPLOAD_PASSTHROUGH_BYTES && ['image/jpeg', 'image/webp'].includes(file.type)) {
+        return file;
+      }
+
+      const action = file.size > MAX_UPLOAD_BYTES ? 'Compressing' : 'Optimizing';
+      els.imageStatus.textContent = `${action} ${formatBytes(file.size)} image before upload…`;
 
       const image = await loadImage(file);
       const naturalWidth = image.naturalWidth || image.width;
@@ -5397,10 +5519,10 @@
       let maxDimension = IMAGE_MAX_DIMENSION;
       let bestBlob = null;
 
-      for (let sizeAttempt = 0; sizeAttempt < 7; sizeAttempt++) {
+      for (let sizeAttempt = 0; sizeAttempt < 8; sizeAttempt++) {
         const scale = Math.min(1, maxDimension / Math.max(naturalWidth, naturalHeight));
-        const width = Math.max(320, Math.round(naturalWidth * scale));
-        const height = Math.max(240, Math.round(naturalHeight * scale));
+        const width = Math.max(360, Math.round(naturalWidth * scale));
+        const height = Math.max(260, Math.round(naturalHeight * scale));
 
         const canvas = document.createElement('canvas');
         canvas.width = width;
@@ -5414,9 +5536,9 @@
 
         for (const quality of JPEG_QUALITY_STEPS) {
           const blob = await canvasToBlob(canvas, 'image/jpeg', quality);
-          bestBlob = blob;
+          if (!bestBlob || blob.size < bestBlob.size) bestBlob = blob;
           if (blob.size <= COMPRESSED_UPLOAD_TARGET_BYTES) {
-            return new File([blob], `${baseName}-compressed.jpg`, {
+            return new File([blob], `${baseName}-optimized.jpg`, {
               type: 'image/jpeg',
               lastModified: Date.now()
             });
@@ -5427,7 +5549,7 @@
       }
 
       if (bestBlob && bestBlob.size <= MAX_UPLOAD_BYTES) {
-        return new File([bestBlob], `${baseName}-compressed.jpg`, {
+        return new File([bestBlob], `${baseName}-optimized.jpg`, {
           type: 'image/jpeg',
           lastModified: Date.now()
         });
@@ -5452,7 +5574,7 @@
         throw new Error('Image is still over 4 MB after compression. Try a different image.');
       }
 
-      const compressedNote = uploadFile !== file ? `Compressed to ${formatBytes(uploadFile.size)}. ` : '';
+      const compressedNote = uploadFile !== file ? `Optimized to ${formatBytes(uploadFile.size)}. ` : '';
       els.imageStatus.textContent = `${compressedNote}Uploading image…`;
       const form = new FormData();
       form.append('image', uploadFile);
@@ -5465,7 +5587,7 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Upload failed.');
       els.imageStatus.textContent = uploadFile !== file
-        ? `Image compressed to ${formatBytes(uploadFile.size)} and uploaded.`
+        ? `Image optimized to ${formatBytes(uploadFile.size)} and uploaded.`
         : 'Image uploaded.';
       return data.url;
     }
@@ -6533,15 +6655,26 @@ Cancel = choose whether to delete the whole series.`);
       }
       updateClock();
       setInterval(updateClock, 1000);
+      if (!adminMode) setInterval(renderDisplay, 60 * 1000);
       fetchWeather();
       setInterval(fetchWeather, 30 * 60 * 1000);
-      fetchEvents();
-      setInterval(fetchEvents, REFRESH_EVENTS_MS);
-      setInterval(() => processPendingWrites({ silent: true }), 15_000);
+      hydrateEventsFromLocalCache();
+      // Page boot should always spend one fresh read so the dashboard starts with newest data.
+      // Local cache still renders instantly first, then this refresh replaces it when loaded.
+      fetchEvents({ force: true, reason: 'page-boot' });
+      bindInteractionRefresh();
+      scheduleNextMidnightEventRefresh();
       window.addEventListener('online', () => processPendingWrites({ silent: true }));
-      window.addEventListener('storage', event => { if (event.key === LAST_WRITE_SIGNAL_KEY) fetchEvents(); });
-      document.addEventListener('visibilitychange', () => { if (!document.hidden) fetchEvents(); });
-      window.addEventListener('pageshow', () => fetchEvents());
+      window.addEventListener('storage', event => {
+        if (event.key === LAST_WRITE_SIGNAL_KEY) {
+          renderFromLocalState();
+          // Another open tab already updated local state. Do not spend a Blob read here.
+        }
+      });
+      window.addEventListener('pageshow', () => {
+        hydrateEventsFromLocalCache();
+        renderFromLocalState();
+      });
       if (adminMode) bindAdmin();
     }
 

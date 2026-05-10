@@ -60,9 +60,9 @@ The browser expands those into temporary occurrences for display only. The serve
 - Deleting a task now also deletes its stored event image from Vercel Blob when no remaining task uses that image.
 - Replacing an image on a task cleans up the old Blob image when it is no longer used.
 - Deleting all tasks also tries to remove all Home Organizer images under the event image paths.
-- Display mode now refreshes tasks every 10 seconds, and also refreshes when the page becomes visible again.
+- Display mode loads cached tasks instantly, then performs one fresh server refresh on page boot, at midnight, and after user interaction.
 - Desktop admin mode shows a large **Back to normal view** button so you can return to the Surface display after editing.
-- If admin and display are open in two tabs on the same device, the display tab is notified immediately after a successful save. Across different devices, display mode polls every 10 seconds.
+- If admin and display are open in two tabs on the same device, the display tab is notified immediately after a successful save. Across different devices there is no polling; page boot, midnight, and user interaction trigger refreshes.
 
 
 ## Face-aware image cropping
@@ -143,3 +143,16 @@ https://your-project.vercel.app/api/reminders-cron?secret=your_CRON_SECRET
 ```
 
 A good response looks like JSON with `ok: true`.
+
+## Blob efficiency changes
+
+This version is tuned to use far fewer Vercel Blob operations:
+
+- The dashboard no longer polls `/api/events` every 10 seconds, 10 minutes, or 2 minutes.
+- Events are cached in `localStorage`, so the screen renders instantly from the last known calendar and keeps working if Blob/API is temporarily unavailable.
+- On page boot the app now performs one fresh `/api/events?fresh=1` read so loading/reloading the dashboard gets the newest server data.
+- After boot, fresh reads only happen at midnight or after real user interaction. Interactions are debounced and protected by a minimum gap so one tap does not cause repeated reads.
+- The display re-renders locally every minute so date/time/day changes still update without calling Blob.
+- Normal `/api/events` reads still use short API/CDN caching and a small in-memory cache per serverless instance. Fresh boot/midnight reads bypass that cache on purpose.
+- Uploaded images are optimized before upload, usually targeting about 650 KB instead of allowing multi-megabyte photos.
+- Re-uploading the exact same image now reuses the existing Blob URL by hashing the file instead of creating duplicates.

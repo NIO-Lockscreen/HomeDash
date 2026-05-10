@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { formidable } from 'formidable';
-import { put } from '@vercel/blob';
+import { head, put } from '@vercel/blob';
 
 const MAX_IMAGE_SIZE = 4 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
@@ -74,16 +74,23 @@ export default async function handler(req, res) {
 
     const buffer = await fs.readFile(image.filepath);
     const ext = safeExtension(image);
-    const pathname = `home-organizer/images/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}${ext}`;
+    const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+    const pathname = `home-organizer/images/${hash.slice(0, 2)}/${hash.slice(0, 32)}${ext}`;
+
+    try {
+      const existing = await head(pathname);
+      send(res, 200, { url: existing.url, pathname: existing.pathname || pathname, reused: true });
+      return;
+    } catch {}
 
     const blob = await put(pathname, buffer, {
       access: 'public',
       contentType: image.mimetype,
       addRandomSuffix: false,
-      cacheControlMaxAge: 60 * 60 * 24 * 30
+      cacheControlMaxAge: 60 * 60 * 24 * 365
     });
 
-    send(res, 200, { url: blob.url, pathname: blob.pathname });
+    send(res, 200, { url: blob.url, pathname: blob.pathname, reused: false });
   } catch (error) {
     send(res, 400, { error: error.message || 'Upload failed.' });
   }
