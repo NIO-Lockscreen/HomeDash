@@ -7,6 +7,7 @@ const RESEND_SCHEDULE_HORIZON_MS = 29 * 24 * 60 * 60 * 1000; // Resend allows up
 const RESEND_SEND_NOW_GRACE_MS = 90 * 1000;
 const MAX_OCCURRENCE_LOOKAHEAD_MS = 45 * 24 * 60 * 60 * 1000;
 const DEFAULT_TIME_ZONE = 'Europe/Oslo';
+const HARD_CODED_REMINDER_RECIPIENTS = new Set(['theresesaksgard@hotmail.com', 'diemetrix@gmail.com']);
 
 function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
@@ -19,7 +20,7 @@ function normalizeEmail(value) {
 function getReminderConfig(event) {
   const reminder = event?.emailReminder || {};
   const recipients = Array.isArray(reminder.recipients)
-    ? [...new Set(reminder.recipients.map(normalizeEmail).filter(isValidEmail))]
+    ? [...new Set(reminder.recipients.map(normalizeEmail).filter(email => isValidEmail(email) && HARD_CODED_REMINDER_RECIPIENTS.has(email)))]
     : [];
 
   const creationEmailSentAt = String(reminder.creationEmailSentAt || '').trim();
@@ -246,7 +247,7 @@ function buildDesiredReminders(events, options = {}) {
 
     if (newEventIdSet.has(String(event.id))) {
       const createdRecipients = Array.isArray(createdRecipientsByEvent[event.id])
-        ? [...new Set(createdRecipientsByEvent[event.id].map(normalizeEmail).filter(isValidEmail))]
+        ? [...new Set(createdRecipientsByEvent[event.id].map(normalizeEmail).filter(email => isValidEmail(email) && HARD_CODED_REMINDER_RECIPIENTS.has(email)))]
         : (!reminder.creationEmailSentAt ? reminder.recipients : []);
       if (createdRecipients.length) {
         const creationReminder = { ...reminder, recipients: createdRecipients };

@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { syncReminderSchedulesForEvents } from './_reminders.js';
 
 const EVENTS_PATH = 'home-organizer/events.json';
+const HARD_CODED_REMINDER_RECIPIENTS = new Set(['theresesaksgard@hotmail.com', 'diemetrix@gmail.com']);
 
 function send(res, status, payload) {
   res.statusCode = status;
@@ -71,9 +72,9 @@ function cleanEmailReminder(input = {}, existing = {}) {
   const source = input && typeof input === 'object' ? input : {};
   const existingSource = existing && typeof existing === 'object' ? existing : {};
   const recipients = Array.isArray(source.recipients)
-    ? [...new Set(source.recipients.map(cleanEmail).filter(isValidEmail))].slice(0, 12)
+    ? [...new Set(source.recipients.map(cleanEmail).filter(email => isValidEmail(email) && HARD_CODED_REMINDER_RECIPIENTS.has(email)))].slice(0, 12)
     : Array.isArray(existingSource.recipients)
-      ? [...new Set(existingSource.recipients.map(cleanEmail).filter(isValidEmail))].slice(0, 12)
+      ? [...new Set(existingSource.recipients.map(cleanEmail).filter(email => isValidEmail(email) && HARD_CODED_REMINDER_RECIPIENTS.has(email)))].slice(0, 12)
       : [];
   const creationEmailSentAt = String(source.creationEmailSentAt || existingSource.creationEmailSentAt || '').trim();
   const createdRecipientsSource = Array.isArray(source.createdRecipients)
@@ -81,7 +82,7 @@ function cleanEmailReminder(input = {}, existing = {}) {
     : Array.isArray(existingSource.createdRecipients)
       ? existingSource.createdRecipients
       : (creationEmailSentAt && Array.isArray(existingSource.recipients) ? existingSource.recipients : []);
-  const createdRecipients = [...new Set(createdRecipientsSource.map(cleanEmail).filter(isValidEmail))].slice(0, 60);
+  const createdRecipients = [...new Set(createdRecipientsSource.map(cleanEmail).filter(email => isValidEmail(email) && HARD_CODED_REMINDER_RECIPIENTS.has(email)))].slice(0, 60);
   return {
     enabled: Boolean(source.enabled ?? existingSource.enabled) && recipients.length > 0,
     recipients,
@@ -100,14 +101,14 @@ async function safeSyncReminders(events, options) {
 
 function reminderRecipients(event) {
   return Array.isArray(event?.emailReminder?.recipients)
-    ? [...new Set(event.emailReminder.recipients.map(cleanEmail).filter(isValidEmail))]
+    ? [...new Set(event.emailReminder.recipients.map(cleanEmail).filter(email => isValidEmail(email) && HARD_CODED_REMINDER_RECIPIENTS.has(email)))]
     : [];
 }
 
 function reminderCreatedRecipients(event) {
   const reminder = event?.emailReminder || {};
   if (Array.isArray(reminder.createdRecipients) && reminder.createdRecipients.length) {
-    return [...new Set(reminder.createdRecipients.map(cleanEmail).filter(isValidEmail))];
+    return [...new Set(reminder.createdRecipients.map(cleanEmail).filter(email => isValidEmail(email) && HARD_CODED_REMINDER_RECIPIENTS.has(email)))];
   }
   if (reminder.creationEmailSentAt) return reminderRecipients(event);
   return [];
@@ -120,7 +121,7 @@ function newlyAddedReminderRecipients(previousEvent, nextEvent) {
 
 function markCreatedRecipients(event, recipients) {
   const existing = reminderCreatedRecipients(event);
-  const merged = [...new Set([...existing, ...(recipients || []).map(cleanEmail).filter(isValidEmail)])];
+  const merged = [...new Set([...existing, ...(recipients || []).map(cleanEmail).filter(email => isValidEmail(email) && HARD_CODED_REMINDER_RECIPIENTS.has(email))])];
   event.emailReminder = {
     ...(event.emailReminder || {}),
     creationEmailSentAt: event.emailReminder?.creationEmailSentAt || new Date().toISOString(),

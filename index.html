@@ -2960,15 +2960,11 @@
             <div class="reminder-help">Sends an email now when the task is created, then another email at 08:00 on the task day. If the task starts before 08:00, the reminder is sent at 12:00 the day before.</div>
 
             <div class="reminder-label-row">
-              <span>Send to saved emails</span>
+              <span>Send to</span>
             </div>
             <div id="emailContactList" class="email-contact-list"></div>
 
-            <div class="reminder-email-add">
-              <input id="newEmailInput" type="email" placeholder="Add family email address" autocomplete="email" />
-              <button id="addEmailBtn" class="btn secondary" type="button">Add email</button>
-            </div>
-            <div id="reminderHelp" class="reminder-help">Email addresses are saved on this device. Selected recipients are saved on the task so Vercel can send task emails.</div>
+            <div id="reminderHelp" class="reminder-help">Choose Therese, Thomas, both, or leave both unchecked for none.</div>
           </div>
         </section>
 
@@ -3088,7 +3084,10 @@
     const PENDING_WRITES_KEY = 'homeOrganizerPendingWrites';
     const LOCAL_EVENT_ID_PREFIX = 'local-';
     const LAST_WRITE_SIGNAL_KEY = 'homeOrganizerLastWrite';
-    const EMAIL_CONTACTS_KEY = 'homeOrganizerReminderEmails';
+    const HARD_CODED_REMINDER_CONTACTS = [
+      { key: 'therese', name: 'Therese', email: 'theresesaksgard@hotmail.com' },
+      { key: 'thomas', name: 'Thomas', email: 'diemetrix@gmail.com' }
+    ];
 
     const state = {
       events: [],
@@ -3181,8 +3180,6 @@
       emailReminderInput: document.getElementById('emailReminderInput'),
       emailReminderOptions: document.getElementById('emailReminderOptions'),
       emailContactList: document.getElementById('emailContactList'),
-      newEmailInput: document.getElementById('newEmailInput'),
-      addEmailBtn: document.getElementById('addEmailBtn'),
       reminderHelp: document.getElementById('reminderHelp'),
       saveEventBtn: document.getElementById('saveEventBtn'),
       resetBtn: document.getElementById('resetBtn'),
@@ -3411,27 +3408,33 @@
     }
 
     function getStoredReminderEmails() {
-      try {
-        const parsed = JSON.parse(localStorage.getItem(EMAIL_CONTACTS_KEY) || '[]');
-        return Array.isArray(parsed)
-          ? [...new Set(parsed.map(normalizeReminderEmail).filter(isValidReminderEmail))].sort()
-          : [];
-      } catch {
-        return [];
-      }
+      return HARD_CODED_REMINDER_CONTACTS.map(contact => contact.email);
     }
 
-    function saveStoredReminderEmails(emails) {
-      const clean = [...new Set((emails || []).map(normalizeReminderEmail).filter(isValidReminderEmail))].sort();
-      localStorage.setItem(EMAIL_CONTACTS_KEY, JSON.stringify(clean));
-      return clean;
+    function saveStoredReminderEmails() {
+      return getStoredReminderEmails();
+    }
+
+    function reminderContactLabel(email) {
+      const normalized = normalizeReminderEmail(email);
+      const contact = HARD_CODED_REMINDER_CONTACTS.find(item => normalizeReminderEmail(item.email) === normalized);
+      return contact ? `${contact.name} (${contact.email})` : email;
+    }
+
+    function reminderRecipientNames(emails = []) {
+      return [...new Set((emails || []).map(normalizeReminderEmail).filter(isValidReminderEmail))]
+        .map(email => {
+          const contact = HARD_CODED_REMINDER_CONTACTS.find(item => normalizeReminderEmail(item.email) === email);
+          return contact ? contact.name : email;
+        });
     }
 
     function getSelectedReminderRecipients() {
       if (!els.emailContactList) return [];
       return [...els.emailContactList.querySelectorAll('[data-reminder-recipient]:checked')]
         .map(input => normalizeReminderEmail(input.value))
-        .filter(isValidReminderEmail);
+        .filter(isValidReminderEmail)
+        .filter(email => getStoredReminderEmails().includes(email));
     }
 
     function setEmailReminderOptionsVisible() {
@@ -3442,39 +3445,15 @@
     function renderEmailContacts(selected = []) {
       if (!els.emailContactList) return;
       const selectedSet = new Set((selected || []).map(normalizeReminderEmail).filter(isValidReminderEmail));
-      const contacts = getStoredReminderEmails();
-
-      if (!contacts.length) {
-        els.emailContactList.innerHTML = '<div class="reminder-empty">No saved email addresses yet. Add one below, then select it for this reminder.</div>';
-        return;
-      }
-
-      els.emailContactList.innerHTML = contacts.map(email => `
-        <label class="email-contact-row">
-          <input type="checkbox" data-reminder-recipient value="${htmlEscape(email)}" ${selectedSet.has(email) ? 'checked' : ''}>
-          <span>${htmlEscape(email)}</span>
-          <button class="mini-link-btn" type="button" data-remove-reminder-email="${htmlEscape(email)}">Remove</button>
-        </label>
-      `).join('');
-    }
-
-    function addReminderEmailFromInput(selectAfterAdd = true) {
-      if (!els.newEmailInput) return null;
-      const email = normalizeReminderEmail(els.newEmailInput.value);
-      if (!email) return null;
-      if (!isValidReminderEmail(email)) {
-        setStatus('Enter a valid email address.', true);
-        els.newEmailInput.focus();
-        return null;
-      }
-      const selected = new Set(getSelectedReminderRecipients());
-      const contacts = getStoredReminderEmails();
-      saveStoredReminderEmails([...contacts, email]);
-      if (selectAfterAdd) selected.add(email);
-      els.newEmailInput.value = '';
-      renderEmailContacts([...selected]);
-      setStatus(`Saved ${email} as a reminder contact.`);
-      return email;
+      els.emailContactList.innerHTML = HARD_CODED_REMINDER_CONTACTS.map(contact => {
+        const email = normalizeReminderEmail(contact.email);
+        return `
+          <label class="email-contact-row">
+            <input type="checkbox" data-reminder-recipient value="${htmlEscape(email)}" ${selectedSet.has(email) ? 'checked' : ''}>
+            <span>${htmlEscape(contact.name)} <small>${htmlEscape(contact.email)}</small></span>
+          </label>
+        `;
+      }).join('');
     }
 
     function collectEmailReminderPayload() {
@@ -3482,13 +3461,8 @@
         return { enabled: false, recipients: [] };
       }
 
-      if (els.newEmailInput?.value.trim()) {
-        const added = addReminderEmailFromInput(true);
-        if (!added) throw new Error('Fix the email address before saving the reminder.');
-      }
-
       const recipients = getSelectedReminderRecipients();
-      if (!recipients.length) throw new Error('Choose at least one saved email address for the reminder.');
+      if (!recipients.length) return { enabled: false, recipients: [] };
 
       return {
         enabled: true,
@@ -3500,7 +3474,7 @@
       const reminder = event?.emailReminder || {};
       const recipients = Array.isArray(reminder.recipients) ? reminder.recipients.filter(isValidReminderEmail) : [];
       if (!reminder.enabled || !recipients.length) return '';
-      return `Email on creation + task-day reminder · ${recipients.join(', ')}`;
+      return `Email on creation + task-day reminder · ${reminderRecipientNames(recipients).join(', ')}`;
     }
 
     function taskDayReminderDate(event) {
@@ -3554,7 +3528,10 @@
     function emailReminderStatusHtml(event, context = 'hero') {
       const sourceId = event?._sourceId || event?.id || '';
       const reminder = event?.emailReminder || {};
-      const recipients = Array.isArray(reminder.recipients) ? reminder.recipients.filter(isValidReminderEmail) : [];
+      const allowedEmails = getStoredReminderEmails();
+      const recipients = Array.isArray(reminder.recipients)
+        ? reminder.recipients.map(normalizeReminderEmail).filter(email => isValidReminderEmail(email) && allowedEmails.includes(email))
+        : [];
       const enabled = Boolean(reminder.enabled) && recipients.length > 0;
       const creationSent = Boolean(reminder.creationEmailSentAt);
       const taskReminderAt = taskDayReminderDate(event);
@@ -3564,22 +3541,22 @@
           : `Task-day reminder planned for ${formatReminderDateTime(taskReminderAt)}.`)
         : 'Task-day reminder time could not be calculated.';
 
-      const contacts = getStoredReminderEmails();
       const existingSet = new Set(recipients);
-      const extraContacts = contacts.filter(email => !existingSet.has(email));
+      const extraContacts = HARD_CODED_REMINDER_CONTACTS.filter(contact => !existingSet.has(normalizeReminderEmail(contact.email)));
       const contactRows = extraContacts.length
-        ? `<div class="email-add-list">${extraContacts.map(email => `
+        ? `<div class="email-add-list">${extraContacts.map(contact => `
             <label class="email-add-row">
-              <input type="checkbox" data-display-email-recipient value="${htmlEscape(email)}">
-              <span>${htmlEscape(email)}</span>
+              <input type="checkbox" data-display-email-recipient value="${htmlEscape(normalizeReminderEmail(contact.email))}">
+              <span>${htmlEscape(contact.name)} <small>${htmlEscape(contact.email)}</small></span>
             </label>
           `).join('')}</div>`
-        : '<div class="email-status-lines"><div>No extra saved email contacts on this device yet.</div></div>';
-      const addTitle = enabled ? 'Add more recipients' : 'Add reminders';
+        : '<div class="email-status-lines"><div>Both Therese and Thomas are already on this task.</div></div>';
+      const addTitle = enabled ? 'Add selected recipients' : 'Add reminders';
       const addHelp = enabled
         ? 'Add another person. Only the new recipient gets the task-created email now; everyone on the list gets the task-day reminder.'
         : 'Add reminders from this task card. It will send a task-created email now, then the task-day reminder.';
       const pill = enabled ? '<span class="email-pill">On</span>' : '<span class="email-pill off">Off</span>';
+      const recipientText = enabled ? reminderRecipientNames(recipients).join(', ') : 'none yet';
 
       return `
         <div class="email-status-card" data-email-reminder-panel="${htmlEscape(context)}" data-email-source-id="${htmlEscape(sourceId)}">
@@ -3588,7 +3565,7 @@
             ${pill}
           </div>
           <div class="email-status-lines">
-            <div>${enabled ? `Recipients: ${htmlEscape(recipients.join(', '))}` : 'Recipients: none yet'}</div>
+            <div>Recipients: ${htmlEscape(recipientText)}</div>
             <div>${enabled ? (creationSent ? `Task-created email sent ${htmlEscape(formatReminderDateTime(new Date(reminder.creationEmailSentAt)))}` : 'Task-created email will show as sent after the server confirms it.') : htmlEscape(addHelp)}</div>
             <div>${htmlEscape(taskReminderText)}</div>
           </div>
@@ -3596,7 +3573,6 @@
             <div class="email-status-lines"><div>${htmlEscape(addHelp)}</div></div>
             ${contactRows}
             <div class="email-add-new">
-              <input type="email" data-display-new-email placeholder="Add email address" autocomplete="email">
               <button class="tiny-btn" type="button" data-display-add-email-reminders="${htmlEscape(sourceId)}">${addTitle}</button>
             </div>
           </div>
@@ -3606,15 +3582,10 @@
 
     function recipientsFromDisplayEmailPanel(panel) {
       if (!panel) return [];
+      const allowedEmails = getStoredReminderEmails();
       const selected = [...panel.querySelectorAll('[data-display-email-recipient]:checked')]
         .map(input => normalizeReminderEmail(input.value))
-        .filter(isValidReminderEmail);
-      const typed = normalizeReminderEmail(panel.querySelector('[data-display-new-email]')?.value || '');
-      if (typed) {
-        if (!isValidReminderEmail(typed)) throw new Error('Enter a valid email address.');
-        selected.push(typed);
-        saveStoredReminderEmails([...getStoredReminderEmails(), typed]);
-      }
+        .filter(email => isValidReminderEmail(email) && allowedEmails.includes(email));
       return [...new Set(selected)];
     }
 
@@ -3624,13 +3595,13 @@
       if (!source) throw new Error('Task not found.');
       const panel = trigger?.closest?.('[data-email-reminder-panel]') || document.querySelector(`[data-email-source-id="${CSS.escape(String(sourceId))}"]`);
       const recipients = recipientsFromDisplayEmailPanel(panel);
-      if (!recipients.length) throw new Error('Choose or enter at least one email address.');
+      if (!recipients.length) throw new Error('Choose Therese, Thomas, or both.');
       const existingRecipients = Array.isArray(source.emailReminder?.recipients)
         ? source.emailReminder.recipients.map(normalizeReminderEmail).filter(isValidReminderEmail)
         : [];
       const mergedRecipients = [...new Set([...existingRecipients, ...recipients])];
       const addedRecipients = recipients.filter(email => !existingRecipients.includes(email));
-      if (!addedRecipients.length) throw new Error('Choose or enter a new email address that is not already on this task.');
+      if (!addedRecipients.length) throw new Error('Choose a recipient that is not already on this task.');
       const payload = {
         ...source,
         emailReminder: {
@@ -5691,27 +5662,7 @@ Cancel = choose whether to delete the whole series.`);
       els.closeEditorBtn?.addEventListener('click', () => closeEventEditor());
       els.emailReminderInput?.addEventListener('change', () => {
         setEmailReminderOptionsVisible();
-        if (els.emailReminderInput.checked) {
-          renderEmailContacts(getSelectedReminderRecipients());
-          if (!getStoredReminderEmails().length) setTimeout(() => els.newEmailInput?.focus?.(), 40);
-        }
-      });
-      els.addEmailBtn?.addEventListener('click', () => addReminderEmailFromInput(true));
-      els.newEmailInput?.addEventListener('keydown', event => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          addReminderEmailFromInput(true);
-        }
-      });
-      els.emailContactList?.addEventListener('click', event => {
-        const remove = event.target.closest('[data-remove-reminder-email]')?.dataset.removeReminderEmail;
-        if (!remove) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const selected = new Set(getSelectedReminderRecipients());
-        selected.delete(normalizeReminderEmail(remove));
-        saveStoredReminderEmails(getStoredReminderEmails().filter(email => email !== normalizeReminderEmail(remove)));
-        renderEmailContacts([...selected]);
+        if (els.emailReminderInput.checked) renderEmailContacts(getSelectedReminderRecipients());
       });
 
       els.imageInput.addEventListener('change', () => {
@@ -6093,7 +6044,7 @@ Cancel = choose whether to delete the whole series.`);
         handleHeroBackActionClick(event);
       }, true);
       document.addEventListener('pointerdown', event => {
-        if (event.target.closest?.('[data-hero-complete], [data-hero-edit], [data-hero-delete-instance], [data-hero-close], [data-display-add-email-reminders], [data-display-new-email], [data-display-email-recipient]')) {
+        if (event.target.closest?.('[data-hero-complete], [data-hero-edit], [data-hero-delete-instance], [data-hero-close], [data-display-add-email-reminders], [data-display-email-recipient]')) {
           event.stopPropagation();
         }
       }, true);

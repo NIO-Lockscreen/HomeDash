@@ -77,9 +77,9 @@ This version adds email reminders without adding a separate database.
 
 ### What is included
 
-- The task editor has a **Send email reminder** checkbox.
-- You can add family email addresses in the task editor.
-- Saved email addresses are stored in the admin browser/phone with `localStorage`.
+- The task editor has a **Use email reminders** checkbox.
+- Recipients are hardcoded to **Therese** and **Thomas**.
+- You can choose Therese, Thomas, both, or none.
 - The selected recipients are saved onto the task in Vercel Blob.
 - The server sends a task-created email through Resend when a new task is created, then schedules the task-day reminder.
 - A daily `/api/reminders-cron` job refreshes the schedule so repeating/future reminders stay covered.
@@ -115,8 +115,8 @@ For quick testing, Resend accounts often allow sending to your own verified acco
 ### How reminders work
 
 1. You create or edit a task.
-2. You tick **Send email reminder**.
-3. You select one or more saved email addresses.
+2. You tick **Use email reminders**.
+3. You select Therese, Thomas, or both.
 4. The task is saved to Vercel Blob.
 5. The Vercel API sends a task-created email now.
 6. It schedules another reminder for 08:00 on the task day.
