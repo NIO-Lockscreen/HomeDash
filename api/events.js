@@ -1,5 +1,6 @@
 import { head, put, del } from '@vercel/blob';
 import crypto from 'crypto';
+import { syncReminderSchedulesForEvents } from './_reminders.js';
 
 const EVENTS_PATH = 'home-organizer/events.json';
 
@@ -57,6 +58,37 @@ function normalizeDateKeys(values, existing = []) {
   )].slice(0, 1000);
 }
 
+
+function cleanEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+function cleanEmailReminder(input = {}, existing = {}) {
+  const source = input && typeof input === 'object' ? input : {};
+  const existingSource = existing && typeof existing === 'object' ? existing : {};
+  const recipients = Array.isArray(source.recipients)
+    ? [...new Set(source.recipients.map(cleanEmail).filter(isValidEmail))].slice(0, 12)
+    : Array.isArray(existingSource.recipients)
+      ? [...new Set(existingSource.recipients.map(cleanEmail).filter(isValidEmail))].slice(0, 12)
+      : [];
+  return {
+    enabled: Boolean(source.enabled) && recipients.length > 0,
+    recipients
+  };
+}
+
+async function safeSyncReminders(events, options) {
+  try {
+    return await syncReminderSchedulesForEvents(events, options);
+  } catch (error) {
+    return { ok: false, error: error.message || 'Reminder sync failed.' };
+  }
+}
+
 function cleanEvent(input, existing = {}) {
   const id = existing.id || input.id || crypto.randomUUID();
   const title = String(input.title || '').trim().slice(0, 80);
@@ -74,6 +106,7 @@ function cleanEvent(input, existing = {}) {
   const repeat = allowedRepeats.has(String(input.repeat || existing.repeat || 'none'))
     ? String(input.repeat || existing.repeat || 'none')
     : 'none';
+  const emailReminder = cleanEmailReminder(input.emailReminder, existing.emailReminder);
 
   // Repeatable tasks are stored as ONE master task.
   // completedDates/excludedDates describe individual virtual occurrences.
@@ -93,6 +126,7 @@ function cleanEvent(input, existing = {}) {
     imageFocusY,
     imageFocusSource,
     featured: Boolean(input.featured),
+    emailReminder,
     updatedAt: new Date().toISOString(),
     createdAt: existing.createdAt || new Date().toISOString()
   };
@@ -189,8 +223,9 @@ export default async function handler(req, res) {
       else events[existingIndex] = event;
       const next = sortEvents(events);
       await saveEvents(next);
+      const reminderSync = await safeSyncReminders(next, { eventIds: [event.id], newEventIds: existingIndex === -1 ? [event.id] : [] });
       const imageCleanup = previousEvent ? await deleteUnusedImages(imageUrlsNoLongerUsed([previousEvent], next)) : { attempted: 0, deleted: 0, failed: 0 };
-      send(res, existingIndex === -1 ? 201 : 200, { event, events: next, localSaved: true, idempotent: existingIndex !== -1, imageCleanup });
+      send(res, existingIndex === -1 ? 201 : 200, { event, events: next, localSaved: true, idempotent: existingIndex !== -1, imageCleanup, reminderSync });
       return;
     }
 
@@ -207,8 +242,9 @@ export default async function handler(req, res) {
       events[index] = event;
       const next = sortEvents(events);
       await saveEvents(next);
+      const reminderSync = await safeSyncReminders(next, { eventIds: [event.id] });
       const imageCleanup = await deleteUnusedImages(imageUrlsNoLongerUsed([previousEvent], next));
-      send(res, 200, { event, events: next, localSaved: true, imageCleanup });
+      send(res, 200, { event, events: next, localSaved: true, imageCleanup, reminderSync });
       return;
     }
 
@@ -218,8 +254,9 @@ export default async function handler(req, res) {
       if (url.searchParams.get('all') === '1') {
         const imagesToDelete = imageUrlsFromEvents(events);
         await saveEvents([]);
+        const reminderSync = await safeSyncReminders([], { all: true });
         const imageCleanup = await deleteUnusedImages(imagesToDelete);
-        send(res, 200, { events: [], localDeleted: true, imageCleanup });
+        send(res, 200, { events: [], localDeleted: true, imageCleanup, reminderSync });
         return;
       }
       const id = url.searchParams.get('id');
@@ -230,8 +267,9 @@ export default async function handler(req, res) {
       const removedEvents = events.filter(event => event.id === id);
       const next = events.filter(event => event.id !== id);
       await saveEvents(next);
+      const reminderSync = await safeSyncReminders(next, { eventIds: [id] });
       const imageCleanup = await deleteUnusedImages(imageUrlsNoLongerUsed(removedEvents, next));
-      send(res, 200, { events: next, localDeleted: true, imageCleanup });
+      send(res, 200, { events: next, localDeleted: true, imageCleanup, reminderSync });
       return;
     }
 

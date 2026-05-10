@@ -18,14 +18,14 @@ function verifyAdmin(req, res) {
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
-    send(res, 200, { config: { localOnly: true, googleCalendarSyncRemoved: true } });
+    send(res, 200, { config: { localOnly: true, sharedTasksOnly: true } });
     return;
   }
 
   if (!verifyAdmin(req, res)) return;
 
   if (req.method === 'PUT') {
-    send(res, 200, { config: { localOnly: true, googleCalendarSyncRemoved: true } });
+    send(res, 200, { config: { localOnly: true, sharedTasksOnly: true } });
     return;
   }
 

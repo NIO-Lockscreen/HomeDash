@@ -4,7 +4,6 @@ A Vercel-hosted always-on home organizer with a Surface Pro display mode and a p
 
 ## What changed in this version
 
-- Google Calendar sync has been removed for now.
 - Events/tasks are saved to Vercel Blob only.
 - Repeating tasks are stored as **one master task** with a repeat rule. The app no longer needs to create many copied tasks for weekly/biweekly/yearly repeats.
 - If the server is busy/offline, phone/admin changes are saved locally on the phone first and retried automatically.
@@ -71,3 +70,76 @@ The browser expands those into temporary occurrences for display only. The serve
 When you upload a task image, the admin page tries to detect faces in the browser and saves a simple focus point with the event. The dashboard then uses that focus point for daily, selected, upcoming, and admin thumbnails so faces are less likely to be cropped out.
 
 This is face detection only, not identity recognition. It does not know who the person is. If the browser cannot use the FaceDetector API, the app falls back to a portrait-friendly crop. Existing images need to be re-uploaded or edited with a new image to get saved face focus data.
+
+## Email reminders
+
+This version adds email reminders without adding a separate database.
+
+### What is included
+
+- The task editor has a **Send email reminder** checkbox.
+- You can add family email addresses in the task editor.
+- Saved email addresses are stored in the admin browser/phone with `localStorage`.
+- The selected recipients are saved onto the task in Vercel Blob.
+- The server sends a task-created email through Resend when a new task is created, then schedules the task-day reminder.
+- A daily `/api/reminders-cron` job refreshes the schedule so repeating/future reminders stay covered.
+
+### Required environment variables
+
+Add these in Vercel → Project → Settings → Environment Variables:
+
+```txt
+RESEND_API_KEY=re_your_resend_api_key
+REMINDER_FROM=Home Organizer <reminders@yourdomain.com>
+CRON_SECRET=make-a-long-random-secret
+ORGANIZER_TIME_ZONE=Europe/Oslo
+```
+
+Keep your existing variables too:
+
+```txt
+ADMIN_PIN=your_pin_here
+BLOB_READ_WRITE_TOKEN=created_by_vercel_blob
+```
+
+### About the sender address
+
+Resend requires a verified sending identity/domain for reliable sending. Use your verified domain in `REMINDER_FROM`, for example:
+
+```txt
+REMINDER_FROM=Home Organizer <reminders@reminders.yourdomain.com>
+```
+
+For quick testing, Resend accounts often allow sending to your own verified account address, but family reminders should use a verified domain.
+
+### How reminders work
+
+1. You create or edit a task.
+2. You tick **Send email reminder**.
+3. You select one or more saved email addresses.
+4. The task is saved to Vercel Blob.
+5. The Vercel API sends a task-created email now.
+6. It schedules another reminder for 08:00 on the task day.
+7. If the task starts before 08:00, it schedules the reminder for 12:00 the day before with “Remember this task early tomorrow”.
+8. The daily cron checks all tasks again and schedules upcoming repeating reminders.
+
+The cron in `vercel.json` runs once per day:
+
+```json
+{
+  "path": "/api/reminders-cron",
+  "schedule": "22 3 * * *"
+}
+```
+
+That works with Vercel Hobby. The exact delivery time is handled by Resend scheduled emails, not by the once-per-day Vercel cron.
+
+### Manual cron test
+
+After deploying, open this URL in your browser, replacing the domain and secret:
+
+```txt
+https://your-project.vercel.app/api/reminders-cron?secret=your_CRON_SECRET
+```
+
+A good response looks like JSON with `ok: true`.
