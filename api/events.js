@@ -248,11 +248,22 @@ export default async function handler(req, res) {
         return;
       }
       const previousEvent = events[index];
+      const wasReminderEnabled = Boolean(previousEvent?.emailReminder?.enabled) && Array.isArray(previousEvent?.emailReminder?.recipients) && previousEvent.emailReminder.recipients.length > 0;
       const event = cleanEvent(payload, previousEvent);
+      const isReminderEnabled = Boolean(event?.emailReminder?.enabled) && Array.isArray(event?.emailReminder?.recipients) && event.emailReminder.recipients.length > 0;
+      const shouldSendCreatedEmailOnEnable = !wasReminderEnabled && isReminderEnabled && !event.emailReminder.creationEmailSentAt;
       events[index] = event;
       const next = sortEvents(events);
       await saveEvents(next);
-      const reminderSync = await safeSyncReminders(next, { eventIds: [event.id] });
+      const reminderSync = await safeSyncReminders(next, { eventIds: [event.id], newEventIds: shouldSendCreatedEmailOnEnable ? [event.id] : [] });
+      if (shouldSendCreatedEmailOnEnable && reminderSync?.createdSentEventIds?.map(String).includes(String(event.id))) {
+        event.emailReminder = { ...(event.emailReminder || {}), creationEmailSentAt: new Date().toISOString() };
+        const savedIndex = next.findIndex(item => String(item.id) === String(event.id));
+        if (savedIndex !== -1) {
+          next[savedIndex] = event;
+          await saveEvents(next);
+        }
+      }
       const imageCleanup = await deleteUnusedImages(imageUrlsNoLongerUsed([previousEvent], next));
       send(res, 200, { event, events: next, localSaved: true, imageCleanup, reminderSync });
       return;

@@ -78,6 +78,99 @@
     .clock-card,
     .weather-card,
     .event-hero,
+
+
+    .email-status-card {
+      border: 1px solid rgba(154,128,98,.18);
+      background: rgba(255,250,242,.72);
+      border-radius: 20px;
+      padding: 12px 14px;
+      display: grid;
+      gap: 8px;
+      color: var(--ink);
+    }
+
+    .email-status-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 950;
+      letter-spacing: -.02em;
+    }
+
+    .email-pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 11px;
+      font-weight: 950;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      background: rgba(106, 130, 106, .14);
+      color: #4f6b51;
+      white-space: nowrap;
+    }
+
+    .email-pill.off {
+      background: rgba(142, 126, 108, .14);
+      color: #827466;
+    }
+
+    .email-status-lines {
+      display: grid;
+      gap: 4px;
+      color: rgba(47,43,39,.78);
+      font-size: clamp(12px, .9vw, 14px);
+      font-weight: 750;
+      line-height: 1.35;
+    }
+
+    .email-add-box {
+      display: grid;
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    .email-add-list {
+      display: grid;
+      gap: 6px;
+      max-height: 110px;
+      overflow: auto;
+      padding-right: 3px;
+    }
+
+    .email-add-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 850;
+      color: rgba(47,43,39,.82);
+      font-size: 13px;
+    }
+
+    .email-add-row input[type="checkbox"] { accent-color: var(--ink); }
+
+    .email-add-new {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .email-add-new input {
+      flex: 1 1 190px;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,.72);
+      font: inherit;
+      font-weight: 760;
+      color: var(--ink);
+    }
+
     .upcoming-card {
       background: var(--panel);
       border: 1px solid rgba(255, 255, 255, 0.72);
@@ -3405,6 +3498,128 @@
       return `Email on creation + task-day reminder · ${recipients.join(', ')}`;
     }
 
+    function taskDayReminderDate(event) {
+      const start = parseEventDate(event?.start);
+      if (!start) return null;
+      const remindAt = new Date(start);
+      if (start.getHours() < 8) {
+        remindAt.setDate(remindAt.getDate() - 1);
+        remindAt.setHours(12, 0, 0, 0);
+      } else {
+        remindAt.setHours(8, 0, 0, 0);
+      }
+      return remindAt;
+    }
+
+    function formatReminderDateTime(date) {
+      if (!date || Number.isNaN(date.getTime())) return '';
+      return new Intl.DateTimeFormat(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).format(date);
+    }
+
+    function emailReminderStatusHtml(event, context = 'hero') {
+      const sourceId = event?._sourceId || event?.id || '';
+      const reminder = event?.emailReminder || {};
+      const recipients = Array.isArray(reminder.recipients) ? reminder.recipients.filter(isValidReminderEmail) : [];
+      const enabled = Boolean(reminder.enabled) && recipients.length > 0;
+      const creationSent = Boolean(reminder.creationEmailSentAt);
+      const taskReminderAt = taskDayReminderDate(event);
+      const taskReminderText = taskReminderAt
+        ? (taskReminderAt.getTime() < Date.now()
+          ? `Task-day reminder time has passed (${formatReminderDateTime(taskReminderAt)}).`
+          : `Task-day reminder planned for ${formatReminderDateTime(taskReminderAt)}.`)
+        : 'Task-day reminder time could not be calculated.';
+
+      if (enabled) {
+        return `
+          <div class="email-status-card">
+            <div class="email-status-title">
+              <span>Email reminders</span>
+              <span class="email-pill">On</span>
+            </div>
+            <div class="email-status-lines">
+              <div>Recipients: ${htmlEscape(recipients.join(', '))}</div>
+              <div>${creationSent ? `Task-created email sent ${htmlEscape(formatReminderDateTime(new Date(reminder.creationEmailSentAt)))}` : 'Task-created email will show as sent after the server confirms it.'}</div>
+              <div>${htmlEscape(taskReminderText)}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      const contacts = getStoredReminderEmails();
+      const contactRows = contacts.length
+        ? `<div class="email-add-list">${contacts.map(email => `
+            <label class="email-add-row">
+              <input type="checkbox" data-display-email-recipient value="${htmlEscape(email)}">
+              <span>${htmlEscape(email)}</span>
+            </label>
+          `).join('')}</div>`
+        : '<div class="email-status-lines"><div>No saved email contacts on this device yet.</div></div>';
+
+      return `
+        <div class="email-status-card" data-email-reminder-panel="${htmlEscape(context)}" data-email-source-id="${htmlEscape(sourceId)}">
+          <div class="email-status-title">
+            <span>Email reminders</span>
+            <span class="email-pill off">Off</span>
+          </div>
+          <div class="email-status-lines">
+            <div>Add reminders from this task card. It will send a task-created email now, then the task-day reminder.</div>
+            <div>${htmlEscape(taskReminderText)}</div>
+          </div>
+          <div class="email-add-box">
+            ${contactRows}
+            <div class="email-add-new">
+              <input type="email" data-display-new-email placeholder="Add email address" autocomplete="email">
+              <button class="tiny-btn" type="button" data-display-add-email-reminders="${htmlEscape(sourceId)}">Add reminders</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function recipientsFromDisplayEmailPanel(panel) {
+      if (!panel) return [];
+      const selected = [...panel.querySelectorAll('[data-display-email-recipient]:checked')]
+        .map(input => normalizeReminderEmail(input.value))
+        .filter(isValidReminderEmail);
+      const typed = normalizeReminderEmail(panel.querySelector('[data-display-new-email]')?.value || '');
+      if (typed) {
+        if (!isValidReminderEmail(typed)) throw new Error('Enter a valid email address.');
+        selected.push(typed);
+        saveStoredReminderEmails([...getStoredReminderEmails(), typed]);
+      }
+      return [...new Set(selected)];
+    }
+
+    async function addEmailRemindersFromDisplay(sourceId, trigger) {
+      if (!ensureDisplayActionPin()) return;
+      const source = getSourceEvent(sourceId);
+      if (!source) throw new Error('Task not found.');
+      const panel = trigger?.closest?.('[data-email-reminder-panel]') || document.querySelector(`[data-email-source-id="${CSS.escape(String(sourceId))}"]`);
+      const recipients = recipientsFromDisplayEmailPanel(panel);
+      if (!recipients.length) throw new Error('Choose or enter at least one email address.');
+      const payload = {
+        ...source,
+        emailReminder: {
+          ...(source.emailReminder || {}),
+          enabled: true,
+          recipients,
+        }
+      };
+      await saveEvent(payload);
+      state.heroEventFlipped = true;
+      state.selectedEventFlipped = true;
+      setStatus?.('Email reminders added. The server will send the task-created email and schedule the task-day reminder.');
+      renderAdminEvents();
+      renderDisplay();
+    }
+
 
     function svgData(svg) {
       return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
@@ -3839,6 +4054,7 @@
           <div class="selected-event-kicker">Task details</div>
           <h2 class="hero-back-title">${htmlEscape(event.title)}</h2>
           <div class="hero-back-detail">${htmlEscape(eventDetailsText(event))}</div>
+          ${emailReminderStatusHtml(event, 'hero')}
           <div class="hero-back-actions">
             <button class="tiny-btn done" type="button" data-hero-complete="${htmlEscape(event._instanceId)}">${event._completed ? 'Undo complete' : 'Mark complete'}</button>
             <button class="tiny-btn" type="button" data-hero-edit="${htmlEscape(event._sourceId || event.id)}">Change date / edit</button>
@@ -3889,6 +4105,7 @@
               <div class="selected-event-kicker">Task details</div>
               <h2 class="selected-event-title">${htmlEscape(first.title)}</h2>
               <div class="selected-event-detail">${htmlEscape(details)}</div>
+              ${emailReminderStatusHtml(first, 'selected')}
               <div class="selected-event-actions">
                 <button class="tiny-btn done" type="button" data-display-complete="${htmlEscape(first._instanceId)}">${first._completed ? 'Undo complete' : 'Mark complete'}</button>
                 <button class="tiny-btn" type="button" data-display-edit="${htmlEscape(first._sourceId || first.id)}">Change date / edit</button>
@@ -5827,7 +6044,7 @@ Cancel = choose whether to delete the whole series.`);
         handleHeroBackActionClick(event);
       }, true);
       document.addEventListener('pointerdown', event => {
-        if (event.target.closest?.('[data-hero-complete], [data-hero-edit], [data-hero-delete-instance], [data-hero-close]')) {
+        if (event.target.closest?.('[data-hero-complete], [data-hero-edit], [data-hero-delete-instance], [data-hero-close], [data-display-add-email-reminders]')) {
           event.stopPropagation();
         }
       }, true);
@@ -5883,9 +6100,14 @@ Cancel = choose whether to delete the whole series.`);
           const editId = event.target.closest('[data-hero-edit]')?.dataset.heroEdit;
           const deleteInstanceId = event.target.closest('[data-hero-delete-instance]')?.dataset.heroDeleteInstance;
           const close = event.target.closest('[data-hero-close]');
-          if (completeId || editId || deleteInstanceId || close || event.target.closest('button, input, textarea, select, a')) event.stopPropagation();
+          const addEmail = event.target.closest('[data-display-add-email-reminders]');
+          if (completeId || editId || deleteInstanceId || close || addEmail || event.target.closest('button, input, textarea, select, a')) event.stopPropagation();
 
           try {
+            if (addEmail) {
+              await addEmailRemindersFromDisplay(addEmail.dataset.displayAddEmailReminders, addEmail);
+              return;
+            }
             if (completeId) {
               if (!ensureDisplayActionPin()) return;
               await toggleComplete(completeId);
@@ -5926,10 +6148,15 @@ Cancel = choose whether to delete the whole series.`);
           const editId = event.target.closest('[data-display-edit]')?.dataset.displayEdit;
           const deleteInstanceId = event.target.closest('[data-display-delete-instance]')?.dataset.displayDeleteInstance;
           const close = event.target.closest('[data-selected-close]');
+          const addEmail = event.target.closest('[data-display-add-email-reminders]');
 
-          if (pickId || completeId || editId || deleteInstanceId || close || event.target.closest('button, input, textarea, select, a')) event.stopPropagation();
+          if (pickId || completeId || editId || deleteInstanceId || close || addEmail || event.target.closest('button, input, textarea, select, a')) event.stopPropagation();
 
           try {
+            if (addEmail) {
+              await addEmailRemindersFromDisplay(addEmail.dataset.displayAddEmailReminders, addEmail);
+              return;
+            }
             if (pickId) {
               state.selectedInstanceId = pickId;
               state.selectedEventFlipped = false;
