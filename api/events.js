@@ -75,9 +75,11 @@ function cleanEmailReminder(input = {}, existing = {}) {
     : Array.isArray(existingSource.recipients)
       ? [...new Set(existingSource.recipients.map(cleanEmail).filter(isValidEmail))].slice(0, 12)
       : [];
+  const creationEmailSentAt = String(source.creationEmailSentAt || existingSource.creationEmailSentAt || '').trim();
   return {
     enabled: Boolean(source.enabled) && recipients.length > 0,
-    recipients
+    recipients,
+    creationEmailSentAt: /^\d{4}-\d{2}-\d{2}T/.test(creationEmailSentAt) ? creationEmailSentAt : ''
   };
 }
 
@@ -224,6 +226,14 @@ export default async function handler(req, res) {
       const next = sortEvents(events);
       await saveEvents(next);
       const reminderSync = await safeSyncReminders(next, { eventIds: [event.id], newEventIds: existingIndex === -1 ? [event.id] : [] });
+      if (existingIndex === -1 && reminderSync?.createdSentEventIds?.map(String).includes(String(event.id))) {
+        event.emailReminder = { ...(event.emailReminder || {}), creationEmailSentAt: new Date().toISOString() };
+        const savedIndex = next.findIndex(item => String(item.id) === String(event.id));
+        if (savedIndex !== -1) {
+          next[savedIndex] = event;
+          await saveEvents(next);
+        }
+      }
       const imageCleanup = previousEvent ? await deleteUnusedImages(imageUrlsNoLongerUsed([previousEvent], next)) : { attempted: 0, deleted: 0, failed: 0 };
       send(res, existingIndex === -1 ? 201 : 200, { event, events: next, localSaved: true, idempotent: existingIndex !== -1, imageCleanup, reminderSync });
       return;

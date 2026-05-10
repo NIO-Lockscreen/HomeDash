@@ -238,7 +238,7 @@ function buildDesiredReminders(events, options = {}) {
     const reminder = getReminderConfig(event);
     if (!reminder.enabled) continue;
 
-    if (newEventIdSet.has(String(event.id))) {
+    if (newEventIdSet.has(String(event.id)) && !reminder.creationEmailSentAt) {
       addDesiredReminder(desired, {
         key: creationReminderKey(event.id, reminder),
         type: 'created',
@@ -261,7 +261,9 @@ function buildDesiredReminders(events, options = {}) {
       const reminderTime = dailyReminderTimeForOccurrence(new Date(occurrence.start));
       const remindAtMs = reminderTime.remindAt.getTime();
       if (!Number.isFinite(remindAtMs)) continue;
-      if (remindAtMs < now.getTime() - 5 * 60 * 1000) continue;
+      // Do not send task-day reminders immediately when the planned reminder time has already passed.
+      // This avoids a new task causing both the creation email and a late task-day email at the same time.
+      if (remindAtMs <= now.getTime() + 60 * 1000) continue;
       if (remindAtMs > scheduleUntil) continue;
 
       const key = reminderKey(event.id, occurrence, reminder, reminderTime.variant);
@@ -451,6 +453,7 @@ export async function syncReminderSchedulesForEvents(events, options = {}) {
     cancelled: 0,
     skipped: 0,
     errors: [],
+    createdSentEventIds: [],
   };
 
   for (const [key, existing] of currentEntries) {
@@ -482,6 +485,7 @@ export async function syncReminderSchedulesForEvents(events, options = {}) {
       };
       if (sent.sentImmediately) result.sentNow += 1;
       else result.scheduled += 1;
+      if (reminder.type === 'created') result.createdSentEventIds.push(String(reminder.eventId));
     } catch (error) {
       result.errors.push({ key, error: error.message });
     }

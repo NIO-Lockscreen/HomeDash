@@ -2692,6 +2692,10 @@
       pointer-events: none;
     }
 
+    @media (max-width: 780px), ((pointer: coarse) and (max-height: 520px)) {
+      .motion-dimmer-toggle { display: none !important; }
+    }
+
   </style>
 </head>
 <body>
@@ -3576,6 +3580,16 @@
       `;
     }
 
+    function handleDailyCalendarDayPick(event) {
+      const dayButton = event.target.closest?.('[data-daily-calendar-day]');
+      if (!dayButton || dayButton.disabled) return false;
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      event.stopImmediatePropagation?.();
+      selectDayPreview(dayButton.dataset.dailyCalendarDay);
+      return true;
+    }
+
     function hideSelectedEventPanel() {
       els.weatherCard.classList.remove('show-selected-event');
       if (els.selectedEventPanel) els.selectedEventPanel.innerHTML = '';
@@ -4074,7 +4088,8 @@
           try {
             const data = await performServerWrite(op);
             if (data.reminderSync) state.lastReminderSync = data.reminderSync;
-            removeQueuedWrite(op.opId);
+            const serverHasSavedEvent = !op.event || !Array.isArray(data.events) || data.events.some(event => String(event.id) === String(op.event.id));
+            if (serverHasSavedEvent) removeQueuedWrite(op.opId);
             if (Array.isArray(data.events)) {
               state.serverEvents = data.events;
               refreshEventsFromServerEvents();
@@ -5280,7 +5295,7 @@ Cancel = choose whether to delete the whole series.`);
         if (adminMode) return;
         // Do not let the day buttons inside the clock card trigger "return to today".
         // Only the actual clock/date area should use this shortcut.
-        if (event.target?.closest?.('.week-view, .week-day')) return;
+        if (event.target?.closest?.('.week-view, .week-day, .daily-calendar-panel, .daily-calendar-day')) return;
         const now = Date.now();
         const isDoublePress = now - lastPress < 420;
 
@@ -5684,6 +5699,11 @@ Cancel = choose whether to delete the whole series.`);
     }
 
     function bindMotionDimmer() {
+      if (isPhoneLike) {
+        motionDimmer.enabled = false;
+        document.body.classList.remove('motion-dimmed');
+        return;
+      }
       motionDimmer.overlay = document.createElement('div');
       motionDimmer.overlay.className = 'motion-dim-overlay';
       document.body.appendChild(motionDimmer.overlay);
@@ -5731,16 +5751,19 @@ Cancel = choose whether to delete the whole series.`);
         });
       }
       if (els.dailyCalendarPanel) {
+        els.dailyCalendarPanel.addEventListener('pointerdown', event => {
+          if (event.target.closest?.('[data-daily-calendar-day]')) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation?.();
+          }
+        }, true);
         els.dailyCalendarPanel.addEventListener('pointerup', event => {
-          if (event.target.closest('[data-daily-calendar-day]')) event.stopPropagation();
-        });
+          handleDailyCalendarDayPick(event);
+        }, true);
         els.dailyCalendarPanel.addEventListener('click', event => {
-          const dayButton = event.target.closest('[data-daily-calendar-day]');
-          if (!dayButton || dayButton.disabled) return;
-          event.preventDefault();
-          event.stopPropagation();
-          selectDayPreview(dayButton.dataset.dailyCalendarDay);
-        });
+          handleDailyCalendarDayPick(event);
+        }, true);
       }
       if (els.upcomingPager) {
         els.upcomingPager.addEventListener('click', event => {
