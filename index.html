@@ -2060,6 +2060,232 @@
       .task-action-buttons { grid-template-columns: 1fr; }
       .task-action-buttons .wide { grid-column: auto; }
     }
+
+
+    .month-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 49;
+      display: grid;
+      place-items: center;
+      padding: clamp(12px, 2.4vmin, 28px);
+      background: rgba(29, 25, 21, 0.28);
+      backdrop-filter: blur(18px);
+    }
+
+    .month-overlay.hidden { display: none; }
+
+    .month-modal {
+      width: min(980px, 100%);
+      max-height: min(920px, calc(100svh - 24px));
+      overflow: auto;
+      background: rgba(255, 252, 247, 0.96);
+      border: 1px solid rgba(255,255,255,0.78);
+      border-radius: 32px;
+      box-shadow: 0 30px 100px rgba(47,43,39,0.25);
+      padding: clamp(16px, 2.5vw, 28px);
+      animation: sheetUp .24s ease both;
+    }
+
+    .month-head {
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .month-nav-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.82);
+      color: var(--ink);
+      font-size: 28px;
+      line-height: 1;
+      font-weight: 950;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(70,58,44,.08);
+    }
+
+    .month-title {
+      margin: 0;
+      text-align: center;
+      font-family: var(--serif);
+      font-size: clamp(34px, 6vw, 58px);
+      line-height: .96;
+      letter-spacing: -0.055em;
+    }
+
+    .month-subtitle {
+      margin-top: 8px;
+      text-align: center;
+      color: var(--muted);
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
+    .month-weekdays,
+    .month-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .month-weekday {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 950;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+      padding-bottom: 3px;
+    }
+
+    .month-grid { margin-top: 8px; }
+
+    .month-day {
+      min-height: clamp(72px, 9.5vmin, 108px);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255,255,255,.62);
+      color: var(--ink);
+      padding: 10px;
+      text-align: left;
+      display: grid;
+      align-content: start;
+      gap: 6px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: transform .16s ease, border-color .16s ease, background .16s ease;
+    }
+
+    .month-day:active { transform: scale(.985); }
+    .month-day.outside-month { opacity: .42; }
+    .month-day.today { border-color: rgba(47,43,39,.34); box-shadow: inset 0 0 0 2px rgba(47,43,39,.08); }
+    .month-day.with-daughter {
+      background: linear-gradient(135deg, rgba(158, 214, 245, .38), rgba(221, 241, 252, .82));
+      border-color: rgba(83, 162, 207, .35);
+    }
+    .month-day.selected-period {
+      border-color: rgba(42, 126, 176, .62);
+      box-shadow: inset 0 0 0 2px rgba(42, 126, 176, .16);
+    }
+
+    .month-day-number {
+      font-size: clamp(18px, 2.2vmin, 26px);
+      font-weight: 950;
+      line-height: 1;
+    }
+
+    .month-day-label {
+      width: fit-content;
+      max-width: 100%;
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: rgba(255,255,255,.72);
+      color: #346f95;
+      font-size: 11px;
+      font-weight: 950;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .month-day-events {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-top: auto;
+      align-self: end;
+    }
+
+    .month-event-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: rgba(47,43,39,.38);
+    }
+
+    .daughter-editor {
+      margin-top: 16px;
+      border: 1px solid rgba(83, 162, 207, .26);
+      border-radius: 24px;
+      padding: 14px;
+      background: rgba(223, 242, 252, .58);
+      display: grid;
+      gap: 12px;
+    }
+
+    .daughter-editor.hidden { display: none; }
+
+    .daughter-editor-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .daughter-editor-title {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 950;
+      letter-spacing: -.03em;
+    }
+
+    .daughter-editor-help,
+    .daughter-period-status {
+      color: rgba(47,43,39,.7);
+      font-size: 13px;
+      font-weight: 780;
+      line-height: 1.35;
+    }
+
+    .daughter-date-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .daughter-date-row label {
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      font-weight: 950;
+    }
+
+    .daughter-date-row input {
+      margin-top: 6px;
+      width: 100%;
+      padding: 12px 13px;
+      border-radius: 16px;
+      border: 1px solid rgba(83, 162, 207, .28);
+      background: rgba(255,255,255,.86);
+      color: var(--ink);
+      font: inherit;
+      font-weight: 850;
+      outline: none;
+    }
+
+    .month-actions {
+      margin-top: 16px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 680px) {
+      .month-head { grid-template-columns: auto 1fr auto; }
+      .month-head .config-close { grid-column: 1 / -1; justify-self: end; }
+      .month-day { min-height: 62px; border-radius: 16px; padding: 8px; }
+      .month-day-label { display: none; }
+      .daughter-date-row { grid-template-columns: 1fr; }
+    }
+
     .config-overlay {
       position: fixed;
       inset: 0;
@@ -3132,12 +3358,67 @@
 
 
 
+  <div id="monthOverlay" class="month-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="monthTitle">
+    <section class="month-modal">
+      <div class="month-head">
+        <button id="monthPrevBtn" class="month-nav-btn" type="button" aria-label="Previous month">‹</button>
+        <div>
+          <h2 id="monthTitle" class="month-title">Month</h2>
+          <div id="monthSubtitle" class="month-subtitle">Blue days show when your daughter is with you. Tap a blue period to adjust it.</div>
+        </div>
+        <button id="monthNextBtn" class="month-nav-btn" type="button" aria-label="Next month">›</button>
+        <button id="monthCloseBtn" class="config-close" type="button" aria-label="Close month view">×</button>
+      </div>
+
+      <div class="month-weekdays" aria-hidden="true">
+        <div class="month-weekday">Mon</div>
+        <div class="month-weekday">Tue</div>
+        <div class="month-weekday">Wed</div>
+        <div class="month-weekday">Thu</div>
+        <div class="month-weekday">Fri</div>
+        <div class="month-weekday">Sat</div>
+        <div class="month-weekday">Sun</div>
+      </div>
+      <div id="monthGrid" class="month-grid" aria-label="Month calendar"></div>
+
+      <section id="daughterPeriodEditor" class="daughter-editor hidden" aria-live="polite">
+        <div class="daughter-editor-head">
+          <div>
+            <h3 id="daughterPeriodTitle" class="daughter-editor-title">Daughter period</h3>
+            <div id="daughterPeriodHelp" class="daughter-editor-help">Adjust the start or end date for this one period.</div>
+          </div>
+        </div>
+        <div class="daughter-date-row">
+          <label>
+            Starts
+            <input id="daughterStartInput" type="date" />
+          </label>
+          <label>
+            Ends, inclusive
+            <input id="daughterEndInput" type="date" />
+          </label>
+        </div>
+        <div class="button-row">
+          <button id="daughterSaveBtn" class="btn" type="button">Save this period</button>
+          <button id="daughterResetBtn" class="btn secondary" type="button">Reset to every other Wednesday</button>
+        </div>
+        <div id="daughterPeriodStatus" class="daughter-period-status"></div>
+      </section>
+
+      <div class="month-actions">
+        <button id="monthTodayBtn" class="btn secondary" type="button">Current month</button>
+        <button id="monthSettingsBtn" class="btn secondary" type="button">Settings</button>
+      </div>
+    </section>
+  </div>
+
+
   <div id="configOverlay" class="config-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="configTitle">
     <section class="config-modal">
       <div class="config-head">
         <div>
           <h2 id="configTitle" class="config-title">Organizer<br>Config</h2>
-          <div class="config-subtitle">Hold anywhere on the screen to open this menu. Configure local dashboard settings here.</div>
+          <div class="config-subtitle">Opened from the Settings button inside Month view. Configure local dashboard settings here.</div>
         </div>
         <button id="configCloseBtn" class="config-close" type="button" aria-label="Close config">×</button>
       </div>
@@ -3237,6 +3518,10 @@
     const LOCAL_EVENT_MIRROR_MIN_HOLD_MS = 2 * 60 * 1000;
     const LOCAL_EVENT_ID_PREFIX = 'local-';
     const LAST_WRITE_SIGNAL_KEY = 'homeOrganizerLastWrite';
+    const DAUGHTER_PERIOD_OVERRIDES_KEY = 'homeOrganizerDaughterPeriodOverridesV1';
+    const DAUGHTER_ANCHOR_START_KEY = '2026-05-13';
+    const DAUGHTER_ANCHOR_END_KEY = '2026-05-20';
+    const DAUGHTER_PERIOD_INTERVAL_DAYS = 14;
     const HARD_CODED_REMINDER_CONTACTS = [
       { key: 'therese', name: 'Therese', email: 'theresesaksgard@hotmail.com' },
       { key: 'thomas', name: 'Thomas', email: 'diemetrix@gmail.com' }
@@ -3272,6 +3557,9 @@
       },
       longPressTimer: null,
       longPressOpened: false,
+      monthViewDate: new Date(),
+      selectedDaughterPeriodKey: null,
+      daughterPeriodOverrides: {},
       weatherFocusDate: null,
       dangerHoldTimer: null,
       dangerHoldOpened: false,
@@ -3344,6 +3632,23 @@
       adminEvents: document.getElementById('adminEvents'),
       taskActionOverlay: document.getElementById('taskActionOverlay'),
       taskActionContent: document.getElementById('taskActionContent'),
+      monthOverlay: document.getElementById('monthOverlay'),
+      monthCloseBtn: document.getElementById('monthCloseBtn'),
+      monthTitle: document.getElementById('monthTitle'),
+      monthSubtitle: document.getElementById('monthSubtitle'),
+      monthPrevBtn: document.getElementById('monthPrevBtn'),
+      monthNextBtn: document.getElementById('monthNextBtn'),
+      monthTodayBtn: document.getElementById('monthTodayBtn'),
+      monthSettingsBtn: document.getElementById('monthSettingsBtn'),
+      monthGrid: document.getElementById('monthGrid'),
+      daughterPeriodEditor: document.getElementById('daughterPeriodEditor'),
+      daughterPeriodTitle: document.getElementById('daughterPeriodTitle'),
+      daughterPeriodHelp: document.getElementById('daughterPeriodHelp'),
+      daughterStartInput: document.getElementById('daughterStartInput'),
+      daughterEndInput: document.getElementById('daughterEndInput'),
+      daughterSaveBtn: document.getElementById('daughterSaveBtn'),
+      daughterResetBtn: document.getElementById('daughterResetBtn'),
+      daughterPeriodStatus: document.getElementById('daughterPeriodStatus'),
       configOverlay: document.getElementById('configOverlay'),
       configCloseBtn: document.getElementById('configCloseBtn'),
       configPinInput: document.getElementById('configPinInput'),
@@ -3436,6 +3741,262 @@
     function todayStart() {
       const now = new Date();
       return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }
+
+
+    function startOfLocalDay(date) {
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    }
+
+    function addLocalDays(date, days) {
+      const next = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      next.setDate(next.getDate() + days);
+      return next;
+    }
+
+    function localDaysBetween(start, end) {
+      const a = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+      const b = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+      return Math.round((b - a) / 86400000);
+    }
+
+    function monthStart(date) {
+      return new Date(date.getFullYear(), date.getMonth(), 1);
+    }
+
+    function monthEnd(date) {
+      return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    }
+
+    function loadDaughterPeriodOverrides() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(DAUGHTER_PERIOD_OVERRIDES_KEY) || '{}');
+        state.daughterPeriodOverrides = parsed && typeof parsed === 'object' ? parsed : {};
+      } catch {
+        state.daughterPeriodOverrides = {};
+      }
+    }
+
+    function saveDaughterPeriodOverrides() {
+      localStorage.setItem(DAUGHTER_PERIOD_OVERRIDES_KEY, JSON.stringify(state.daughterPeriodOverrides || {}));
+    }
+
+    function isValidDateKey(key) {
+      const date = dateFromKey(key);
+      return Boolean(date && dateKey(date) === key);
+    }
+
+    function buildDaughterPeriod(index) {
+      const anchorStart = dateFromKey(DAUGHTER_ANCHOR_START_KEY);
+      const anchorEnd = dateFromKey(DAUGHTER_ANCHOR_END_KEY);
+      const defaultStart = addLocalDays(anchorStart, index * DAUGHTER_PERIOD_INTERVAL_DAYS);
+      const defaultEnd = addLocalDays(anchorEnd, index * DAUGHTER_PERIOD_INTERVAL_DAYS);
+      const periodKey = dateKey(defaultStart);
+      const override = state.daughterPeriodOverrides?.[periodKey] || null;
+      let start = override?.start && isValidDateKey(override.start) ? dateFromKey(override.start) : defaultStart;
+      let end = override?.end && isValidDateKey(override.end) ? dateFromKey(override.end) : defaultEnd;
+      if (end < start) {
+        const tmp = start;
+        start = end;
+        end = tmp;
+      }
+      return {
+        index,
+        periodKey,
+        defaultStart,
+        defaultEnd,
+        start: startOfLocalDay(start),
+        end: startOfLocalDay(end),
+        customized: Boolean(override)
+      };
+    }
+
+    function daughterPeriodsForRange(rangeStart, rangeEnd) {
+      const anchorStart = dateFromKey(DAUGHTER_ANCHOR_START_KEY);
+      const anchorEnd = dateFromKey(DAUGHTER_ANCHOR_END_KEY);
+      const startIndex = Math.floor(localDaysBetween(anchorEnd, rangeStart) / DAUGHTER_PERIOD_INTERVAL_DAYS) - 3;
+      const endIndex = Math.ceil(localDaysBetween(anchorStart, rangeEnd) / DAUGHTER_PERIOD_INTERVAL_DAYS) + 3;
+      const periods = [];
+      for (let index = startIndex; index <= endIndex; index += 1) {
+        const period = buildDaughterPeriod(index);
+        if (period.end >= rangeStart && period.start <= rangeEnd) periods.push(period);
+      }
+      return periods;
+    }
+
+    function daughterPeriodForDate(date) {
+      const day = startOfLocalDay(date);
+      const periods = daughterPeriodsForRange(addLocalDays(day, -20), addLocalDays(day, 20));
+      return periods.find(period => day >= period.start && day <= period.end) || null;
+    }
+
+    function daughterPeriodByKey(periodKey) {
+      const anchorStart = dateFromKey(DAUGHTER_ANCHOR_START_KEY);
+      const periodStart = dateFromKey(periodKey);
+      if (!anchorStart || !periodStart) return null;
+      const index = Math.round(localDaysBetween(anchorStart, periodStart) / DAUGHTER_PERIOD_INTERVAL_DAYS);
+      return buildDaughterPeriod(index);
+    }
+
+    function formatPeriodDate(date) {
+      return new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' }).format(date);
+    }
+
+    function renderDaughterPeriodEditor(period) {
+      if (!els.daughterPeriodEditor) return;
+      if (!period) {
+        els.daughterPeriodEditor.classList.add('hidden');
+        return;
+      }
+      state.selectedDaughterPeriodKey = period.periodKey;
+      els.daughterPeriodEditor.classList.remove('hidden');
+      if (els.daughterPeriodTitle) {
+        els.daughterPeriodTitle.textContent = `Daughter period · ${formatPeriodDate(period.start)} – ${formatPeriodDate(period.end)}`;
+      }
+      if (els.daughterPeriodHelp) {
+        els.daughterPeriodHelp.textContent = period.customized
+          ? 'This period has custom dates. Save again to change it, or reset to the every-other-week pattern.'
+          : 'This is generated from the every-other-week Wednesday-to-Wednesday pattern. Change only this period if needed.';
+      }
+      if (els.daughterStartInput) els.daughterStartInput.value = dateKey(period.start);
+      if (els.daughterEndInput) els.daughterEndInput.value = dateKey(period.end);
+      if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = period.customized ? 'Custom period saved on this device.' : 'Default alternating period.';
+    }
+
+    function renderMonthView() {
+      if (!els.monthOverlay || !els.monthGrid) return;
+      const viewDate = state.monthViewDate || new Date();
+      const firstOfMonth = monthStart(viewDate);
+      const lastOfMonth = monthEnd(viewDate);
+      const firstGridDay = addLocalDays(firstOfMonth, -((firstOfMonth.getDay() + 6) % 7));
+      const lastGridDay = addLocalDays(firstGridDay, 41);
+      const periods = daughterPeriodsForRange(firstGridDay, lastGridDay);
+      const todayKey = dateKey(new Date());
+      const selectedKey = state.selectedDaughterPeriodKey;
+      const monthTitle = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(firstOfMonth);
+      if (els.monthTitle) els.monthTitle.textContent = monthTitle;
+      if (els.monthSubtitle) {
+        els.monthSubtitle.textContent = `Blue tint = daughter days. Current base pattern starts ${formatPeriodDate(dateFromKey(DAUGHTER_ANCHOR_START_KEY))} and ends ${formatPeriodDate(dateFromKey(DAUGHTER_ANCHOR_END_KEY))}, then repeats every other week.`;
+      }
+
+      const html = [];
+      for (let i = 0; i < 42; i += 1) {
+        const day = addLocalDays(firstGridDay, i);
+        const key = dateKey(day);
+        const period = periods.find(candidate => day >= candidate.start && day <= candidate.end);
+        const dayEvents = eventsForDayKey(key).slice(0, 4);
+        const classes = ['month-day'];
+        if (day.getMonth() !== firstOfMonth.getMonth()) classes.push('outside-month');
+        if (key === todayKey) classes.push('today');
+        if (period) classes.push('with-daughter');
+        if (period && period.periodKey === selectedKey) classes.push('selected-period');
+        const label = period
+          ? `<div class="month-day-label">Daughter${period.customized ? ' · custom' : ''}</div>`
+          : '';
+        const dots = dayEvents.length
+          ? `<div class="month-day-events">${dayEvents.map(() => '<span class="month-event-dot"></span>').join('')}</div>`
+          : '';
+        html.push(`
+          <button class="${classes.join(' ')}" type="button" data-month-day="${key}" ${period ? `data-daughter-period="${period.periodKey}"` : ''} aria-label="${htmlEscape(formatPeriodDate(day))}${period ? ', daughter day' : ''}">
+            <span class="month-day-number">${day.getDate()}</span>
+            ${label}
+            ${dots}
+          </button>
+        `);
+      }
+      els.monthGrid.innerHTML = html.join('');
+      if (selectedKey) renderDaughterPeriodEditor(daughterPeriodByKey(selectedKey));
+    }
+
+    function openMonthView(resetToCurrent = true) {
+      if (!els.monthOverlay) return;
+      if (resetToCurrent) state.monthViewDate = new Date();
+      loadDaughterPeriodOverrides();
+      renderMonthView();
+      els.monthOverlay.classList.remove('hidden');
+      document.body.classList.add('month-open');
+    }
+
+    function closeMonthView() {
+      if (!els.monthOverlay) return;
+      els.monthOverlay.classList.add('hidden');
+      document.body.classList.remove('month-open');
+      state.selectedDaughterPeriodKey = null;
+    }
+
+    function saveSelectedDaughterPeriod() {
+      const periodKey = state.selectedDaughterPeriodKey;
+      if (!periodKey) return;
+      const start = els.daughterStartInput?.value || '';
+      const end = els.daughterEndInput?.value || '';
+      if (!isValidDateKey(start) || !isValidDateKey(end)) {
+        if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'Choose both a valid start date and end date.';
+        return;
+      }
+      if (dateFromKey(end) < dateFromKey(start)) {
+        if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'End date must be the same day or after the start date.';
+        return;
+      }
+      state.daughterPeriodOverrides[periodKey] = { start, end };
+      saveDaughterPeriodOverrides();
+      renderMonthView();
+      if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'Saved this period on this device.';
+    }
+
+    function resetSelectedDaughterPeriod() {
+      const periodKey = state.selectedDaughterPeriodKey;
+      if (!periodKey) return;
+      delete state.daughterPeriodOverrides[periodKey];
+      saveDaughterPeriodOverrides();
+      renderMonthView();
+      if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'Reset to the normal every-other-week pattern.';
+    }
+
+    function bindMonthView() {
+      if (!els.monthOverlay) return;
+      loadDaughterPeriodOverrides();
+      els.monthCloseBtn?.addEventListener('click', closeMonthView);
+      els.monthOverlay.addEventListener('click', event => {
+        if (event.target === els.monthOverlay) closeMonthView();
+      });
+      els.monthPrevBtn?.addEventListener('click', () => {
+        state.monthViewDate = new Date(state.monthViewDate.getFullYear(), state.monthViewDate.getMonth() - 1, 1);
+        state.selectedDaughterPeriodKey = null;
+        renderMonthView();
+      });
+      els.monthNextBtn?.addEventListener('click', () => {
+        state.monthViewDate = new Date(state.monthViewDate.getFullYear(), state.monthViewDate.getMonth() + 1, 1);
+        state.selectedDaughterPeriodKey = null;
+        renderMonthView();
+      });
+      els.monthTodayBtn?.addEventListener('click', () => {
+        state.monthViewDate = new Date();
+        state.selectedDaughterPeriodKey = null;
+        renderMonthView();
+      });
+      els.monthSettingsBtn?.addEventListener('click', () => {
+        openConfigMenu();
+      });
+      els.monthGrid?.addEventListener('click', event => {
+        const button = event.target.closest('[data-month-day]');
+        if (!button) return;
+        const day = dateFromKey(button.dataset.monthDay);
+        const period = day ? daughterPeriodForDate(day) : null;
+        if (period) {
+          renderDaughterPeriodEditor(period);
+          renderMonthView();
+        } else {
+          state.selectedDaughterPeriodKey = null;
+          renderDaughterPeriodEditor(null);
+          renderMonthView();
+          if (els.monthSubtitle) els.monthSubtitle.textContent = 'That day is not inside a daughter period. Tap a blue day to adjust one period.';
+        }
+      });
+      els.daughterSaveBtn?.addEventListener('click', saveSelectedDaughterPeriod);
+      els.daughterResetBtn?.addEventListener('click', resetSelectedDaughterPeriod);
+      window.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !els.monthOverlay.classList.contains('hidden')) closeMonthView();
+      });
     }
 
     function parseEventDate(value) {
@@ -5705,12 +6266,13 @@
       });
 
       const startHold = event => {
-        if (event.target.closest?.('.config-modal, input, textarea, button, select, a')) return;
+        if (event.target.closest?.('.month-modal, .config-modal, .weather-modal, .danger-modal, .task-action-sheet, input, textarea, button, select, a')) return;
+        if (els.monthOverlay && !els.monthOverlay.classList.contains('hidden')) return;
         state.longPressOpened = false;
         clearTimeout(state.longPressTimer);
         state.longPressTimer = setTimeout(() => {
           state.longPressOpened = true;
-          openConfigMenu();
+          openMonthView(true);
         }, 850);
       };
       const cancelHold = () => {
@@ -6782,6 +7344,7 @@ Cancel = choose whether to delete the whole series.`);
       setMode();
       window.addEventListener('resize', () => { fitKioskToScreen(); if (!adminMode) renderDisplay(); });
       window.addEventListener('orientationchange', () => setTimeout(fitKioskToScreen, 250));
+      bindMonthView();
       bindConfigMenu();
       bindWeatherOverlay();
       bindDangerMenu();
