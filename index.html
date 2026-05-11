@@ -1173,6 +1173,29 @@
       text-align: center;
     }
 
+    .upcoming-load-hidden {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.78);
+      color: var(--ink);
+      min-height: 34px;
+      padding: 0 12px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 950;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      box-shadow: 0 8px 16px rgba(70,58,44,0.06);
+    }
+
+    .upcoming-load-hidden:hover,
+    .upcoming-load-hidden:focus-visible {
+      outline: none;
+      transform: translateY(-1px);
+      box-shadow: 0 12px 24px rgba(70,58,44,.12);
+    }
+
 
     .section-title {
       margin: 0 0 14px;
@@ -3236,6 +3259,8 @@
       dailyCalendarMode: false,
       dailyHomeTimer: null,
       upcomingPage: 0,
+      hiddenRepeatingTasksVisibleUntil: 0,
+      hiddenRepeatingTasksTimer: null,
       selectedEventFlipped: false,
       heroEventFlipped: false,
       flipBackTimer: null,
@@ -5067,13 +5092,53 @@
       return `--image-focus-x:${x}%;--image-focus-y:${y}%;--image-scale:${scale};`;
     }
 
+    function hiddenRepeatingTasksVisible() {
+      return Number(state.hiddenRepeatingTasksVisibleUntil || 0) > Date.now();
+    }
+
+    function scheduleHiddenRepeatingTasksHide() {
+      if (state.hiddenRepeatingTasksTimer) {
+        clearTimeout(state.hiddenRepeatingTasksTimer);
+        state.hiddenRepeatingTasksTimer = null;
+      }
+      const remaining = Number(state.hiddenRepeatingTasksVisibleUntil || 0) - Date.now();
+      if (remaining > 0) {
+        state.hiddenRepeatingTasksTimer = setTimeout(() => {
+          state.hiddenRepeatingTasksVisibleUntil = 0;
+          state.upcomingPage = 0;
+          renderDisplay();
+        }, Math.min(remaining, 5 * 60 * 1000 + 1000));
+      }
+    }
+
+    function isHiddenFutureRepeatingOccurrence(event, cutoff = endOfNextMonth(new Date())) {
+      if (!event || !event._isRecurring) return false;
+      const occurrenceDate = event.date instanceof Date ? event.date : new Date(event.start);
+      if (Number.isNaN(occurrenceDate.getTime())) return false;
+      return occurrenceDate > cutoff;
+    }
+
+    function showHiddenRepeatingTasksTemporarily() {
+      state.hiddenRepeatingTasksVisibleUntil = Date.now() + 5 * 60 * 1000;
+      scheduleHiddenRepeatingTasksHide();
+      renderDisplay();
+    }
+
     function getDisplayEvents() {
       const now = new Date();
       // Daily view should keep showing today's tasks for the full calendar day.
       // Do not drop a 15:00 task just because the current time is 19:23.
       const floor = todayStart();
       const end = new Date(now.getTime() + 90 * 86400000);
-      const events = expandEventsInRange(floor, end, { includeCompleted: false });
+      const expandedEvents = expandEventsInRange(floor, end, { includeCompleted: false });
+
+      const repeatCutoff = endOfNextMonth(now);
+      const showHiddenRepeats = hiddenRepeatingTasksVisible();
+      const hiddenRepeats = expandedEvents.filter(event => isHiddenFutureRepeatingOccurrence(event, repeatCutoff));
+      const events = showHiddenRepeats
+        ? expandedEvents
+        : expandedEvents.filter(event => !isHiddenFutureRepeatingOccurrence(event, repeatCutoff));
+
       if (state.selectedInstanceId && !events.some(event => event._instanceId === state.selectedInstanceId)) state.selectedInstanceId = null;
 
       const todays = events.filter(event => sameDay(event.date, now) && !event._completed).sort((a, b) => new Date(a.start) - new Date(b.start));
@@ -5082,7 +5147,6 @@
       // If nothing is featured today, fall back to the spacious no-daily layout.
       const daily = featured || null;
       const selected = state.selectedInstanceId ? events.find(event => event._instanceId === state.selectedInstanceId) : null;
-      const selectedIsToday = selected && sameDay(selected.date || new Date(selected.start), now);
       const main = selected || daily;
       if (!selected && daily && todays.length > 1 && !state.todayCycleTimer) state.selectedInstanceId = daily._instanceId;
       const allUpcoming = events.filter(event => !main || event._instanceId !== main._instanceId);
@@ -5091,29 +5155,47 @@
       if (state.upcomingPage > maxUpcomingPage) state.upcomingPage = maxUpcomingPage;
       const startIndex = state.upcomingPage * upcomingLimit;
       const upcoming = allUpcoming.slice(startIndex, startIndex + upcomingLimit);
-      return { daily, main, upcoming, allUpcomingCount: allUpcoming.length, upcomingPage: state.upcomingPage, maxUpcomingPage, upcomingLimit };
+      return {
+        daily,
+        main,
+        upcoming,
+        allUpcomingCount: allUpcoming.length,
+        upcomingPage: state.upcomingPage,
+        maxUpcomingPage,
+        upcomingLimit,
+        hiddenRepeatsCount: showHiddenRepeats ? 0 : hiddenRepeats.length,
+        hiddenRepeatsVisible: showHiddenRepeats
+      };
     }
 
 
 
-    function renderUpcomingPager(total, page, maxPage, upcomingLimit = getUpcomingDisplayLimit()) {
+    function renderUpcomingPager(total, page, maxPage, upcomingLimit = getUpcomingDisplayLimit(), hiddenRepeatsCount = 0, hiddenRepeatsVisible = false) {
       if (!els.upcomingPager) return;
-      if (total <= upcomingLimit) {
+      const showLoadHiddenButton = hiddenRepeatsCount > 0 && !hiddenRepeatsVisible && page >= maxPage;
+      if (total <= upcomingLimit && !showLoadHiddenButton) {
         els.upcomingPager.innerHTML = '';
         return;
       }
-      const currentStart = page * upcomingLimit + 1;
-      const currentEnd = Math.min(total, currentStart + upcomingLimit - 1);
+      const currentStart = total ? page * upcomingLimit + 1 : 0;
+      const currentEnd = total ? Math.min(total, currentStart + upcomingLimit - 1) : 0;
+      const pageCount = total
+        ? `<span class="upcoming-page-count">${currentStart}-${currentEnd} / ${total}</span>`
+        : `<span class="upcoming-page-count">0 / 0</span>`;
+      const loadHiddenButton = showLoadHiddenButton
+        ? `<button class="upcoming-load-hidden" type="button" data-load-hidden-repeats>Load hidden repeats · ${hiddenRepeatsCount}</button>`
+        : '';
       els.upcomingPager.innerHTML = `
         <button class="upcoming-arrow" type="button" data-upcoming-page="prev" ${page <= 0 ? 'disabled' : ''} aria-label="Previous upcoming tasks">‹</button>
-        <span class="upcoming-page-count">${currentStart}-${currentEnd} / ${total}</span>
+        ${pageCount}
         <button class="upcoming-arrow" type="button" data-upcoming-page="next" ${page >= maxPage ? 'disabled' : ''} aria-label="Next upcoming tasks">›</button>
+        ${loadHiddenButton}
       `;
     }
 
     function renderDisplay() {
       if (adminMode) return;
-      const { daily, main, upcoming, allUpcomingCount, upcomingPage, maxUpcomingPage, upcomingLimit } = getDisplayEvents();
+      const { daily, main, upcoming, allUpcomingCount, upcomingPage, maxUpcomingPage, upcomingLimit, hiddenRepeatsCount, hiddenRepeatsVisible } = getDisplayEvents();
       const hasMainEvent = Boolean(main);
       els.displayView.classList.toggle('no-daily', !hasMainEvent);
       els.displayView.classList.toggle('daily-calendar-mode', Boolean(hasMainEvent && state.dailyCalendarMode));
@@ -5129,7 +5211,8 @@
         renderHeroEvent(main);
       }
       fitKioskToScreen();
-      renderUpcomingPager(allUpcomingCount, upcomingPage, maxUpcomingPage, upcomingLimit);
+      scheduleHiddenRepeatingTasksHide();
+      renderUpcomingPager(allUpcomingCount, upcomingPage, maxUpcomingPage, upcomingLimit, hiddenRepeatsCount, hiddenRepeatsVisible);
 
       if (!upcoming.length) {
         if (els.upcomingGrid) els.upcomingGrid.style.setProperty('--upcoming-cols', String(getUpcomingDisplayLimit()));
@@ -6719,6 +6802,12 @@ Cancel = choose whether to delete the whole series.`);
       }
       if (els.upcomingPager) {
         els.upcomingPager.addEventListener('click', event => {
+          const loadHidden = event.target.closest('[data-load-hidden-repeats]');
+          if (loadHidden) {
+            event.stopPropagation();
+            showHiddenRepeatingTasksTemporarily();
+            return;
+          }
           const direction = event.target.closest('[data-upcoming-page]')?.dataset.upcomingPage;
           if (!direction) return;
           event.stopPropagation();
