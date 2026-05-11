@@ -3982,8 +3982,12 @@
 
     function applyImageFocus(imageElement, event, fallbackY = 38) {
       if (!imageElement) return;
-      const x = clampPercent(event?.imageFocusX, 50);
-      const y = clampPercent(event?.imageFocusY, event?.imageUrl ? fallbackY : 50);
+      const width = imageElement.clientWidth || imageElement.naturalWidth || 0;
+      const height = imageElement.clientHeight || imageElement.naturalHeight || 0;
+      const targetAspect = width > 0 && height > 0 ? width / height : 1.5;
+      const smartFocus = smartCoverFocusFromEvent(event, targetAspect, event?.imageFocusX, event?.imageFocusY);
+      const x = clampPercent(smartFocus?.x, 50);
+      const y = clampPercent(smartFocus?.y, event?.imageUrl ? fallbackY : 50);
       imageElement.style.setProperty('--image-focus-x', `${x}%`);
       imageElement.style.setProperty('--image-focus-y', `${y}%`);
     }
@@ -4232,6 +4236,13 @@
       els.heroImage.src = event.imageUrl || placeholderFor(event.id, event.title);
       els.heroImage.alt = event.title;
       applyImageFocus(els.heroImage, event);
+      if (!els.heroImage.dataset.focusBound) {
+        els.heroImage.addEventListener('load', () => {
+          const currentMain = getDisplayEvents().main;
+          if (currentMain) applyImageFocus(els.heroImage, currentMain);
+        });
+        els.heroImage.dataset.focusBound = '1';
+      }
       els.heroKicker.textContent = `${dayLabel} · ${formatTime(date, false)}${repeat ? ` · ${repeat}` : ''}`;
       els.heroTitle.textContent = event.title;
       els.heroLocation.textContent = event.location || event.note || 'Shared calendar task';
@@ -4659,6 +4670,13 @@
         location: String(event.location || ''),
         note: String(event.note || ''),
         imageUrl: String(event.imageUrl || ''),
+        imageFocusX: clampPercent(event.imageFocusX, 50),
+        imageFocusY: clampPercent(event.imageFocusY, 38),
+        imageFocusSource: String(event.imageFocusSource || ''),
+        imageFocusBox: normalizeFocusBox(event.imageFocusBox),
+        imageNaturalWidth: Number(event.imageNaturalWidth || 0) || 0,
+        imageNaturalHeight: Number(event.imageNaturalHeight || 0) || 0,
+        imageFocusFacesCount: Number(event.imageFocusFacesCount || 0) || 0,
         featured: Boolean(event.featured),
         emailReminder: {
           enabled: Boolean(reminder.enabled),
@@ -4838,38 +4856,48 @@
       if (state.pendingWriteActive) return;
       state.pendingWriteActive = true;
       let fatalError = null;
+      let blockedByRetryableError = false;
       try {
-        const queue = getPendingWrites();
-        for (const op of queue) {
-          try {
-            const data = await performServerWrite(op);
-            if (data.reminderSync) state.lastReminderSync = data.reminderSync;
-            if (op.event && data.event && String(data.event.id) === String(op.event.id)) {
-              rememberLocalEvent(data.event, op.opId, op.method);
-            }
-            const serverHasSavedEvent = !op.event || !Array.isArray(data.events) || data.events.some(event => String(event.id) === String(op.event.id));
-            if (serverHasSavedEvent) removeQueuedWrite(op.opId);
-            if (Array.isArray(data.events)) {
-              state.serverEvents = data.events;
-              rememberCachedEvents(state.serverEvents);
-              refreshEventsFromServerEvents();
-              signalOtherOpenViewsToRefresh();
-            }
-          } catch (error) {
-            if (!isRetryableError(error)) {
-              removeQueuedWrite(op.opId);
-              if (op.event?.id) forgetLocalEvent(op.event.id);
-              refreshEventsFromServerEvents();
-              if (!options.silent) setStatus(error.message, true);
-              if (options.throwNonRetryable && (!options.targetOpId || options.targetOpId === op.opId)) {
-                fatalError = error;
-                break;
+        while (true) {
+          const queue = getPendingWrites();
+          if (!queue.length) break;
+          blockedByRetryableError = false;
+
+          for (const op of queue) {
+            try {
+              const data = await performServerWrite(op);
+              if (data.reminderSync) state.lastReminderSync = data.reminderSync;
+              if (op.event && data.event && String(data.event.id) === String(op.event.id)) {
+                rememberLocalEvent(data.event, op.opId, op.method);
               }
-              continue;
+              const serverHasSavedEvent = !op.event || !Array.isArray(data.events) || data.events.some(event => String(event.id) === String(op.event.id));
+              if (serverHasSavedEvent) removeQueuedWrite(op.opId);
+              if (Array.isArray(data.events)) {
+                state.serverEvents = data.events;
+                rememberCachedEvents(state.serverEvents);
+                refreshEventsFromServerEvents();
+                signalOtherOpenViewsToRefresh();
+              }
+            } catch (error) {
+              if (!isRetryableError(error)) {
+                removeQueuedWrite(op.opId);
+                if (op.event?.id) forgetLocalEvent(op.event.id);
+                refreshEventsFromServerEvents();
+                if (!options.silent) setStatus(error.message, true);
+                if (options.throwNonRetryable && (!options.targetOpId || options.targetOpId === op.opId)) {
+                  fatalError = error;
+                  break;
+                }
+                continue;
+              }
+              blockedByRetryableError = true;
+              if (!options.silent) setStatus('Server is busy/offline. Saved on this device and will retry automatically.', true);
+              break;
             }
-            if (!options.silent) setStatus('Server is busy/offline. Saved on this device and will retry automatically.', true);
-            break;
           }
+
+          if (fatalError || blockedByRetryableError) break;
+          if (!getPendingWrites().length) break;
         }
       } finally {
         state.pendingWriteActive = false;
@@ -5026,7 +5054,9 @@
 
       const todays = events.filter(event => sameDay(event.date, now) && !event._completed).sort((a, b) => new Date(a.start) - new Date(b.start));
       const featured = todays.find(event => event.featured) || null;
-      const daily = featured || todays[0] || null;
+      // Main hero should only show intentionally featured tasks.
+      // If nothing is featured today, fall back to the spacious no-daily layout.
+      const daily = featured || null;
       const selected = state.selectedInstanceId ? events.find(event => event._instanceId === state.selectedInstanceId) : null;
       const selectedIsToday = selected && sameDay(selected.date || new Date(selected.start), now);
       const main = selected || daily;

@@ -54,6 +54,29 @@ function cleanPercent(value, existingValue, fallback = null) {
   return Math.max(0, Math.min(100, Math.round(number * 10) / 10));
 }
 
+function cleanPositiveInt(value, existingValue, fallback = 0) {
+  const raw = value ?? existingValue;
+  const number = Number(raw);
+  if (!Number.isFinite(number) || number <= 0) return fallback;
+  return Math.round(number);
+}
+
+function normalizeFocusBox(value, existingValue = null) {
+  const source = value && typeof value === 'object'
+    ? value
+    : existingValue && typeof existingValue === 'object'
+      ? existingValue
+      : null;
+  if (!source) return null;
+  const left = cleanPercent(source.left, null, 0);
+  const top = cleanPercent(source.top, null, 0);
+  const right = cleanPercent(source.right, null, 100);
+  const bottom = cleanPercent(source.bottom, null, 100);
+  if (![left, top, right, bottom].every(Number.isFinite)) return null;
+  if (right <= left || bottom <= top) return null;
+  return { left, top, right, bottom };
+}
+
 function normalizeDateKeys(values, existing = []) {
   const source = Array.isArray(values) ? values : existing;
   return [...new Set(source
@@ -145,6 +168,10 @@ function cleanEvent(input, existing = {}) {
   const imageFocusX = cleanPercent(input.imageFocusX, existing.imageFocusX, 50);
   const imageFocusY = cleanPercent(input.imageFocusY, existing.imageFocusY, 38);
   const imageFocusSource = String(input.imageFocusSource || existing.imageFocusSource || '').trim().slice(0, 40);
+  const imageFocusBox = normalizeFocusBox(input.imageFocusBox, existing.imageFocusBox);
+  const imageNaturalWidth = cleanPositiveInt(input.imageNaturalWidth, existing.imageNaturalWidth, 0);
+  const imageNaturalHeight = cleanPositiveInt(input.imageNaturalHeight, existing.imageNaturalHeight, 0);
+  const imageFocusFacesCount = cleanPositiveInt(input.imageFocusFacesCount, existing.imageFocusFacesCount, 0);
   const allowedRepeats = new Set(['none', 'yearly', 'weekly', 'biweekly']);
   const repeat = allowedRepeats.has(String(input.repeat || existing.repeat || 'none'))
     ? String(input.repeat || existing.repeat || 'none')
@@ -168,7 +195,11 @@ function cleanEvent(input, existing = {}) {
     imageFocusX,
     imageFocusY,
     imageFocusSource,
-    featured: Boolean(input.featured),
+    imageFocusBox,
+    imageNaturalWidth,
+    imageNaturalHeight,
+    imageFocusFacesCount,
+    featured: Boolean(input.featured ?? existing.featured),
     emailReminder,
     updatedAt: new Date().toISOString(),
     createdAt: existing.createdAt || new Date().toISOString()
