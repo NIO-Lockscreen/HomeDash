@@ -3192,9 +3192,11 @@
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script>
     const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
-    // Blob-efficient sync: no polling. Load fresh events on page boot, at midnight,
-    // on deliberate interaction, or when needed for a write/retry.
+    // Blob-efficient sync: no polling loop. Load fresh events on page boot,
+    // once per hour during daytime, on deliberate interaction, or when needed for a write/retry.
     const INTERACTION_FETCH_DEBOUNCE_MS = 800;
+    const AUTOMATIC_EVENT_REFRESH_START_HOUR = 6;
+    const AUTOMATIC_EVENT_REFRESH_END_HOUR = 21;
     const MIN_DISPLAY_FETCH_GAP_MS = 60 * 1000;
     const MIN_ADMIN_FETCH_GAP_MS = 20 * 1000;
     const LOCAL_EVENTS_CACHE_KEY = 'homeOrganizerEventsCacheV2';
@@ -4508,19 +4510,41 @@
       return adminMode ? MIN_ADMIN_FETCH_GAP_MS : MIN_DISPLAY_FETCH_GAP_MS;
     }
 
-    function msUntilNextMidnight() {
+    function isAutomaticEventRefreshWindow(date = new Date()) {
+      const hour = date.getHours();
+      return hour >= AUTOMATIC_EVENT_REFRESH_START_HOUR && hour <= AUTOMATIC_EVENT_REFRESH_END_HOUR;
+    }
+
+    function msUntilNextHourlyEventRefresh() {
       const now = new Date();
       const next = new Date(now);
-      next.setHours(24, 0, 5, 0);
+
+      if (isAutomaticEventRefreshWindow(now)) {
+        // Next full hour inside the 06:00-21:00 window.
+        next.setHours(now.getHours() + 1, 0, 5, 0);
+        if (next.getHours() <= AUTOMATIC_EVENT_REFRESH_END_HOUR && next.getDate() === now.getDate()) {
+          return Math.max(1000, next.getTime() - now.getTime());
+        }
+      }
+
+      // Outside the daytime window, sleep until 06:00 next available day.
+      if (now.getHours() < AUTOMATIC_EVENT_REFRESH_START_HOUR) {
+        next.setHours(AUTOMATIC_EVENT_REFRESH_START_HOUR, 0, 5, 0);
+      } else {
+        next.setDate(now.getDate() + 1);
+        next.setHours(AUTOMATIC_EVENT_REFRESH_START_HOUR, 0, 5, 0);
+      }
       return Math.max(1000, next.getTime() - now.getTime());
     }
 
-    function scheduleNextMidnightEventRefresh() {
+    function scheduleNextHourlyEventRefresh() {
       window.setTimeout(async () => {
-        await fetchEvents({ force: true, reason: 'midnight' });
-        await processPendingWrites({ silent: true });
-        scheduleNextMidnightEventRefresh();
-      }, msUntilNextMidnight());
+        if (isAutomaticEventRefreshWindow()) {
+          await fetchEvents({ force: true, reason: 'hourly-daytime' });
+          await processPendingWrites({ silent: true });
+        }
+        scheduleNextHourlyEventRefresh();
+      }, msUntilNextHourlyEventRefresh());
     }
 
     function requestInteractionRefresh() {
@@ -6825,7 +6849,7 @@ Cancel = choose whether to delete the whole series.`);
       // Local cache still renders instantly first, then this refresh replaces it when loaded.
       fetchEvents({ force: true, reason: 'page-boot' });
       bindInteractionRefresh();
-      scheduleNextMidnightEventRefresh();
+      scheduleNextHourlyEventRefresh();
       window.addEventListener('online', () => processPendingWrites({ silent: true }));
       window.addEventListener('storage', event => {
         if (event.key === LAST_WRITE_SIGNAL_KEY) {
