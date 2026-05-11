@@ -5129,7 +5129,11 @@
       // Daily view should keep showing today's tasks for the full calendar day.
       // Do not drop a 15:00 task just because the current time is 19:23.
       const floor = todayStart();
-      const end = new Date(now.getTime() + 90 * 86400000);
+
+      // Look up to one year ahead so one-off future tasks like September events
+      // can appear. Long-range repeating occurrences are still limited below
+      // unless the temporary "load hidden repeats" button is used.
+      const end = new Date(now.getTime() + 365 * 86400000);
       const expandedEvents = expandEventsInRange(floor, end, { includeCompleted: false });
 
       const repeatCutoff = endOfNextMonth(now);
@@ -5139,17 +5143,37 @@
         ? expandedEvents
         : expandedEvents.filter(event => !isHiddenFutureRepeatingOccurrence(event, repeatCutoff));
 
-      if (state.selectedInstanceId && !events.some(event => event._instanceId === state.selectedInstanceId)) state.selectedInstanceId = null;
+      if (state.selectedInstanceId && !events.some(event => event._instanceId === state.selectedInstanceId)) {
+        state.selectedInstanceId = null;
+      }
 
-      const todays = events.filter(event => sameDay(event.date, now) && !event._completed).sort((a, b) => new Date(a.start) - new Date(b.start));
-      const featured = todays.find(event => event.featured) || null;
-      // Main hero should only show intentionally featured tasks.
-      // If nothing is featured today, fall back to the spacious no-daily layout.
-      const daily = featured || null;
+      const todays = events
+        .filter(event => sameDay(event.date, now) && !event._completed)
+        .sort((a, b) => new Date(a.start) - new Date(b.start));
+
+      const featuredToday = todays.find(event => event.featured) || null;
+
+      // Main hero should only show intentionally featured tasks for today.
+      // Featured future tasks belong in Upcoming, not the hero.
+      const daily = featuredToday || null;
       const selected = state.selectedInstanceId ? events.find(event => event._instanceId === state.selectedInstanceId) : null;
       const main = selected || daily;
       if (!selected && daily && todays.length > 1 && !state.todayCycleTimer) state.selectedInstanceId = daily._instanceId;
-      const allUpcoming = events.filter(event => !main || event._instanceId !== main._instanceId);
+
+      const candidates = events
+        .filter(event => !main || event._instanceId !== main._instanceId)
+        .sort((a, b) => new Date(a.start) - new Date(b.start));
+
+      // Show the next 15 normal upcoming tasks, but always include manually
+      // featured future tasks within the one-year window even if they are past
+      // the first 15. This fixes the case where a September event is marked
+      // featured after creation but would otherwise be crowded out.
+      const nextUpcoming = candidates.slice(0, 15);
+      const included = new Set(nextUpcoming.map(event => event._instanceId));
+      const featuredFuture = candidates.filter(event => event.featured && !included.has(event._instanceId));
+      const allUpcoming = [...nextUpcoming, ...featuredFuture]
+        .sort((a, b) => new Date(a.start) - new Date(b.start));
+
       const upcomingLimit = getUpcomingDisplayLimit();
       const maxUpcomingPage = Math.max(0, Math.ceil(allUpcoming.length / upcomingLimit) - 1);
       if (state.upcomingPage > maxUpcomingPage) state.upcomingPage = maxUpcomingPage;
