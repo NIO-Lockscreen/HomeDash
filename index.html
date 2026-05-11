@@ -2169,6 +2169,20 @@
       background: linear-gradient(135deg, rgba(158, 214, 245, .38), rgba(221, 241, 252, .82));
       border-color: rgba(83, 162, 207, .35);
     }
+    .month-day.with-daughter::after {
+      content: '';
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(42, 126, 176, .34);
+      box-shadow: 0 0 0 5px rgba(255,255,255,.36);
+    }
+    .month-day.custom-daughter::after {
+      background: rgba(25, 108, 158, .56);
+    }
     .month-day.selected-period {
       border-color: rgba(42, 126, 176, .62);
       box-shadow: inset 0 0 0 2px rgba(42, 126, 176, .16);
@@ -3400,6 +3414,7 @@
         </div>
         <div class="button-row">
           <button id="daughterSaveBtn" class="btn" type="button">Save this period</button>
+          <button id="daughterDeleteBtn" class="btn secondary" type="button">Delete period</button>
           <button id="daughterResetBtn" class="btn secondary" type="button">Reset to every other Wednesday</button>
         </div>
         <div id="daughterPeriodStatus" class="daughter-period-status"></div>
@@ -3407,6 +3422,7 @@
 
       <div class="month-actions">
         <button id="monthTodayBtn" class="btn secondary" type="button">Current month</button>
+        <button id="daughterAddBtn" class="btn" type="button">Add daughter period</button>
         <button id="monthSettingsBtn" class="btn secondary" type="button">Settings</button>
       </div>
     </section>
@@ -3559,6 +3575,7 @@
       longPressOpened: false,
       monthViewDate: new Date(),
       selectedDaughterPeriodKey: null,
+      daughterEditorMode: 'edit',
       daughterPeriodOverrides: {},
       weatherFocusDate: null,
       dangerHoldTimer: null,
@@ -3647,7 +3664,9 @@
       daughterStartInput: document.getElementById('daughterStartInput'),
       daughterEndInput: document.getElementById('daughterEndInput'),
       daughterSaveBtn: document.getElementById('daughterSaveBtn'),
+      daughterDeleteBtn: document.getElementById('daughterDeleteBtn'),
       daughterResetBtn: document.getElementById('daughterResetBtn'),
+      daughterAddBtn: document.getElementById('daughterAddBtn'),
       daughterPeriodStatus: document.getElementById('daughterPeriodStatus'),
       configOverlay: document.getElementById('configOverlay'),
       configCloseBtn: document.getElementById('configCloseBtn'),
@@ -3768,6 +3787,15 @@
       return new Date(date.getFullYear(), date.getMonth() + 1, 0);
     }
 
+    function ensureDaughterStorageShape() {
+      if (!state.daughterPeriodOverrides || typeof state.daughterPeriodOverrides !== 'object') {
+        state.daughterPeriodOverrides = {};
+      }
+      if (!state.daughterPeriodOverrides.__extra || typeof state.daughterPeriodOverrides.__extra !== 'object') {
+        state.daughterPeriodOverrides.__extra = {};
+      }
+    }
+
     function loadDaughterPeriodOverrides() {
       try {
         const parsed = JSON.parse(localStorage.getItem(DAUGHTER_PERIOD_OVERRIDES_KEY) || '{}');
@@ -3775,15 +3803,39 @@
       } catch {
         state.daughterPeriodOverrides = {};
       }
+      ensureDaughterStorageShape();
     }
 
     function saveDaughterPeriodOverrides() {
+      ensureDaughterStorageShape();
       localStorage.setItem(DAUGHTER_PERIOD_OVERRIDES_KEY, JSON.stringify(state.daughterPeriodOverrides || {}));
     }
 
     function isValidDateKey(key) {
       const date = dateFromKey(key);
       return Boolean(date && dateKey(date) === key);
+    }
+
+    function makeExtraDaughterPeriod(id, data) {
+      if (!data || !isValidDateKey(data.start) || !isValidDateKey(data.end)) return null;
+      let start = dateFromKey(data.start);
+      let end = dateFromKey(data.end);
+      if (end < start) {
+        const tmp = start;
+        start = end;
+        end = tmp;
+      }
+      return {
+        index: null,
+        periodKey: `extra:${id}`,
+        defaultStart: startOfLocalDay(start),
+        defaultEnd: startOfLocalDay(end),
+        start: startOfLocalDay(start),
+        end: startOfLocalDay(end),
+        customized: true,
+        extra: true,
+        deleted: false
+      };
     }
 
     function buildDaughterPeriod(index) {
@@ -3793,6 +3845,19 @@
       const defaultEnd = addLocalDays(anchorEnd, index * DAUGHTER_PERIOD_INTERVAL_DAYS);
       const periodKey = dateKey(defaultStart);
       const override = state.daughterPeriodOverrides?.[periodKey] || null;
+      if (override?.deleted) {
+        return {
+          index,
+          periodKey,
+          defaultStart,
+          defaultEnd,
+          start: startOfLocalDay(defaultStart),
+          end: startOfLocalDay(defaultEnd),
+          customized: true,
+          extra: false,
+          deleted: true
+        };
+      }
       let start = override?.start && isValidDateKey(override.start) ? dateFromKey(override.start) : defaultStart;
       let end = override?.end && isValidDateKey(override.end) ? dateFromKey(override.end) : defaultEnd;
       if (end < start) {
@@ -3807,8 +3872,17 @@
         defaultEnd,
         start: startOfLocalDay(start),
         end: startOfLocalDay(end),
-        customized: Boolean(override)
+        customized: Boolean(override),
+        extra: false,
+        deleted: false
       };
+    }
+
+    function daughterExtraPeriodsForRange(rangeStart, rangeEnd) {
+      ensureDaughterStorageShape();
+      return Object.entries(state.daughterPeriodOverrides.__extra || {})
+        .map(([id, data]) => makeExtraDaughterPeriod(id, data))
+        .filter(period => period && period.end >= rangeStart && period.start <= rangeEnd);
     }
 
     function daughterPeriodsForRange(rangeStart, rangeEnd) {
@@ -3819,9 +3893,10 @@
       const periods = [];
       for (let index = startIndex; index <= endIndex; index += 1) {
         const period = buildDaughterPeriod(index);
-        if (period.end >= rangeStart && period.start <= rangeEnd) periods.push(period);
+        if (!period.deleted && period.end >= rangeStart && period.start <= rangeEnd) periods.push(period);
       }
-      return periods;
+      periods.push(...daughterExtraPeriodsForRange(rangeStart, rangeEnd));
+      return periods.sort((a, b) => a.start - b.start || a.end - b.end);
     }
 
     function daughterPeriodForDate(date) {
@@ -3831,11 +3906,38 @@
     }
 
     function daughterPeriodByKey(periodKey) {
+      if (periodKey === '__new') return makeNewDaughterPeriodDraft();
+      if (String(periodKey || '').startsWith('extra:')) {
+        ensureDaughterStorageShape();
+        const id = String(periodKey).slice('extra:'.length);
+        return makeExtraDaughterPeriod(id, state.daughterPeriodOverrides.__extra?.[id]);
+      }
       const anchorStart = dateFromKey(DAUGHTER_ANCHOR_START_KEY);
       const periodStart = dateFromKey(periodKey);
       if (!anchorStart || !periodStart) return null;
       const index = Math.round(localDaysBetween(anchorStart, periodStart) / DAUGHTER_PERIOD_INTERVAL_DAYS);
-      return buildDaughterPeriod(index);
+      const period = buildDaughterPeriod(index);
+      return period.deleted ? null : period;
+    }
+
+    function makeNewDaughterPeriodDraft() {
+      const viewDate = state.monthViewDate || new Date();
+      const today = startOfLocalDay(new Date());
+      const firstOfMonth = monthStart(viewDate);
+      const sameVisibleMonth = today.getFullYear() === firstOfMonth.getFullYear() && today.getMonth() === firstOfMonth.getMonth();
+      const start = sameVisibleMonth ? today : firstOfMonth;
+      return {
+        index: null,
+        periodKey: '__new',
+        defaultStart: start,
+        defaultEnd: addLocalDays(start, 7),
+        start,
+        end: addLocalDays(start, 7),
+        customized: true,
+        extra: true,
+        isNew: true,
+        deleted: false
+      };
     }
 
     function formatPeriodDate(date) {
@@ -3846,21 +3948,46 @@
       if (!els.daughterPeriodEditor) return;
       if (!period) {
         els.daughterPeriodEditor.classList.add('hidden');
+        state.daughterEditorMode = 'edit';
         return;
       }
       state.selectedDaughterPeriodKey = period.periodKey;
+      state.daughterEditorMode = period.isNew ? 'add' : 'edit';
       els.daughterPeriodEditor.classList.remove('hidden');
       if (els.daughterPeriodTitle) {
-        els.daughterPeriodTitle.textContent = `Daughter period · ${formatPeriodDate(period.start)} – ${formatPeriodDate(period.end)}`;
+        if (period.isNew) {
+          els.daughterPeriodTitle.textContent = 'Add daughter period';
+        } else if (period.extra) {
+          els.daughterPeriodTitle.textContent = `Custom daughter period · ${formatPeriodDate(period.start)} – ${formatPeriodDate(period.end)}`;
+        } else {
+          els.daughterPeriodTitle.textContent = `Daughter period · ${formatPeriodDate(period.start)} – ${formatPeriodDate(period.end)}`;
+        }
       }
       if (els.daughterPeriodHelp) {
-        els.daughterPeriodHelp.textContent = period.customized
-          ? 'This period has custom dates. Save again to change it, or reset to the every-other-week pattern.'
-          : 'This is generated from the every-other-week Wednesday-to-Wednesday pattern. Change only this period if needed.';
+        if (period.isNew) {
+          els.daughterPeriodHelp.textContent = 'Add a manual period. It will be saved on this device and shown with the same blue tint.';
+        } else if (period.extra) {
+          els.daughterPeriodHelp.textContent = 'This is a manually added period. Save to change it, or delete it if it should not be shown.';
+        } else if (period.customized) {
+          els.daughterPeriodHelp.textContent = 'This period has custom dates. Save again to change it, delete it, or reset to the every-other-week pattern.';
+        } else {
+          els.daughterPeriodHelp.textContent = 'This is generated from the every-other-week Wednesday-to-Wednesday pattern. Change only this period if needed.';
+        }
       }
       if (els.daughterStartInput) els.daughterStartInput.value = dateKey(period.start);
       if (els.daughterEndInput) els.daughterEndInput.value = dateKey(period.end);
-      if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = period.customized ? 'Custom period saved on this device.' : 'Default alternating period.';
+      if (els.daughterSaveBtn) els.daughterSaveBtn.textContent = period.isNew ? 'Add period' : 'Save this period';
+      if (els.daughterDeleteBtn) els.daughterDeleteBtn.hidden = Boolean(period.isNew);
+      if (els.daughterResetBtn) els.daughterResetBtn.hidden = Boolean(period.isNew || period.extra);
+      if (els.daughterPeriodStatus) {
+        els.daughterPeriodStatus.textContent = period.isNew
+          ? 'Choose start and end dates, then add the period.'
+          : period.extra
+            ? 'Manual period saved on this device.'
+            : period.customized
+              ? 'Custom period saved on this device.'
+              : 'Default alternating period.';
+      }
     }
 
     function renderMonthView() {
@@ -3889,23 +4016,25 @@
         if (day.getMonth() !== firstOfMonth.getMonth()) classes.push('outside-month');
         if (key === todayKey) classes.push('today');
         if (period) classes.push('with-daughter');
+        if (period?.customized || period?.extra) classes.push('custom-daughter');
         if (period && period.periodKey === selectedKey) classes.push('selected-period');
-        const label = period
-          ? `<div class="month-day-label">Daughter${period.customized ? ' · custom' : ''}</div>`
-          : '';
         const dots = dayEvents.length
           ? `<div class="month-day-events">${dayEvents.map(() => '<span class="month-event-dot"></span>').join('')}</div>`
           : '';
         html.push(`
-          <button class="${classes.join(' ')}" type="button" data-month-day="${key}" ${period ? `data-daughter-period="${period.periodKey}"` : ''} aria-label="${htmlEscape(formatPeriodDate(day))}${period ? ', daughter day' : ''}">
+          <button class="${classes.join(' ')}" type="button" data-month-day="${key}" ${period ? `data-daughter-period="${period.periodKey}"` : ''} aria-label="${htmlEscape(formatPeriodDate(day))}${period ? ', daughter day' : ''}${dayEvents.length ? `, ${dayEvents.length} task${dayEvents.length === 1 ? '' : 's'}` : ''}">
             <span class="month-day-number">${day.getDate()}</span>
-            ${label}
             ${dots}
           </button>
         `);
       }
       els.monthGrid.innerHTML = html.join('');
-      if (selectedKey) renderDaughterPeriodEditor(daughterPeriodByKey(selectedKey));
+      if (selectedKey) {
+        const selectedPeriod = state.daughterEditorMode === 'add'
+          ? makeNewDaughterPeriodDraft()
+          : daughterPeriodByKey(selectedKey);
+        renderDaughterPeriodEditor(selectedPeriod);
+      }
     }
 
     function openMonthView(resetToCurrent = true) {
@@ -3922,6 +4051,7 @@
       els.monthOverlay.classList.add('hidden');
       document.body.classList.remove('month-open');
       state.selectedDaughterPeriodKey = null;
+      state.daughterEditorMode = 'edit';
     }
 
     function saveSelectedDaughterPeriod() {
@@ -3937,7 +4067,18 @@
         if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'End date must be the same day or after the start date.';
         return;
       }
-      state.daughterPeriodOverrides[periodKey] = { start, end };
+      ensureDaughterStorageShape();
+      if (state.daughterEditorMode === 'add' || periodKey === '__new') {
+        const id = `manual-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+        state.daughterPeriodOverrides.__extra[id] = { start, end };
+        state.selectedDaughterPeriodKey = `extra:${id}`;
+        state.daughterEditorMode = 'edit';
+      } else if (String(periodKey).startsWith('extra:')) {
+        const id = String(periodKey).slice('extra:'.length);
+        state.daughterPeriodOverrides.__extra[id] = { start, end };
+      } else {
+        state.daughterPeriodOverrides[periodKey] = { start, end };
+      }
       saveDaughterPeriodOverrides();
       renderMonthView();
       if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'Saved this period on this device.';
@@ -3945,11 +4086,38 @@
 
     function resetSelectedDaughterPeriod() {
       const periodKey = state.selectedDaughterPeriodKey;
-      if (!periodKey) return;
+      if (!periodKey || String(periodKey).startsWith('extra:') || periodKey === '__new') return;
       delete state.daughterPeriodOverrides[periodKey];
+      state.daughterEditorMode = 'edit';
       saveDaughterPeriodOverrides();
       renderMonthView();
       if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'Reset to the normal every-other-week pattern.';
+    }
+
+    function deleteSelectedDaughterPeriod() {
+      const periodKey = state.selectedDaughterPeriodKey;
+      if (!periodKey || periodKey === '__new') return;
+      ensureDaughterStorageShape();
+      if (String(periodKey).startsWith('extra:')) {
+        const id = String(periodKey).slice('extra:'.length);
+        delete state.daughterPeriodOverrides.__extra[id];
+      } else {
+        state.daughterPeriodOverrides[periodKey] = { deleted: true };
+      }
+      state.selectedDaughterPeriodKey = null;
+      state.daughterEditorMode = 'edit';
+      saveDaughterPeriodOverrides();
+      renderDaughterPeriodEditor(null);
+      renderMonthView();
+      if (els.monthSubtitle) els.monthSubtitle.textContent = 'Period deleted on this device. Use Add daughter period if you need to add a replacement.';
+    }
+
+    function showAddDaughterPeriodEditor() {
+      state.selectedDaughterPeriodKey = '__new';
+      state.daughterEditorMode = 'add';
+      renderMonthView();
+      renderDaughterPeriodEditor(makeNewDaughterPeriodDraft());
+      els.daughterPeriodEditor?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
     }
 
     function bindMonthView() {
@@ -3962,26 +4130,29 @@
       els.monthPrevBtn?.addEventListener('click', () => {
         state.monthViewDate = new Date(state.monthViewDate.getFullYear(), state.monthViewDate.getMonth() - 1, 1);
         state.selectedDaughterPeriodKey = null;
+        state.daughterEditorMode = 'edit';
         renderMonthView();
       });
       els.monthNextBtn?.addEventListener('click', () => {
         state.monthViewDate = new Date(state.monthViewDate.getFullYear(), state.monthViewDate.getMonth() + 1, 1);
         state.selectedDaughterPeriodKey = null;
+        state.daughterEditorMode = 'edit';
         renderMonthView();
       });
       els.monthTodayBtn?.addEventListener('click', () => {
         state.monthViewDate = new Date();
         state.selectedDaughterPeriodKey = null;
+        state.daughterEditorMode = 'edit';
         renderMonthView();
       });
       els.monthSettingsBtn?.addEventListener('click', () => {
         openConfigMenu();
       });
-      els.monthGrid?.addEventListener('click', event => {
-        const button = event.target.closest('[data-month-day]');
-        if (!button) return;
+
+      const handleMonthDaySinglePress = button => {
         const day = dateFromKey(button.dataset.monthDay);
         const period = day ? daughterPeriodForDate(day) : null;
+        state.daughterEditorMode = 'edit';
         if (period) {
           renderDaughterPeriodEditor(period);
           renderMonthView();
@@ -3991,8 +4162,61 @@
           renderMonthView();
           if (els.monthSubtitle) els.monthSubtitle.textContent = 'That day is not inside a daughter period. Tap a blue day to adjust one period.';
         }
+      };
+
+      const openMonthDayInDisplay = dayKey => {
+        if (!eventsForDayKey(dayKey).length) return false;
+        if (monthDayTapTimer) clearTimeout(monthDayTapTimer);
+        monthDayTapTimer = null;
+        monthDayLastKey = '';
+        monthDayLastAt = 0;
+        closeMonthView();
+        requestAnimationFrame(() => selectDayPreview(dayKey));
+        return true;
+      };
+
+      let monthDayTapTimer = null;
+      let monthDayLastKey = '';
+      let monthDayLastAt = 0;
+
+      const handleMonthDayPress = event => {
+        const button = event.target.closest('[data-month-day]');
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+
+        const dayKey = button.dataset.monthDay;
+        const now = Date.now();
+        const isBrowserDoubleClick = Number(event.detail || 0) >= 2;
+        const isTimedDoublePress = dayKey === monthDayLastKey && now - monthDayLastAt < 650;
+        const isDoublePress = isBrowserDoubleClick || isTimedDoublePress;
+
+        if (isDoublePress) {
+          if (openMonthDayInDisplay(dayKey)) return;
+          handleMonthDaySinglePress(button);
+          return;
+        }
+
+        if (monthDayTapTimer) clearTimeout(monthDayTapTimer);
+        monthDayLastKey = dayKey;
+        monthDayLastAt = now;
+        monthDayTapTimer = setTimeout(() => {
+          monthDayTapTimer = null;
+          handleMonthDaySinglePress(button);
+        }, 360);
+      };
+
+      els.monthGrid?.addEventListener('click', handleMonthDayPress);
+      els.monthGrid?.addEventListener('dblclick', event => {
+        const button = event.target.closest('[data-month-day]');
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+        openMonthDayInDisplay(button.dataset.monthDay);
       });
+      els.daughterAddBtn?.addEventListener('click', showAddDaughterPeriodEditor);
       els.daughterSaveBtn?.addEventListener('click', saveSelectedDaughterPeriod);
+      els.daughterDeleteBtn?.addEventListener('click', deleteSelectedDaughterPeriod);
       els.daughterResetBtn?.addEventListener('click', resetSelectedDaughterPeriod);
       window.addEventListener('keydown', event => {
         if (event.key === 'Escape' && !els.monthOverlay.classList.contains('hidden')) closeMonthView();
