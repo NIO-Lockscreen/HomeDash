@@ -422,10 +422,10 @@ function buildEmailShell({ eyebrow, headline, title, when, location, note, image
   const calendarButton = calendarUrl ? `
     <div style="margin-top:20px;">
       <a href="${escapeHtml(calendarUrl)}" style="display:inline-block; padding:12px 16px; border-radius:999px; background:#2f2b27; color:#fffaf2; text-decoration:none; font-weight:800; font-size:14px;">
-        Save to this device calendar
+        Add to phone calendar
       </a>
     </div>
-    <p style="margin:10px 0 0; color:#8a7d6f; font-size:12px;">This opens a small calendar file your phone or PC can add to its local calendar.</p>
+    <p style="margin:10px 0 0; color:#8a7d6f; font-size:12px;">This opens a small calendar file your phone can save.</p>
   ` : '';
 
   return `
@@ -598,26 +598,93 @@ function digestKey(type, dateKey, recipient = '') {
   return `digest::${type}::${dateKey}${suffix}`;
 }
 
+function shortNote(value = '') {
+  const cleanValue = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!cleanValue) return '';
+  return cleanValue.length > 180 ? `${cleanValue.slice(0, 177)}...` : cleanValue;
+}
+
+function digestItemCalendarUrl(item) {
+  return calendarDownloadUrl({
+    title: item.title || 'Family task',
+    note: item.note || '',
+    location: item.location || '',
+    eventAt: item.start || item.eventAt,
+    eventEnd: item.end || item.eventEnd || '',
+    remindAt: item.start || item.eventAt,
+  });
+}
+
 function buildDigestEmail({ type, title, intro, items }) {
-  const rows = items.map(item => `• ${item.when} — ${item.title}${item.location ? ` (${item.location})` : ''}`).join('\n');
-  const htmlRows = items.map(item => `
-    <li style="margin:0 0 12px; padding:12px 14px; border-radius:16px; background:#fffaf2; border:1px solid #efe4d2;">
-      <strong style="display:block; color:#2f2b27; font-size:16px;">${escapeHtml(item.title)}</strong>
-      <span style="display:block; color:#8a7d6f; margin-top:3px;">${escapeHtml(item.when)}</span>
-      ${item.location ? `<span style="display:block; color:#8a7d6f; margin-top:3px;">${escapeHtml(item.location)}</span>` : ''}
-    </li>`).join('');
+  const safeItems = Array.isArray(items) ? items : [];
+  const decoratedItems = safeItems.map(item => ({
+    ...item,
+    calendarUrl: item.calendarUrl || digestItemCalendarUrl(item),
+    notePreview: shortNote(item.note || ''),
+  }));
+  const countText = decoratedItems.length === 1 ? '1 item' : `${decoratedItems.length} items`;
+  const rows = decoratedItems.map((item, index) => {
+    const calendarLine = item.calendarUrl ? `\n   Add to phone calendar: ${item.calendarUrl}` : '';
+    const noteLine = item.notePreview ? `\n   Note: ${item.notePreview}` : '';
+    const locationLine = item.location ? `\n   Where: ${item.location}` : '';
+    return `${index + 1}. ${item.when} — ${item.title}${locationLine}${noteLine}${calendarLine}`;
+  }).join('\n\n');
+
+  const emptyState = `
+    <div style="padding:18px; border-radius:18px; background:#fffaf2; border:1px dashed #dfcfb9; color:#8a7d6f; font-weight:700; text-align:center;">
+      Nothing to show.
+    </div>`;
+
+  const htmlRows = decoratedItems.map(item => {
+    const addButton = item.calendarUrl ? `
+      <div style="margin-top:14px;">
+        <a href="${escapeHtml(item.calendarUrl)}" style="display:inline-block; padding:11px 14px; border-radius:999px; background:#2f2b27; color:#fffaf2; text-decoration:none; font-weight:850; font-size:13px;">
+          Add to phone calendar
+        </a>
+      </div>` : '';
+    const locationLine = item.location ? `
+      <div style="margin-top:7px; color:#6f6257; font-size:14px;">
+        <span style="font-weight:850; color:#8a7d6f;">Where:</span> ${escapeHtml(item.location)}
+      </div>` : '';
+    const noteLine = item.notePreview ? `
+      <div style="margin-top:10px; padding:10px 12px; border-radius:14px; background:#ffffff; border:1px solid #efe4d2; color:#51473e; font-size:14px;">
+        ${escapeHtml(item.notePreview)}
+      </div>` : '';
+    return `
+      <div style="margin:0 0 12px; padding:16px; border-radius:22px; background:#fffaf2; border:1px solid #efe4d2;">
+        <div style="display:inline-block; margin:0 0 8px; padding:5px 9px; border-radius:999px; background:#f0e4d4; color:#80674c; font-size:12px; font-weight:900;">
+          ${escapeHtml(item.when)}
+        </div>
+        <div style="font-size:18px; line-height:1.22; font-weight:900; color:#2f2b27; letter-spacing:-.01em;">
+          ${escapeHtml(item.title)}
+        </div>
+        ${locationLine}
+        ${noteLine}
+        ${addButton}
+      </div>`;
+  }).join('');
+
+  const badge = type === 'weekly' ? 'Week ahead' : 'Daily update';
+  const helpText = decoratedItems.some(item => item.calendarUrl)
+    ? 'Tap “Add to phone calendar” on any item to open a small calendar file your phone can save.'
+    : 'Calendar links need PUBLIC_SITE_URL, ORGANIZER_SITE_URL, NEXT_PUBLIC_SITE_URL, or VERCEL_URL to be available.';
+
   return {
     subject: title,
     text: `${intro}\n\n${rows || 'Nothing to show.'}`,
     html: `
       <div style="margin:0; padding:0; background:#f4efe7; font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif; color:#2f2b27; line-height:1.5;">
-        <div style="max-width:620px; margin:0 auto; padding:28px 14px;">
-          <div style="background:#fffdf8; border:1px solid #e6dccd; border-radius:28px; padding:22px; box-shadow:0 18px 50px rgba(47,43,39,.10);">
-            <div style="font-size:12px; font-weight:900; color:#9a8062; text-transform:uppercase; letter-spacing:.12em;">Family Organizer</div>
-            <h1 style="margin:8px 0 8px; font-size:30px; line-height:1.08; letter-spacing:-.03em; color:#2f2b27;">${escapeHtml(title)}</h1>
-            <p style="margin:0 0 18px; color:#6f6257; font-weight:700;">${escapeHtml(intro)}</p>
-            <ul style="list-style:none; padding:0; margin:0;">${htmlRows || '<li style="color:#8a7d6f;">Nothing to show.</li>'}</ul>
-            <p style="margin:22px 0 0; color:#9b8f82; font-size:12px;">Sent by your Family Organizer dashboard.</p>
+        <div style="max-width:640px; margin:0 auto; padding:26px 12px;">
+          <div style="background:#fffdf8; border:1px solid #e6dccd; border-radius:30px; padding:22px; box-shadow:0 18px 50px rgba(47,43,39,.10);">
+            <div style="display:inline-block; padding:6px 10px; border-radius:999px; background:#2f2b27; color:#fffaf2; font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.10em;">${escapeHtml(badge)}</div>
+            <h1 style="margin:12px 0 8px; font-size:30px; line-height:1.08; letter-spacing:-.03em; color:#2f2b27;">${escapeHtml(title)}</h1>
+            <p style="margin:0 0 16px; color:#6f6257; font-weight:700;">${escapeHtml(intro)}</p>
+            <div style="margin:0 0 16px; padding:12px 14px; border-radius:18px; background:#f8efe1; border:1px solid #eadcc7; color:#604f40; font-weight:900;">
+              ${escapeHtml(countText)}
+            </div>
+            ${htmlRows || emptyState}
+            <p style="margin:18px 0 0; color:#8a7d6f; font-size:12px;">${escapeHtml(helpText)}</p>
+            <p style="margin:8px 0 0; color:#9b8f82; font-size:12px;">Sent by your Family Organizer dashboard.</p>
           </div>
         </div>
       </div>`,
@@ -676,6 +743,9 @@ export async function syncReminderDigests(events, options = {}) {
         title: item.title,
         when: formatDateTime(item.start),
         location: item.location || '',
+        note: item.note || '',
+        start: item.start,
+        end: item.end || '',
       }));
       const sent = await sendDigestToRecipients('weekly', todayKey, settings.weeklyRecipients, buildDigestEmail({
         type: 'weekly',
@@ -693,7 +763,14 @@ export async function syncReminderDigests(events, options = {}) {
       const items = (Array.isArray(events) ? events : [])
         .filter(event => dateKeyInTimeZone(event.createdAt || event.updatedAt || event.start) === todayKey)
         .sort((a, b) => new Date(a.createdAt || a.start) - new Date(b.createdAt || b.start))
-        .map(event => ({ title: event.title, when: formatDateTime(event.start), location: event.location || '' }));
+        .map(event => ({
+          title: event.title,
+          when: formatDateTime(event.start),
+          location: event.location || '',
+          note: event.note || '',
+          start: event.start,
+          end: event.end || '',
+        }));
       if (items.length) {
         const sent = await sendDigestToRecipients('daily-new', todayKey, settings.endOfDayRecipients, buildDigestEmail({
           type: 'daily-new',
