@@ -1380,16 +1380,25 @@ const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone
       renderManualImagePreview();
     }
 
-    function setManualImagePreviewSource(src) {
+    function setManualImagePreviewSource(src, options = {}) {
       if (!els.manualImageEditor || !els.imagePreview) return;
       if (!src) {
         els.manualImageEditor.classList.remove('visible');
+        els.manualImageEditor.style.display = '';
         els.imagePreview.removeAttribute('src');
         return;
       }
       els.imagePreview.src = src;
+      els.manualImageEditor.hidden = false;
       els.manualImageEditor.classList.add('visible');
+      // Force the editor visible even if older cached CSS or a mobile media rule hides it.
+      els.manualImageEditor.style.display = 'grid';
       renderManualImagePreview();
+      if (options.scroll) {
+        requestAnimationFrame(() => {
+          els.manualImageEditor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+      }
     }
 
     function renderManualImagePreview() {
@@ -1420,7 +1429,7 @@ const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone
         return;
       }
       setManualImageControls(state.pendingImageFocus);
-      setManualImagePreviewSource(state.imagePreviewObjectUrl);
+      setManualImagePreviewSource(state.imagePreviewObjectUrl, { scroll: true });
       const baseMessage = file.size > MAX_UPLOAD_BYTES
         ? `${file.name} selected (${formatBytes(file.size)}). It will be compressed before upload.`
         : `${file.name} selected (${formatBytes(file.size)}).`;
@@ -3622,9 +3631,15 @@ Cancel = choose whether to delete the whole series.`);
         if (!file) {
           state.pendingImageFocus = null;
           state.imageFocusToken += 1;
-          els.imageStatus.textContent = els.imageUrlInput.value
-            ? 'Current image will be kept unless you upload a new one.'
-            : 'No image selected. A calm placeholder will be used.';
+          if (els.imageUrlInput.value) {
+            const existingFocus = state.pendingImageFocus || { imageFocusX: 50, imageFocusY: 38, imageZoom: 1.01, imageFocusSource: 'manual' };
+            setManualImageControls(existingFocus);
+            setManualImagePreviewSource(els.imageUrlInput.value, { scroll: true });
+            els.imageStatus.textContent = 'Current image kept. Manual pan/zoom controls are open below.';
+          } else {
+            clearManualImagePreview();
+            els.imageStatus.textContent = 'No image selected. A calm placeholder will be used.';
+          }
           return;
         }
 
