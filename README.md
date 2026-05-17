@@ -68,9 +68,6 @@ The browser expands those into temporary occurrences for display only. The serve
 ## Face-aware image cropping
 
 When you upload a task image, the admin page tries to detect faces in the browser and saves a simple focus point with the event. The dashboard then uses that focus point for daily, selected, upcoming, and admin thumbnails so faces are less likely to be cropped out.
-
-This is face detection only, not identity recognition. It does not know who the person is. If the browser cannot use the FaceDetector API, the app falls back to a portrait-friendly crop. Existing images need to be re-uploaded or edited with a new image to get saved face focus data.
-
 ## Email reminders
 
 This version adds email reminders without adding a separate database.

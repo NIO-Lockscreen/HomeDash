@@ -1305,6 +1305,7 @@
     .admin-event-simple img,
     .task-action-head img {
       object-position: var(--image-focus-x, 50%) var(--image-focus-y, 38%);
+      transform: scale(var(--image-scale, 1.01));
     }
 
     .event-hero {
@@ -1315,14 +1316,102 @@
       pointer-events: none;
     }
 
-    .face-crop-note {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 6px;
-      color: var(--muted);
-      font-weight: 800;
+    .manual-image-editor {
+      display: none;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,.58);
+      box-shadow: 0 12px 28px rgba(55,44,30,.08);
+    }
+
+    .manual-image-editor.visible { display: grid; }
+
+    .image-preview-card {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border-radius: 18px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      min-height: 150px;
+    }
+
+    .image-preview-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: var(--image-focus-x, 50%) var(--image-focus-y, 38%);
+      transform: scale(var(--image-scale, 1.01));
+      display: block;
+    }
+
+    .image-preview-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,.02) 0%, rgba(0,0,0,.10) 34%, rgba(0,0,0,.82) 100%);
+      pointer-events: none;
+    }
+
+    .image-preview-copy {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      z-index: 2;
+      color: #fff;
+      text-shadow: 0 2px 12px rgba(0,0,0,.45);
+      display: grid;
+      gap: 4px;
+    }
+
+    .image-preview-kicker {
       font-size: 12px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      opacity: .9;
+    }
+
+    .image-preview-title {
+      font-size: clamp(18px, 5vw, 28px);
+      font-weight: 950;
+      line-height: 1.05;
+      word-break: break-word;
+    }
+
+    .manual-image-controls {
+      display: grid;
+      gap: 10px;
+    }
+
+    .manual-image-controls label {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 900;
+    }
+
+    .manual-image-controls input[type=range] {
+      width: 100%;
+      accent-color: var(--ink);
+    }
+
+    .manual-image-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .manual-image-help {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      font-weight: 750;
     }
 
     .empty-upcoming {
@@ -3533,6 +3622,32 @@
         <input id="imageUrlInput" type="hidden" />
         <div id="imageStatus" class="image-status">No image selected. A calm placeholder will be used.</div>
 
+        <section id="manualImageEditor" class="manual-image-editor" aria-label="Manual image pan and zoom">
+          <div class="image-preview-card">
+            <img id="imagePreview" alt="Calendar image preview" />
+            <div class="image-preview-copy">
+              <div class="image-preview-kicker">Preview with calendar text</div>
+              <div id="imagePreviewTitle" class="image-preview-title">Task title</div>
+            </div>
+          </div>
+          <div class="manual-image-controls">
+            <label>Pan left / right
+              <input id="imageFocusXInput" type="range" min="0" max="100" step="1" value="50" />
+            </label>
+            <label>Pan up / down
+              <input id="imageFocusYInput" type="range" min="0" max="100" step="1" value="38" />
+            </label>
+            <label>Zoom
+              <input id="imageZoomInput" type="range" min="1" max="1.8" step="0.01" value="1.01" />
+            </label>
+            <div class="manual-image-actions">
+              <button id="imageCenterBtn" class="btn secondary" type="button">Center image</button>
+              <button id="imageTextSafeBtn" class="btn secondary" type="button">Text-safe crop</button>
+            </div>
+            <div class="manual-image-help">Use the preview to place faces or important text above the dark title area. These settings are saved on the task and used on the calendar cards.</div>
+          </div>
+        </section>
+
         <label class="checkbox-row">
           <input id="featuredInput" type="checkbox" />
           Use as the large daily card when it is today
@@ -3686,7 +3801,6 @@
     </section>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script>
     const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
     // Blob-efficient sync: no polling loop. Load fresh events on page boot,
@@ -3760,6 +3874,7 @@
       showFrequentRepeatingTasks: localStorage.getItem('homeOrganizerShowFrequentRepeatingTasks') === '1',
       pendingImageFocus: null,
       imageFocusToken: 0,
+      imagePreviewObjectUrl: null,
       lastReminderSync: null,
       reminderMenuExpanded: localStorage.getItem('homeOrganizerReminderMenuExpanded') === '1'
     };
@@ -3824,6 +3939,14 @@
       imageInput: document.getElementById('imageInput'),
       imageUrlInput: document.getElementById('imageUrlInput'),
       imageStatus: document.getElementById('imageStatus'),
+      manualImageEditor: document.getElementById('manualImageEditor'),
+      imagePreview: document.getElementById('imagePreview'),
+      imagePreviewTitle: document.getElementById('imagePreviewTitle'),
+      imageFocusXInput: document.getElementById('imageFocusXInput'),
+      imageFocusYInput: document.getElementById('imageFocusYInput'),
+      imageZoomInput: document.getElementById('imageZoomInput'),
+      imageCenterBtn: document.getElementById('imageCenterBtn'),
+      imageTextSafeBtn: document.getElementById('imageTextSafeBtn'),
       featuredInput: document.getElementById('featuredInput'),
       emailReminderInput: document.getElementById('emailReminderInput'),
       emailReminderOptions: document.getElementById('emailReminderOptions'),
@@ -4971,23 +5094,29 @@
       return Math.max(0, Math.min(100, Math.round(number * 10) / 10));
     }
 
+    function clampZoom(value, fallback = 1.01) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return fallback;
+      return Math.max(1, Math.min(1.8, Math.round(number * 100) / 100));
+    }
+
     function imageFocusStyle(event, fallbackY = 38) {
       const hasImage = Boolean(event?.imageUrl);
       const x = clampPercent(event?.imageFocusX, 50);
       const y = clampPercent(event?.imageFocusY, hasImage ? fallbackY : 50);
-      return `--image-focus-x:${x}%;--image-focus-y:${y}%;`;
+      const zoom = clampZoom(event?.imageZoom, 1.01);
+      return `--image-focus-x:${x}%;--image-focus-y:${y}%;--image-scale:${zoom};`;
     }
 
     function applyImageFocus(imageElement, event, fallbackY = 38) {
       if (!imageElement) return;
-      const width = imageElement.clientWidth || imageElement.naturalWidth || 0;
-      const height = imageElement.clientHeight || imageElement.naturalHeight || 0;
-      const targetAspect = width > 0 && height > 0 ? width / height : 1.5;
-      const smartFocus = smartCoverFocusFromEvent(event, targetAspect, event?.imageFocusX, event?.imageFocusY);
-      const x = clampPercent(smartFocus?.x, 50);
-      const y = clampPercent(smartFocus?.y, event?.imageUrl ? fallbackY : 50);
+      const hasImage = Boolean(event?.imageUrl);
+      const x = clampPercent(event?.imageFocusX, 50);
+      const y = clampPercent(event?.imageFocusY, hasImage ? fallbackY : 50);
+      const zoom = clampZoom(event?.imageZoom, 1.01);
       imageElement.style.setProperty('--image-focus-x', `${x}%`);
       imageElement.style.setProperty('--image-focus-y', `${y}%`);
+      imageElement.style.setProperty('--image-scale', zoom);
     }
 
     function normalizeFocusBox(box) {
@@ -5011,9 +5140,6 @@
       if (Number.isFinite(naturalWidth) && naturalWidth > 0) extras.imageNaturalWidth = Math.round(naturalWidth);
       if (Number.isFinite(naturalHeight) && naturalHeight > 0) extras.imageNaturalHeight = Math.round(naturalHeight);
 
-      const faceCount = Number(source.imageFocusFacesCount);
-      if (Number.isFinite(faceCount) && faceCount > 0) extras.imageFocusFacesCount = Math.round(faceCount);
-
       return extras;
     }
 
@@ -5022,7 +5148,8 @@
       return {
         imageFocusX: clampPercent(state.pendingImageFocus.imageFocusX, 50),
         imageFocusY: clampPercent(state.pendingImageFocus.imageFocusY, 38),
-        imageFocusSource: state.pendingImageFocus.imageFocusSource || 'manual',
+        imageFocusSource: 'manual',
+        imageZoom: clampZoom(state.pendingImageFocus.imageZoom, 1.01),
         ...focusPayloadExtras(state.pendingImageFocus)
       };
     }
@@ -5032,198 +5159,76 @@
       return {
         imageFocusX: clampPercent(event.imageFocusX, 50),
         imageFocusY: clampPercent(event.imageFocusY, 38),
-        imageFocusSource: event.imageFocusSource || 'saved',
+        imageFocusSource: event.imageFocusSource || 'manual',
+        imageZoom: clampZoom(event.imageZoom, 1.01),
         ...focusPayloadExtras(event)
       };
     }
 
-    function facesToFocus(faces, image) {
-      if (!faces || !faces.length || !image) return null;
-      const naturalWidth = image.naturalWidth || image.width;
-      const naturalHeight = image.naturalHeight || image.height;
-      if (!naturalWidth || !naturalHeight) return null;
-
-      let left = Infinity;
-      let top = Infinity;
-      let right = -Infinity;
-      let bottom = -Infinity;
-      let usableFaces = 0;
-
-      faces.forEach(face => {
-        const box = face.boundingBox || face;
-        const x = Number(box.x ?? box.left ?? 0);
-        const y = Number(box.y ?? box.top ?? 0);
-        const width = Number(box.width ?? 0);
-        const height = Number(box.height ?? 0);
-        if (!Number.isFinite(x + y + width + height) || width <= 0 || height <= 0) return;
-        usableFaces += 1;
-        left = Math.min(left, x);
-        top = Math.min(top, y);
-        right = Math.max(right, x + width);
-        bottom = Math.max(bottom, y + height);
-      });
-
-      if (!usableFaces || !Number.isFinite(left) || !Number.isFinite(top) || right <= left || bottom <= top) return null;
-      const centerX = ((left + right) / 2 / naturalWidth) * 100;
-      const centerY = ((top + bottom) / 2 / naturalHeight) * 100;
-
-      return {
-        imageFocusX: clampPercent(centerX, 50),
-        imageFocusY: Math.max(18, Math.min(62, clampPercent(centerY, 38))),
-        imageFocusSource: 'face-detector',
-        imageFocusFacesCount: usableFaces,
-        imageNaturalWidth: naturalWidth,
-        imageNaturalHeight: naturalHeight,
-        imageFocusBox: {
-          left: clampPercent((left / naturalWidth) * 100, 0),
-          top: clampPercent((top / naturalHeight) * 100, 0),
-          right: clampPercent((right / naturalWidth) * 100, 100),
-          bottom: clampPercent((bottom / naturalHeight) * 100, 100)
-        }
-      };
+    function syncPendingFocusFromControls() {
+      if (!state.pendingImageFocus) state.pendingImageFocus = { imageFocusX: 50, imageFocusY: 38, imageZoom: 1.01, imageFocusSource: 'manual' };
+      state.pendingImageFocus.imageFocusX = clampPercent(els.imageFocusXInput?.value, 50);
+      state.pendingImageFocus.imageFocusY = clampPercent(els.imageFocusYInput?.value, 38);
+      state.pendingImageFocus.imageZoom = clampZoom(els.imageZoomInput?.value, 1.01);
+      state.pendingImageFocus.imageFocusSource = 'manual';
     }
 
-    function textBoxesToFocus(boxes, image) {
-      if (!boxes || !boxes.length || !image) return null;
-      const naturalWidth = image.naturalWidth || image.width;
-      const naturalHeight = image.naturalHeight || image.height;
-      if (!naturalWidth || !naturalHeight) return null;
-
-      let left = Infinity;
-      let top = Infinity;
-      let right = -Infinity;
-      let bottom = -Infinity;
-      let usableCount = 0;
-      let totalTextLength = 0;
-
-      boxes.forEach(item => {
-        const text = String(item.text || item.rawValue || '').trim();
-        const confidence = Number(item.confidence ?? item.conf ?? 100);
-        const box = item.bbox || item.boundingBox || item;
-        if (text.length < 2 || confidence < 35 || !box) return;
-
-        const x0 = Number(box.x0 ?? box.x ?? box.left ?? 0);
-        const y0 = Number(box.y0 ?? box.y ?? box.top ?? 0);
-        const x1 = Number(box.x1 ?? ((box.x ?? box.left ?? 0) + (box.width ?? 0)));
-        const y1 = Number(box.y1 ?? ((box.y ?? box.top ?? 0) + (box.height ?? 0)));
-        if (!Number.isFinite(x0 + y0 + x1 + y1) || x1 <= x0 || y1 <= y0) return;
-
-        left = Math.min(left, x0);
-        top = Math.min(top, y0);
-        right = Math.max(right, x1);
-        bottom = Math.max(bottom, y1);
-        usableCount += 1;
-        totalTextLength += text.length;
-      });
-
-      // Avoid letting one tiny accidental OCR mark override a useful face crop.
-      if (usableCount < 1 || totalTextLength < 4) return null;
-      if (!Number.isFinite(left) || !Number.isFinite(top) || right <= left || bottom <= top) return null;
-
-      const boxWidth = right - left;
-      const boxHeight = bottom - top;
-      const coversEnough = (boxWidth * boxHeight) / (naturalWidth * naturalHeight) > 0.004;
-      if (!coversEnough && totalTextLength < 8) return null;
-
-      const centerX = ((left + right) / 2 / naturalWidth) * 100;
-      const centerY = ((top + bottom) / 2 / naturalHeight) * 100;
-
-      return {
-        imageFocusX: clampPercent(centerX, 50),
-        imageFocusY: Math.max(12, Math.min(88, clampPercent(centerY, 38))),
-        imageFocusSource: 'text-detector',
-        imageNaturalWidth: naturalWidth,
-        imageNaturalHeight: naturalHeight,
-        imageFocusBox: {
-          left: clampPercent((left / naturalWidth) * 100, 0),
-          top: clampPercent((top / naturalHeight) * 100, 0),
-          right: clampPercent((right / naturalWidth) * 100, 100),
-          bottom: clampPercent((bottom / naturalHeight) * 100, 100)
-        }
-      };
+    function setManualImageControls(focus = {}) {
+      const x = clampPercent(focus.imageFocusX, 50);
+      const y = clampPercent(focus.imageFocusY, 38);
+      const zoom = clampZoom(focus.imageZoom, 1.01);
+      if (els.imageFocusXInput) els.imageFocusXInput.value = String(x);
+      if (els.imageFocusYInput) els.imageFocusYInput.value = String(y);
+      if (els.imageZoomInput) els.imageZoomInput.value = String(zoom);
+      state.pendingImageFocus = { imageFocusX: x, imageFocusY: y, imageZoom: zoom, imageFocusSource: 'manual' };
+      renderManualImagePreview();
     }
 
-    async function detectTextFocusFromImage(file, image) {
-      if (!file || !image) return null;
-
-      // Fast path where supported by the browser.
-      if ('TextDetector' in window) {
-        try {
-          const detector = new TextDetector();
-          const detections = await detector.detect(image);
-          const nativeFocus = textBoxesToFocus(detections, image);
-          if (nativeFocus) return nativeFocus;
-        } catch (error) {
-          console.warn('Native text crop detection unavailable:', error);
-        }
+    function setManualImagePreviewSource(src) {
+      if (!els.manualImageEditor || !els.imagePreview) return;
+      if (!src) {
+        els.manualImageEditor.classList.remove('visible');
+        els.imagePreview.removeAttribute('src');
+        return;
       }
-
-      // Wider browser fallback. Tesseract is loaded from CDN when online.
-      if (window.Tesseract?.recognize) {
-        try {
-          const result = await window.Tesseract.recognize(file, 'eng');
-          const words = result?.data?.words || [];
-          return textBoxesToFocus(words, image);
-        } catch (error) {
-          console.warn('OCR text crop detection unavailable:', error);
-        }
-      }
-
-      return null;
+      els.imagePreview.src = src;
+      els.manualImageEditor.classList.add('visible');
+      renderManualImagePreview();
     }
 
-    async function detectImageFocusFromFile(file) {
-      if (!file || !file.type?.startsWith('image/')) return null;
-
-      try {
-        const image = await loadImage(file);
-
-        // Best crop priority: readable text first, then faces, then a safe fallback.
-        const textFocus = await detectTextFocusFromImage(file, image);
-        if (textFocus) return textFocus;
-
-        if ('FaceDetector' in window) {
-          try {
-            const detector = new FaceDetector({ maxDetectedFaces: 10, fastMode: true });
-            const faces = await detector.detect(image);
-            const faceFocus = facesToFocus(faces, image);
-            if (faceFocus) return faceFocus;
-          } catch (error) {
-            console.warn('Face crop detection unavailable:', error);
-          }
-        }
-
-        return { imageFocusX: 50, imageFocusY: 38, imageFocusSource: 'fallback-human-crop' };
-      } catch (error) {
-        console.warn('Image focus detection unavailable:', error);
-        return { imageFocusX: 50, imageFocusY: 38, imageFocusSource: 'fallback-human-crop' };
-      }
+    function renderManualImagePreview() {
+      if (!els.manualImageEditor || !els.imagePreview) return;
+      syncPendingFocusFromControls();
+      const focus = state.pendingImageFocus || {};
+      els.imagePreview.style.setProperty('--image-focus-x', `${clampPercent(focus.imageFocusX, 50)}%`);
+      els.imagePreview.style.setProperty('--image-focus-y', `${clampPercent(focus.imageFocusY, 38)}%`);
+      els.imagePreview.style.setProperty('--image-scale', clampZoom(focus.imageZoom, 1.01));
+      if (els.imagePreviewTitle) els.imagePreviewTitle.textContent = els.titleInput?.value?.trim() || 'Task title';
     }
 
-    async function updateImageFocusPreview(file) {
-      state.pendingImageFocus = null;
-      const token = ++state.imageFocusToken;
-      if (!file) return;
+    function clearManualImagePreview() {
+      if (state.imagePreviewObjectUrl) {
+        URL.revokeObjectURL(state.imagePreviewObjectUrl);
+        state.imagePreviewObjectUrl = null;
+      }
+      setManualImagePreviewSource('');
+    }
 
+    function updateImageFocusPreview(file) {
+      state.pendingImageFocus = { imageFocusX: 50, imageFocusY: 38, imageZoom: 1.01, imageFocusSource: 'manual' };
+      state.imageFocusToken += 1;
+      if (state.imagePreviewObjectUrl) URL.revokeObjectURL(state.imagePreviewObjectUrl);
+      state.imagePreviewObjectUrl = file ? URL.createObjectURL(file) : null;
+      if (!file) {
+        clearManualImagePreview();
+        return;
+      }
+      setManualImageControls(state.pendingImageFocus);
+      setManualImagePreviewSource(state.imagePreviewObjectUrl);
       const baseMessage = file.size > MAX_UPLOAD_BYTES
         ? `${file.name} selected (${formatBytes(file.size)}). It will be compressed before upload.`
         : `${file.name} selected (${formatBytes(file.size)}).`;
-      els.imageStatus.textContent = `${baseMessage} Looking for text or faces to crop neatly…`;
-
-      const focus = await detectImageFocusFromFile(file);
-      if (token !== state.imageFocusToken) return;
-      state.pendingImageFocus = focus;
-      if (focus?.imageFocusSource === 'text-detector') {
-        els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">✓ Text crop saved for dashboard cards.</span>`;
-      } else if (focus?.imageFocusSource === 'face-detector') {
-        const faceCount = Number(focus?.imageFocusFacesCount || 0);
-        const faceMessage = faceCount > 1
-          ? '✓ Smart group crop saved to keep more faces in view.'
-          : '✓ Face crop saved for dashboard cards.';
-        els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">${faceMessage}</span>`;
-      } else {
-        els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">Using a clean fallback crop.</span>`;
-      }
+      els.imageStatus.textContent = `${baseMessage} Adjust pan and zoom below before saving.`;
     }
 
     function renderHeroEvent(event) {
@@ -5693,10 +5698,10 @@
         imageFocusX: clampPercent(event.imageFocusX, 50),
         imageFocusY: clampPercent(event.imageFocusY, 38),
         imageFocusSource: String(event.imageFocusSource || ''),
+        imageZoom: clampZoom(event.imageZoom, 1.01),
         imageFocusBox: normalizeFocusBox(event.imageFocusBox),
         imageNaturalWidth: Number(event.imageNaturalWidth || 0) || 0,
         imageNaturalHeight: Number(event.imageNaturalHeight || 0) || 0,
-        imageFocusFacesCount: Number(event.imageFocusFacesCount || 0) || 0,
         featured: Boolean(event.featured),
         emailReminder: {
           enabled: Boolean(reminder.enabled),
@@ -5979,88 +5984,12 @@
       return 2.35;
     }
 
-    function smartCoverFocusFromEvent(event, targetAspect, fallbackX = 50, fallbackY = 38) {
-      const focusBox = normalizeFocusBox(event?.imageFocusBox);
-      const naturalWidth = Number(event?.imageNaturalWidth);
-      const naturalHeight = Number(event?.imageNaturalHeight);
-      if (!focusBox || !Number.isFinite(naturalWidth) || !Number.isFinite(naturalHeight) || naturalWidth <= 0 || naturalHeight <= 0 || !Number.isFinite(targetAspect) || targetAspect <= 0) {
-        return { x: clampPercent(fallbackX, 50), y: clampPercent(fallbackY, 38) };
-      }
-
-      const source = String(event?.imageFocusSource || '');
-      const leftBase = (focusBox.left / 100) * naturalWidth;
-      const topBase = (focusBox.top / 100) * naturalHeight;
-      const rightBase = (focusBox.right / 100) * naturalWidth;
-      const bottomBase = (focusBox.bottom / 100) * naturalHeight;
-      const boxWidth = Math.max(1, rightBase - leftBase);
-      const boxHeight = Math.max(1, bottomBase - topBase);
-      const faceCount = Math.max(1, Number(event?.imageFocusFacesCount || 0));
-      const paddingFactor = source === 'text-detector'
-        ? 0.12
-        : faceCount > 1
-          ? 0.06
-          : 0.1;
-
-      const left = Math.max(0, leftBase - Math.max(naturalWidth * 0.02, boxWidth * paddingFactor));
-      const right = Math.min(naturalWidth, rightBase + Math.max(naturalWidth * 0.02, boxWidth * paddingFactor));
-      const top = Math.max(0, topBase - Math.max(naturalHeight * 0.02, boxHeight * (source === 'text-detector' ? 0.14 : 0.08)));
-      const bottom = Math.min(naturalHeight, bottomBase + Math.max(naturalHeight * 0.02, boxHeight * (source === 'text-detector' ? 0.14 : 0.08)));
-
-      const imageAspect = naturalWidth / naturalHeight;
-      const visibleWidth = imageAspect > targetAspect ? naturalHeight * targetAspect : naturalWidth;
-      const visibleHeight = imageAspect < targetAspect ? naturalWidth / targetAspect : naturalHeight;
-
-      const desiredCenterX = (left + right) / 2;
-      const desiredCenterY = (top + bottom) / 2;
-
-      const overallMinCenterX = visibleWidth / 2;
-      const overallMaxCenterX = naturalWidth - visibleWidth / 2;
-      const overallMinCenterY = visibleHeight / 2;
-      const overallMaxCenterY = naturalHeight - visibleHeight / 2;
-
-      let centerX = desiredCenterX;
-      let centerY = desiredCenterY;
-
-      if ((right - left) <= visibleWidth) {
-        const allowedMinX = right - visibleWidth / 2;
-        const allowedMaxX = left + visibleWidth / 2;
-        centerX = Math.min(allowedMaxX, Math.max(allowedMinX, desiredCenterX));
-      }
-      if ((bottom - top) <= visibleHeight) {
-        const allowedMinY = bottom - visibleHeight / 2;
-        const allowedMaxY = top + visibleHeight / 2;
-        centerY = Math.min(allowedMaxY, Math.max(allowedMinY, desiredCenterY));
-      }
-
-      centerX = Math.min(overallMaxCenterX, Math.max(overallMinCenterX, centerX));
-      centerY = Math.min(overallMaxCenterY, Math.max(overallMinCenterY, centerY));
-
-      return {
-        x: clampPercent((centerX / naturalWidth) * 100, fallbackX),
-        y: clampPercent((centerY / naturalHeight) * 100, fallbackY)
-      };
-    }
-
     function upcomingImageFocusStyle(event) {
       const hasImage = Boolean(event?.imageUrl);
-      const source = String(event?.imageFocusSource || '');
-      const smartFocus = smartCoverFocusFromEvent(event, getUpcomingCardAspectRatio(), event?.imageFocusX, event?.imageFocusY);
-      const x = clampPercent(smartFocus.x, 50);
-      let y = clampPercent(smartFocus.y, hasImage ? 38 : 50);
-      let scale = 1.01;
-      if (source === 'text-detector') {
-        // Keep detected poster/text areas in frame without pushing them so high
-        // that the bottom overlay hides the readable part.
-        y = Math.max(12, Math.min(62, y - 2));
-        scale = 1;
-      } else if (source === 'face-detector') {
-        const faceCount = Number(event?.imageFocusFacesCount || 0);
-        y = Math.max(16, Math.min(64, y - 1));
-        scale = faceCount > 1 ? 1 : 1.02;
-      } else {
-        y = Math.max(24, Math.min(70, y));
-      }
-      return `--image-focus-x:${x}%;--image-focus-y:${y}%;--image-scale:${scale};`;
+      const x = clampPercent(event?.imageFocusX, 50);
+      const y = clampPercent(event?.imageFocusY, hasImage ? 38 : 50);
+      const zoom = clampZoom(event?.imageZoom, 1.01);
+      return `--image-focus-x:${x}%;--image-focus-y:${y}%;--image-scale:${zoom};`;
     }
 
     function hiddenRepeatingTasksVisible() {
@@ -6819,6 +6748,8 @@
       els.eventForm.reset();
       els.eventId.value = '';
       els.imageUrlInput.value = '';
+      clearManualImagePreview();
+      setManualImageControls({ imageFocusX: 50, imageFocusY: 38, imageZoom: 1.01 });
       if (els.repeatInput) els.repeatInput.value = 'none';
       if (els.emailReminderInput) els.emailReminderInput.checked = false;
       renderEmailContacts([]);
@@ -6927,12 +6858,7 @@
       const file = els.imageInput.files?.[0];
       if (!file) return els.imageUrlInput.value;
 
-      if (!state.pendingImageFocus) {
-        const token = ++state.imageFocusToken;
-        els.imageStatus.textContent = 'Looking for text or faces before upload…';
-        const focus = await detectImageFocusFromFile(file);
-        if (token === state.imageFocusToken) state.pendingImageFocus = focus;
-      }
+      syncPendingFocusFromControls();
 
       const uploadFile = await compressImageForUpload(file);
       if (uploadFile.size > MAX_UPLOAD_BYTES) {
@@ -7000,7 +6926,7 @@
         createdAt: new Date().toISOString()
       };
 
-      rememberLocalEvent(eventToSave, op.opId, op.method);
+      forgetLocalEvent(id);
       queueWrite(op);
       refreshEventsFromServerEvents();
       renderDisplay();
@@ -7243,9 +7169,11 @@ Cancel = choose whether to delete the whole series.`);
       renderEmailContacts(Array.isArray(reminder.recipients) ? reminder.recipients : []);
       setEmailReminderOptionsVisible();
       els.imageInput.value = '';
-      state.pendingImageFocus = focusFromEvent(event);
+      state.pendingImageFocus = focusFromEvent(event) || { imageFocusX: 50, imageFocusY: 38, imageZoom: 1.01, imageFocusSource: 'manual' };
       state.imageFocusToken += 1;
-      els.imageStatus.textContent = event.imageUrl ? 'Current image will be kept unless you upload a new one.' : 'No image selected. A calm placeholder will be used.';
+      setManualImageControls(state.pendingImageFocus);
+      setManualImagePreviewSource(event.imageUrl || '');
+      els.imageStatus.textContent = event.imageUrl ? 'Current image will be kept unless you upload a new one. Adjust pan/zoom below if needed.' : 'No image selected. A calm placeholder will be used.';
       els.saveEventBtn.textContent = 'Update event';
       if (els.eventEditorTitle) els.eventEditorTitle.textContent = 'Edit task/event';
       showEventEditor();
@@ -7505,6 +7433,17 @@ Cancel = choose whether to delete the whole series.`);
         }
 
         updateImageFocusPreview(file);
+      });
+
+      [els.imageFocusXInput, els.imageFocusYInput, els.imageZoomInput].forEach(input => {
+        input?.addEventListener('input', renderManualImagePreview);
+      });
+      els.titleInput?.addEventListener('input', renderManualImagePreview);
+      els.imageCenterBtn?.addEventListener('click', () => {
+        setManualImageControls({ imageFocusX: 50, imageFocusY: 50, imageZoom: 1.01 });
+      });
+      els.imageTextSafeBtn?.addEventListener('click', () => {
+        setManualImageControls({ imageFocusX: 50, imageFocusY: 34, imageZoom: 1.08 });
       });
 
       els.eventForm.addEventListener('submit', async event => {

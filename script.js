@@ -1,20 +1,41 @@
-
-    const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
-    const REFRESH_EVENTS_MS = 10_000;
-    const DISPLAY_EVENT_LIMIT = 4;
+const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
+    // Blob-efficient sync: no polling loop. Load fresh events on page boot,
+    // once per hour during daytime, on deliberate interaction, or when needed for a write/retry.
+    const INTERACTION_FETCH_DEBOUNCE_MS = 800;
+    const AUTOMATIC_EVENT_REFRESH_START_HOUR = 6;
+    const AUTOMATIC_EVENT_REFRESH_END_HOUR = 21;
+    const MIN_DISPLAY_FETCH_GAP_MS = 60 * 1000;
+    const MIN_ADMIN_FETCH_GAP_MS = 20 * 1000;
+    const LOCAL_EVENTS_CACHE_KEY = 'homeOrganizerEventsCacheV2';
+    const LOCAL_EVENTS_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+    const DEFAULT_UPCOMING_LIMIT = 4;
     const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
-    const COMPRESSED_UPLOAD_TARGET_BYTES = 3.6 * 1024 * 1024;
-    const IMAGE_MAX_DIMENSION = 1600;
-    const JPEG_QUALITY_STEPS = [0.82, 0.72, 0.62, 0.52, 0.44];
+    const IMAGE_UPLOAD_PASSTHROUGH_BYTES = 450 * 1024;
+    const COMPRESSED_UPLOAD_TARGET_BYTES = 650 * 1024;
+    const IMAGE_MAX_DIMENSION = 1280;
+    const JPEG_QUALITY_STEPS = [0.78, 0.7, 0.62, 0.54, 0.46, 0.38, 0.32];
     const PENDING_WRITES_KEY = 'homeOrganizerPendingWrites';
+    const LOCAL_COMPLETION_OVERRIDES_KEY = 'homeOrganizerCompletionOverrides';
+    const LOCAL_EVENT_MIRROR_KEY = 'homeOrganizerLocalEventMirror';
+    const LOCAL_EVENT_MIRROR_TTL_MS = 24 * 60 * 60 * 1000;
+    const LOCAL_EVENT_MIRROR_MIN_HOLD_MS = 2 * 60 * 1000;
     const LOCAL_EVENT_ID_PREFIX = 'local-';
     const LAST_WRITE_SIGNAL_KEY = 'homeOrganizerLastWrite';
-    const EMAIL_CONTACTS_KEY = 'homeOrganizerReminderEmails';
+    const DAUGHTER_PERIOD_OVERRIDES_KEY = 'homeOrganizerDaughterPeriodOverridesV1';
+    const DAUGHTER_ANCHOR_START_KEY = '2026-05-13';
+    const DAUGHTER_ANCHOR_END_KEY = '2026-05-20';
+    const DAUGHTER_PERIOD_INTERVAL_DAYS = 14;
+    const HARD_CODED_REMINDER_CONTACTS = [
+      { key: 'therese', name: 'Therese', email: 'theresesaksgard@hotmail.com' },
+      { key: 'thomas', name: 'Thomas', email: 'diemetrix@gmail.com' }
+    ];
 
     const state = {
       events: [],
       serverEvents: [],
       pendingWriteActive: false,
+      eventFetchActive: false,
+      lastEventFetchAt: 0,
       weather: null,
       editingId: null,
       selectedDayKey: null,
@@ -26,8 +47,11 @@
       dailyCalendarMode: false,
       dailyHomeTimer: null,
       upcomingPage: 0,
+      hiddenRepeatingTasksVisibleUntil: 0,
+      hiddenRepeatingTasksTimer: null,
       selectedEventFlipped: false,
       heroEventFlipped: false,
+      flipBackTimer: null,
       selectedInstanceId: null,
       flippedAdminEventId: null,
       activeAdminInstanceId: null,
@@ -36,13 +60,19 @@
       },
       longPressTimer: null,
       longPressOpened: false,
+      monthViewDate: new Date(),
+      selectedDaughterPeriodKey: null,
+      daughterEditorMode: 'edit',
+      daughterPeriodOverrides: {},
       weatherFocusDate: null,
       dangerHoldTimer: null,
       dangerHoldOpened: false,
       showFrequentRepeatingTasks: localStorage.getItem('homeOrganizerShowFrequentRepeatingTasks') === '1',
       pendingImageFocus: null,
       imageFocusToken: 0,
-      lastReminderSync: null
+      imagePreviewObjectUrl: null,
+      lastReminderSync: null,
+      reminderMenuExpanded: localStorage.getItem('homeOrganizerReminderMenuExpanded') === '1'
     };
 
     const els = {
@@ -79,6 +109,14 @@
       newTaskBtn: document.getElementById('newTaskBtn'),
       repeatVisibilityToggle: document.getElementById('repeatVisibilityToggle'),
       showFrequentRepeatingInput: document.getElementById('showFrequentRepeatingInput'),
+      phoneReminderMenu: document.getElementById('phoneReminderMenu'),
+      reminderMenuToggle: document.getElementById('reminderMenuToggle'),
+      phoneReminderMenuBody: document.getElementById('phoneReminderMenuBody'),
+      reminderMenuChevron: document.getElementById('reminderMenuChevron'),
+      weeklyUpdatesInput: document.getElementById('weeklyUpdatesInput'),
+      dailyNewTasksInput: document.getElementById('dailyNewTasksInput'),
+      saveReminderSettingsBtn: document.getElementById('saveReminderSettingsBtn'),
+      reminderMenuStatus: document.getElementById('reminderMenuStatus'),
       repeatVisibilityText: document.getElementById('repeatVisibilityText'),
       repeatVisibilityHelp: document.getElementById('repeatVisibilityHelp'),
       eventEditorCard: document.getElementById('eventEditorCard'),
@@ -97,13 +135,18 @@
       imageInput: document.getElementById('imageInput'),
       imageUrlInput: document.getElementById('imageUrlInput'),
       imageStatus: document.getElementById('imageStatus'),
+      manualImageEditor: document.getElementById('manualImageEditor'),
+      imagePreview: document.getElementById('imagePreview'),
+      imagePreviewTitle: document.getElementById('imagePreviewTitle'),
+      imageFocusXInput: document.getElementById('imageFocusXInput'),
+      imageFocusYInput: document.getElementById('imageFocusYInput'),
+      imageZoomInput: document.getElementById('imageZoomInput'),
+      imageCenterBtn: document.getElementById('imageCenterBtn'),
+      imageTextSafeBtn: document.getElementById('imageTextSafeBtn'),
       featuredInput: document.getElementById('featuredInput'),
       emailReminderInput: document.getElementById('emailReminderInput'),
       emailReminderOptions: document.getElementById('emailReminderOptions'),
-      reminderMinutesInput: document.getElementById('reminderMinutesInput'),
       emailContactList: document.getElementById('emailContactList'),
-      newEmailInput: document.getElementById('newEmailInput'),
-      addEmailBtn: document.getElementById('addEmailBtn'),
       reminderHelp: document.getElementById('reminderHelp'),
       saveEventBtn: document.getElementById('saveEventBtn'),
       resetBtn: document.getElementById('resetBtn'),
@@ -111,15 +154,28 @@
       adminEvents: document.getElementById('adminEvents'),
       taskActionOverlay: document.getElementById('taskActionOverlay'),
       taskActionContent: document.getElementById('taskActionContent'),
+      monthOverlay: document.getElementById('monthOverlay'),
+      monthCloseBtn: document.getElementById('monthCloseBtn'),
+      monthTitle: document.getElementById('monthTitle'),
+      monthSubtitle: document.getElementById('monthSubtitle'),
+      monthPrevBtn: document.getElementById('monthPrevBtn'),
+      monthNextBtn: document.getElementById('monthNextBtn'),
+      monthTodayBtn: document.getElementById('monthTodayBtn'),
+      monthSettingsBtn: document.getElementById('monthSettingsBtn'),
+      monthGrid: document.getElementById('monthGrid'),
+      daughterPeriodEditor: document.getElementById('daughterPeriodEditor'),
+      daughterPeriodTitle: document.getElementById('daughterPeriodTitle'),
+      daughterPeriodHelp: document.getElementById('daughterPeriodHelp'),
+      daughterStartInput: document.getElementById('daughterStartInput'),
+      daughterEndInput: document.getElementById('daughterEndInput'),
+      daughterSaveBtn: document.getElementById('daughterSaveBtn'),
+      daughterDeleteBtn: document.getElementById('daughterDeleteBtn'),
+      daughterResetBtn: document.getElementById('daughterResetBtn'),
+      daughterAddBtn: document.getElementById('daughterAddBtn'),
+      daughterPeriodStatus: document.getElementById('daughterPeriodStatus'),
       configOverlay: document.getElementById('configOverlay'),
       configCloseBtn: document.getElementById('configCloseBtn'),
       configPinInput: document.getElementById('configPinInput'),
-      googleSyncInput: document.getElementById('googleSyncInput'),
-      googleCalendarIdInput: document.getElementById('googleCalendarIdInput'),
-      googleTimezoneInput: document.getElementById('googleTimezoneInput'),
-      googleServiceAccountInput: document.getElementById('googleServiceAccountInput'),
-      clearGoogleCredentialsInput: document.getElementById('clearGoogleCredentialsInput'),
-      googleConnectionStatus: document.getElementById('googleConnectionStatus'),
       localQueueStatus: document.getElementById('localQueueStatus'),
       saveConfigBtn: document.getElementById('saveConfigBtn'),
       reloadConfigBtn: document.getElementById('reloadConfigBtn'),
@@ -209,6 +265,467 @@
     function todayStart() {
       const now = new Date();
       return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }
+
+
+    function startOfLocalDay(date) {
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    }
+
+    function addLocalDays(date, days) {
+      const next = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      next.setDate(next.getDate() + days);
+      return next;
+    }
+
+    function localDaysBetween(start, end) {
+      const a = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+      const b = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+      return Math.round((b - a) / 86400000);
+    }
+
+    function monthStart(date) {
+      return new Date(date.getFullYear(), date.getMonth(), 1);
+    }
+
+    function monthEnd(date) {
+      return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    }
+
+    function ensureDaughterStorageShape() {
+      if (!state.daughterPeriodOverrides || typeof state.daughterPeriodOverrides !== 'object') {
+        state.daughterPeriodOverrides = {};
+      }
+      if (!state.daughterPeriodOverrides.__extra || typeof state.daughterPeriodOverrides.__extra !== 'object') {
+        state.daughterPeriodOverrides.__extra = {};
+      }
+    }
+
+    function loadDaughterPeriodOverrides() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(DAUGHTER_PERIOD_OVERRIDES_KEY) || '{}');
+        state.daughterPeriodOverrides = parsed && typeof parsed === 'object' ? parsed : {};
+      } catch {
+        state.daughterPeriodOverrides = {};
+      }
+      ensureDaughterStorageShape();
+    }
+
+    function saveDaughterPeriodOverrides() {
+      ensureDaughterStorageShape();
+      localStorage.setItem(DAUGHTER_PERIOD_OVERRIDES_KEY, JSON.stringify(state.daughterPeriodOverrides || {}));
+    }
+
+    function isValidDateKey(key) {
+      const date = dateFromKey(key);
+      return Boolean(date && dateKey(date) === key);
+    }
+
+    function makeExtraDaughterPeriod(id, data) {
+      if (!data || !isValidDateKey(data.start) || !isValidDateKey(data.end)) return null;
+      let start = dateFromKey(data.start);
+      let end = dateFromKey(data.end);
+      if (end < start) {
+        const tmp = start;
+        start = end;
+        end = tmp;
+      }
+      return {
+        index: null,
+        periodKey: `extra:${id}`,
+        defaultStart: startOfLocalDay(start),
+        defaultEnd: startOfLocalDay(end),
+        start: startOfLocalDay(start),
+        end: startOfLocalDay(end),
+        customized: true,
+        extra: true,
+        deleted: false
+      };
+    }
+
+    function buildDaughterPeriod(index) {
+      const anchorStart = dateFromKey(DAUGHTER_ANCHOR_START_KEY);
+      const anchorEnd = dateFromKey(DAUGHTER_ANCHOR_END_KEY);
+      const defaultStart = addLocalDays(anchorStart, index * DAUGHTER_PERIOD_INTERVAL_DAYS);
+      const defaultEnd = addLocalDays(anchorEnd, index * DAUGHTER_PERIOD_INTERVAL_DAYS);
+      const periodKey = dateKey(defaultStart);
+      const override = state.daughterPeriodOverrides?.[periodKey] || null;
+      if (override?.deleted) {
+        return {
+          index,
+          periodKey,
+          defaultStart,
+          defaultEnd,
+          start: startOfLocalDay(defaultStart),
+          end: startOfLocalDay(defaultEnd),
+          customized: true,
+          extra: false,
+          deleted: true
+        };
+      }
+      let start = override?.start && isValidDateKey(override.start) ? dateFromKey(override.start) : defaultStart;
+      let end = override?.end && isValidDateKey(override.end) ? dateFromKey(override.end) : defaultEnd;
+      if (end < start) {
+        const tmp = start;
+        start = end;
+        end = tmp;
+      }
+      return {
+        index,
+        periodKey,
+        defaultStart,
+        defaultEnd,
+        start: startOfLocalDay(start),
+        end: startOfLocalDay(end),
+        customized: Boolean(override),
+        extra: false,
+        deleted: false
+      };
+    }
+
+    function daughterExtraPeriodsForRange(rangeStart, rangeEnd) {
+      ensureDaughterStorageShape();
+      return Object.entries(state.daughterPeriodOverrides.__extra || {})
+        .map(([id, data]) => makeExtraDaughterPeriod(id, data))
+        .filter(period => period && period.end >= rangeStart && period.start <= rangeEnd);
+    }
+
+    function daughterPeriodsForRange(rangeStart, rangeEnd) {
+      const anchorStart = dateFromKey(DAUGHTER_ANCHOR_START_KEY);
+      const anchorEnd = dateFromKey(DAUGHTER_ANCHOR_END_KEY);
+      const startIndex = Math.floor(localDaysBetween(anchorEnd, rangeStart) / DAUGHTER_PERIOD_INTERVAL_DAYS) - 3;
+      const endIndex = Math.ceil(localDaysBetween(anchorStart, rangeEnd) / DAUGHTER_PERIOD_INTERVAL_DAYS) + 3;
+      const periods = [];
+      for (let index = startIndex; index <= endIndex; index += 1) {
+        const period = buildDaughterPeriod(index);
+        if (!period.deleted && period.end >= rangeStart && period.start <= rangeEnd) periods.push(period);
+      }
+      periods.push(...daughterExtraPeriodsForRange(rangeStart, rangeEnd));
+      return periods.sort((a, b) => a.start - b.start || a.end - b.end);
+    }
+
+    function daughterPeriodForDate(date) {
+      const day = startOfLocalDay(date);
+      const periods = daughterPeriodsForRange(addLocalDays(day, -20), addLocalDays(day, 20));
+      return periods.find(period => day >= period.start && day <= period.end) || null;
+    }
+
+    function daughterPeriodByKey(periodKey) {
+      if (periodKey === '__new') return makeNewDaughterPeriodDraft();
+      if (String(periodKey || '').startsWith('extra:')) {
+        ensureDaughterStorageShape();
+        const id = String(periodKey).slice('extra:'.length);
+        return makeExtraDaughterPeriod(id, state.daughterPeriodOverrides.__extra?.[id]);
+      }
+      const anchorStart = dateFromKey(DAUGHTER_ANCHOR_START_KEY);
+      const periodStart = dateFromKey(periodKey);
+      if (!anchorStart || !periodStart) return null;
+      const index = Math.round(localDaysBetween(anchorStart, periodStart) / DAUGHTER_PERIOD_INTERVAL_DAYS);
+      const period = buildDaughterPeriod(index);
+      return period.deleted ? null : period;
+    }
+
+    function makeNewDaughterPeriodDraft() {
+      const viewDate = state.monthViewDate || new Date();
+      const today = startOfLocalDay(new Date());
+      const firstOfMonth = monthStart(viewDate);
+      const sameVisibleMonth = today.getFullYear() === firstOfMonth.getFullYear() && today.getMonth() === firstOfMonth.getMonth();
+      const start = sameVisibleMonth ? today : firstOfMonth;
+      return {
+        index: null,
+        periodKey: '__new',
+        defaultStart: start,
+        defaultEnd: addLocalDays(start, 7),
+        start,
+        end: addLocalDays(start, 7),
+        customized: true,
+        extra: true,
+        isNew: true,
+        deleted: false
+      };
+    }
+
+    function formatPeriodDate(date) {
+      return new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' }).format(date);
+    }
+
+    function renderDaughterPeriodEditor(period) {
+      if (!els.daughterPeriodEditor) return;
+      if (!period) {
+        els.daughterPeriodEditor.classList.add('hidden');
+        state.daughterEditorMode = 'edit';
+        return;
+      }
+      state.selectedDaughterPeriodKey = period.periodKey;
+      state.daughterEditorMode = period.isNew ? 'add' : 'edit';
+      els.daughterPeriodEditor.classList.remove('hidden');
+      if (els.daughterPeriodTitle) {
+        if (period.isNew) {
+          els.daughterPeriodTitle.textContent = 'Add daughter period';
+        } else if (period.extra) {
+          els.daughterPeriodTitle.textContent = `Custom daughter period · ${formatPeriodDate(period.start)} – ${formatPeriodDate(period.end)}`;
+        } else {
+          els.daughterPeriodTitle.textContent = `Daughter period · ${formatPeriodDate(period.start)} – ${formatPeriodDate(period.end)}`;
+        }
+      }
+      if (els.daughterPeriodHelp) {
+        if (period.isNew) {
+          els.daughterPeriodHelp.textContent = 'Add a manual period. It will be saved on this device and shown with the same blue tint.';
+        } else if (period.extra) {
+          els.daughterPeriodHelp.textContent = 'This is a manually added period. Save to change it, or delete it if it should not be shown.';
+        } else if (period.customized) {
+          els.daughterPeriodHelp.textContent = 'This period has custom dates. Save again to change it, delete it, or reset to the every-other-week pattern.';
+        } else {
+          els.daughterPeriodHelp.textContent = 'This is generated from the every-other-week Wednesday-to-Wednesday pattern. Change only this period if needed.';
+        }
+      }
+      if (els.daughterStartInput) els.daughterStartInput.value = dateKey(period.start);
+      if (els.daughterEndInput) els.daughterEndInput.value = dateKey(period.end);
+      if (els.daughterSaveBtn) els.daughterSaveBtn.textContent = period.isNew ? 'Add period' : 'Save this period';
+      if (els.daughterDeleteBtn) els.daughterDeleteBtn.hidden = Boolean(period.isNew);
+      if (els.daughterResetBtn) els.daughterResetBtn.hidden = Boolean(period.isNew || period.extra);
+      if (els.daughterPeriodStatus) {
+        els.daughterPeriodStatus.textContent = period.isNew
+          ? 'Choose start and end dates, then add the period.'
+          : period.extra
+            ? 'Manual period saved on this device.'
+            : period.customized
+              ? 'Custom period saved on this device.'
+              : 'Default alternating period.';
+      }
+    }
+
+    function renderMonthView() {
+      if (!els.monthOverlay || !els.monthGrid) return;
+      const viewDate = state.monthViewDate || new Date();
+      const firstOfMonth = monthStart(viewDate);
+      const lastOfMonth = monthEnd(viewDate);
+      const firstGridDay = addLocalDays(firstOfMonth, -((firstOfMonth.getDay() + 6) % 7));
+      const lastGridDay = addLocalDays(firstGridDay, 41);
+      const periods = daughterPeriodsForRange(firstGridDay, lastGridDay);
+      const todayKey = dateKey(new Date());
+      const selectedKey = state.selectedDaughterPeriodKey;
+      const monthTitle = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(firstOfMonth);
+      if (els.monthTitle) els.monthTitle.textContent = monthTitle;
+      if (els.monthSubtitle) {
+        els.monthSubtitle.textContent = `Blue tint = daughter days. Current base pattern starts ${formatPeriodDate(dateFromKey(DAUGHTER_ANCHOR_START_KEY))} and ends ${formatPeriodDate(dateFromKey(DAUGHTER_ANCHOR_END_KEY))}, then repeats every other week.`;
+      }
+
+      const html = [];
+      for (let i = 0; i < 42; i += 1) {
+        const day = addLocalDays(firstGridDay, i);
+        const key = dateKey(day);
+        const period = periods.find(candidate => day >= candidate.start && day <= candidate.end);
+        const dayEvents = eventsForDayKey(key).slice(0, 4);
+        const classes = ['month-day'];
+        if (day.getMonth() !== firstOfMonth.getMonth()) classes.push('outside-month');
+        if (key === todayKey) classes.push('today');
+        if (period) classes.push('with-daughter');
+        if (period?.customized || period?.extra) classes.push('custom-daughter');
+        if (period && period.periodKey === selectedKey) classes.push('selected-period');
+        const dots = dayEvents.length
+          ? `<div class="month-day-events">${dayEvents.map(() => '<span class="month-event-dot"></span>').join('')}</div>`
+          : '';
+        html.push(`
+          <button class="${classes.join(' ')}" type="button" data-month-day="${key}" ${period ? `data-daughter-period="${period.periodKey}"` : ''} aria-label="${htmlEscape(formatPeriodDate(day))}${period ? ', daughter day' : ''}${dayEvents.length ? `, ${dayEvents.length} task${dayEvents.length === 1 ? '' : 's'}` : ''}">
+            <span class="month-day-number">${day.getDate()}</span>
+            ${dots}
+          </button>
+        `);
+      }
+      els.monthGrid.innerHTML = html.join('');
+      if (selectedKey) {
+        const selectedPeriod = state.daughterEditorMode === 'add'
+          ? makeNewDaughterPeriodDraft()
+          : daughterPeriodByKey(selectedKey);
+        renderDaughterPeriodEditor(selectedPeriod);
+      }
+    }
+
+    function openMonthView(resetToCurrent = true) {
+      if (!els.monthOverlay) return;
+      if (resetToCurrent) state.monthViewDate = new Date();
+      loadDaughterPeriodOverrides();
+      renderMonthView();
+      els.monthOverlay.classList.remove('hidden');
+      document.body.classList.add('month-open');
+    }
+
+    function closeMonthView() {
+      if (!els.monthOverlay) return;
+      els.monthOverlay.classList.add('hidden');
+      document.body.classList.remove('month-open');
+      state.selectedDaughterPeriodKey = null;
+      state.daughterEditorMode = 'edit';
+    }
+
+    function saveSelectedDaughterPeriod() {
+      const periodKey = state.selectedDaughterPeriodKey;
+      if (!periodKey) return;
+      const start = els.daughterStartInput?.value || '';
+      const end = els.daughterEndInput?.value || '';
+      if (!isValidDateKey(start) || !isValidDateKey(end)) {
+        if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'Choose both a valid start date and end date.';
+        return;
+      }
+      if (dateFromKey(end) < dateFromKey(start)) {
+        if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'End date must be the same day or after the start date.';
+        return;
+      }
+      ensureDaughterStorageShape();
+      if (state.daughterEditorMode === 'add' || periodKey === '__new') {
+        const id = `manual-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+        state.daughterPeriodOverrides.__extra[id] = { start, end };
+        state.selectedDaughterPeriodKey = `extra:${id}`;
+        state.daughterEditorMode = 'edit';
+      } else if (String(periodKey).startsWith('extra:')) {
+        const id = String(periodKey).slice('extra:'.length);
+        state.daughterPeriodOverrides.__extra[id] = { start, end };
+      } else {
+        state.daughterPeriodOverrides[periodKey] = { start, end };
+      }
+      saveDaughterPeriodOverrides();
+      renderMonthView();
+      if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'Saved this period on this device.';
+    }
+
+    function resetSelectedDaughterPeriod() {
+      const periodKey = state.selectedDaughterPeriodKey;
+      if (!periodKey || String(periodKey).startsWith('extra:') || periodKey === '__new') return;
+      delete state.daughterPeriodOverrides[periodKey];
+      state.daughterEditorMode = 'edit';
+      saveDaughterPeriodOverrides();
+      renderMonthView();
+      if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'Reset to the normal every-other-week pattern.';
+    }
+
+    function deleteSelectedDaughterPeriod() {
+      const periodKey = state.selectedDaughterPeriodKey;
+      if (!periodKey || periodKey === '__new') return;
+      ensureDaughterStorageShape();
+      if (String(periodKey).startsWith('extra:')) {
+        const id = String(periodKey).slice('extra:'.length);
+        delete state.daughterPeriodOverrides.__extra[id];
+      } else {
+        state.daughterPeriodOverrides[periodKey] = { deleted: true };
+      }
+      state.selectedDaughterPeriodKey = null;
+      state.daughterEditorMode = 'edit';
+      saveDaughterPeriodOverrides();
+      renderDaughterPeriodEditor(null);
+      renderMonthView();
+      if (els.monthSubtitle) els.monthSubtitle.textContent = 'Period deleted on this device. Use Add daughter period if you need to add a replacement.';
+    }
+
+    function showAddDaughterPeriodEditor() {
+      state.selectedDaughterPeriodKey = '__new';
+      state.daughterEditorMode = 'add';
+      renderMonthView();
+      renderDaughterPeriodEditor(makeNewDaughterPeriodDraft());
+      els.daughterPeriodEditor?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function bindMonthView() {
+      if (!els.monthOverlay) return;
+      loadDaughterPeriodOverrides();
+      els.monthCloseBtn?.addEventListener('click', closeMonthView);
+      els.monthOverlay.addEventListener('click', event => {
+        if (event.target === els.monthOverlay) closeMonthView();
+      });
+      els.monthPrevBtn?.addEventListener('click', () => {
+        state.monthViewDate = new Date(state.monthViewDate.getFullYear(), state.monthViewDate.getMonth() - 1, 1);
+        state.selectedDaughterPeriodKey = null;
+        state.daughterEditorMode = 'edit';
+        renderMonthView();
+      });
+      els.monthNextBtn?.addEventListener('click', () => {
+        state.monthViewDate = new Date(state.monthViewDate.getFullYear(), state.monthViewDate.getMonth() + 1, 1);
+        state.selectedDaughterPeriodKey = null;
+        state.daughterEditorMode = 'edit';
+        renderMonthView();
+      });
+      els.monthTodayBtn?.addEventListener('click', () => {
+        state.monthViewDate = new Date();
+        state.selectedDaughterPeriodKey = null;
+        state.daughterEditorMode = 'edit';
+        renderMonthView();
+      });
+      els.monthSettingsBtn?.addEventListener('click', () => {
+        openConfigMenu();
+      });
+
+      const handleMonthDaySinglePress = button => {
+        const day = dateFromKey(button.dataset.monthDay);
+        const period = day ? daughterPeriodForDate(day) : null;
+        state.daughterEditorMode = 'edit';
+        if (period) {
+          renderDaughterPeriodEditor(period);
+          renderMonthView();
+        } else {
+          state.selectedDaughterPeriodKey = null;
+          renderDaughterPeriodEditor(null);
+          renderMonthView();
+          if (els.monthSubtitle) els.monthSubtitle.textContent = 'That day is not inside a daughter period. Tap a blue day to adjust one period.';
+        }
+      };
+
+      const openMonthDayInDisplay = dayKey => {
+        if (!eventsForDayKey(dayKey).length) return false;
+        if (monthDayTapTimer) clearTimeout(monthDayTapTimer);
+        monthDayTapTimer = null;
+        monthDayLastKey = '';
+        monthDayLastAt = 0;
+        closeMonthView();
+        requestAnimationFrame(() => selectDayPreview(dayKey));
+        return true;
+      };
+
+      let monthDayTapTimer = null;
+      let monthDayLastKey = '';
+      let monthDayLastAt = 0;
+
+      const handleMonthDayPress = event => {
+        const button = event.target.closest('[data-month-day]');
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+
+        const dayKey = button.dataset.monthDay;
+        const now = Date.now();
+        const isBrowserDoubleClick = Number(event.detail || 0) >= 2;
+        const isTimedDoublePress = dayKey === monthDayLastKey && now - monthDayLastAt < 650;
+        const isDoublePress = isBrowserDoubleClick || isTimedDoublePress;
+
+        if (isDoublePress) {
+          if (openMonthDayInDisplay(dayKey)) return;
+          handleMonthDaySinglePress(button);
+          return;
+        }
+
+        if (monthDayTapTimer) clearTimeout(monthDayTapTimer);
+        monthDayLastKey = dayKey;
+        monthDayLastAt = now;
+        monthDayTapTimer = setTimeout(() => {
+          monthDayTapTimer = null;
+          handleMonthDaySinglePress(button);
+        }, 360);
+      };
+
+      els.monthGrid?.addEventListener('click', handleMonthDayPress);
+      els.monthGrid?.addEventListener('dblclick', event => {
+        const button = event.target.closest('[data-month-day]');
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+        openMonthDayInDisplay(button.dataset.monthDay);
+      });
+      els.daughterAddBtn?.addEventListener('click', showAddDaughterPeriodEditor);
+      els.daughterSaveBtn?.addEventListener('click', saveSelectedDaughterPeriod);
+      els.daughterDeleteBtn?.addEventListener('click', deleteSelectedDaughterPeriod);
+      els.daughterResetBtn?.addEventListener('click', resetSelectedDaughterPeriod);
+      window.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !els.monthOverlay.classList.contains('hidden')) closeMonthView();
+      });
     }
 
     function parseEventDate(value) {
@@ -338,27 +855,33 @@
     }
 
     function getStoredReminderEmails() {
-      try {
-        const parsed = JSON.parse(localStorage.getItem(EMAIL_CONTACTS_KEY) || '[]');
-        return Array.isArray(parsed)
-          ? [...new Set(parsed.map(normalizeReminderEmail).filter(isValidReminderEmail))].sort()
-          : [];
-      } catch {
-        return [];
-      }
+      return HARD_CODED_REMINDER_CONTACTS.map(contact => contact.email);
     }
 
-    function saveStoredReminderEmails(emails) {
-      const clean = [...new Set((emails || []).map(normalizeReminderEmail).filter(isValidReminderEmail))].sort();
-      localStorage.setItem(EMAIL_CONTACTS_KEY, JSON.stringify(clean));
-      return clean;
+    function saveStoredReminderEmails() {
+      return getStoredReminderEmails();
+    }
+
+    function reminderContactLabel(email) {
+      const normalized = normalizeReminderEmail(email);
+      const contact = HARD_CODED_REMINDER_CONTACTS.find(item => normalizeReminderEmail(item.email) === normalized);
+      return contact ? `${contact.name} (${contact.email})` : email;
+    }
+
+    function reminderRecipientNames(emails = []) {
+      return [...new Set((emails || []).map(normalizeReminderEmail).filter(isValidReminderEmail))]
+        .map(email => {
+          const contact = HARD_CODED_REMINDER_CONTACTS.find(item => normalizeReminderEmail(item.email) === email);
+          return contact ? contact.name : email;
+        });
     }
 
     function getSelectedReminderRecipients() {
       if (!els.emailContactList) return [];
       return [...els.emailContactList.querySelectorAll('[data-reminder-recipient]:checked')]
         .map(input => normalizeReminderEmail(input.value))
-        .filter(isValidReminderEmail);
+        .filter(isValidReminderEmail)
+        .filter(email => getStoredReminderEmails().includes(email));
     }
 
     function setEmailReminderOptionsVisible() {
@@ -369,57 +892,27 @@
     function renderEmailContacts(selected = []) {
       if (!els.emailContactList) return;
       const selectedSet = new Set((selected || []).map(normalizeReminderEmail).filter(isValidReminderEmail));
-      const contacts = getStoredReminderEmails();
-
-      if (!contacts.length) {
-        els.emailContactList.innerHTML = '<div class="reminder-empty">No saved email addresses yet. Add one below, then select it for this reminder.</div>';
-        return;
-      }
-
-      els.emailContactList.innerHTML = contacts.map(email => `
-        <label class="email-contact-row">
-          <input type="checkbox" data-reminder-recipient value="${htmlEscape(email)}" ${selectedSet.has(email) ? 'checked' : ''}>
-          <span>${htmlEscape(email)}</span>
-          <button class="mini-link-btn" type="button" data-remove-reminder-email="${htmlEscape(email)}">Remove</button>
-        </label>
-      `).join('');
-    }
-
-    function addReminderEmailFromInput(selectAfterAdd = true) {
-      if (!els.newEmailInput) return null;
-      const email = normalizeReminderEmail(els.newEmailInput.value);
-      if (!email) return null;
-      if (!isValidReminderEmail(email)) {
-        setStatus('Enter a valid email address.', true);
-        els.newEmailInput.focus();
-        return null;
-      }
-      const selected = new Set(getSelectedReminderRecipients());
-      const contacts = getStoredReminderEmails();
-      saveStoredReminderEmails([...contacts, email]);
-      if (selectAfterAdd) selected.add(email);
-      els.newEmailInput.value = '';
-      renderEmailContacts([...selected]);
-      setStatus(`Saved ${email} as a reminder contact.`);
-      return email;
+      els.emailContactList.innerHTML = HARD_CODED_REMINDER_CONTACTS.map(contact => {
+        const email = normalizeReminderEmail(contact.email);
+        return `
+          <label class="email-contact-row">
+            <input type="checkbox" data-reminder-recipient value="${htmlEscape(email)}" ${selectedSet.has(email) ? 'checked' : ''}>
+            <span>${htmlEscape(contact.name)} <small>${htmlEscape(contact.email)}</small></span>
+          </label>
+        `;
+      }).join('');
     }
 
     function collectEmailReminderPayload() {
       if (!els.emailReminderInput?.checked) {
-        return { enabled: false, minutesBefore: Number(els.reminderMinutesInput?.value || 30), recipients: [] };
-      }
-
-      if (els.newEmailInput?.value.trim()) {
-        const added = addReminderEmailFromInput(true);
-        if (!added) throw new Error('Fix the email address before saving the reminder.');
+        return { enabled: false, recipients: [] };
       }
 
       const recipients = getSelectedReminderRecipients();
-      if (!recipients.length) throw new Error('Choose at least one saved email address for the reminder.');
+      if (!recipients.length) return { enabled: false, recipients: [] };
 
       return {
         enabled: true,
-        minutesBefore: Number(els.reminderMinutesInput?.value || 30),
         recipients
       };
     }
@@ -428,16 +921,157 @@
       const reminder = event?.emailReminder || {};
       const recipients = Array.isArray(reminder.recipients) ? reminder.recipients.filter(isValidReminderEmail) : [];
       if (!reminder.enabled || !recipients.length) return '';
-      const minutes = Number(reminder.minutesBefore || 0);
-      const when = minutes === 0
-        ? 'at start time'
-        : minutes === 1440
-          ? '1 day before'
-          : minutes >= 60
-            ? `${Math.round(minutes / 60)} hour${Math.round(minutes / 60) === 1 ? '' : 's'} before`
-            : `${minutes} min before`;
-      return `Email reminder ${when} · ${recipients.join(', ')}`;
+      return `Email on creation + task-day reminder · ${reminderRecipientNames(recipients).join(', ')}`;
     }
+
+    function taskDayReminderDate(event) {
+      const start = parseEventDate(event?.start);
+      if (!start) return null;
+      const remindAt = new Date(start);
+      if (start.getHours() < 8) {
+        remindAt.setDate(remindAt.getDate() - 1);
+        remindAt.setHours(12, 0, 0, 0);
+      } else {
+        remindAt.setHours(8, 0, 0, 0);
+      }
+      return remindAt;
+    }
+
+    function formatReminderDateTime(date) {
+      if (!date || Number.isNaN(date.getTime())) return '';
+      return new Intl.DateTimeFormat(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).format(date);
+    }
+
+    function clearTaskCardFlipBackTimer() {
+      clearTimeout(state.flipBackTimer);
+      state.flipBackTimer = null;
+    }
+
+    function scheduleTaskCardFlipBack() {
+      clearTaskCardFlipBackTimer();
+      if (!state.heroEventFlipped && !state.selectedEventFlipped) return;
+      state.flipBackTimer = setTimeout(() => {
+        state.heroEventFlipped = false;
+        state.selectedEventFlipped = false;
+        state.flipBackTimer = null;
+        renderDisplay();
+      }, 30 * 1000);
+    }
+
+    function setTaskCardFlipped(target, value) {
+      if (target === 'hero') state.heroEventFlipped = Boolean(value);
+      if (target === 'selected') state.selectedEventFlipped = Boolean(value);
+      if (state.heroEventFlipped || state.selectedEventFlipped) scheduleTaskCardFlipBack();
+      else clearTaskCardFlipBackTimer();
+    }
+
+    function emailReminderStatusHtml(event, context = 'hero') {
+      const sourceId = event?._sourceId || event?.id || '';
+      const reminder = event?.emailReminder || {};
+      const allowedEmails = getStoredReminderEmails();
+      const recipients = Array.isArray(reminder.recipients)
+        ? reminder.recipients.map(normalizeReminderEmail).filter(email => isValidReminderEmail(email) && allowedEmails.includes(email))
+        : [];
+      const enabled = Boolean(reminder.enabled) && recipients.length > 0;
+      const creationSent = Boolean(reminder.creationEmailSentAt);
+      const taskReminderAt = taskDayReminderDate(event);
+      const taskReminderText = taskReminderAt
+        ? (taskReminderAt.getTime() < Date.now()
+          ? `Task-day reminder time has passed (${formatReminderDateTime(taskReminderAt)}).`
+          : `Task-day reminder planned for ${formatReminderDateTime(taskReminderAt)}.`)
+        : 'Task-day reminder time could not be calculated.';
+
+      const existingSet = new Set(recipients);
+      const extraContacts = HARD_CODED_REMINDER_CONTACTS.filter(contact => !existingSet.has(normalizeReminderEmail(contact.email)));
+      const recipientSummary = recipients.length
+        ? `<div class="email-recipient-summary"><span>Recipients:</span>${reminderRecipientNames(recipients).map(name => `<span class="email-recipient-chip">${htmlEscape(name)}</span>`).join('')}</div>`
+        : '<div class="email-recipient-summary"><span>Recipients:</span><span class="email-recipient-chip"><small>None yet</small></span></div>';
+      const contactRows = extraContacts.length
+        ? `<div class="email-add-list">${extraContacts.map(contact => `
+            <label class="email-add-row">
+              <input type="checkbox" data-display-email-recipient value="${htmlEscape(normalizeReminderEmail(contact.email))}">
+              <span class="email-add-person">
+                <strong>${htmlEscape(contact.name)}</strong>
+                <small>${htmlEscape(contact.email)}</small>
+              </span>
+            </label>
+          `).join('')}</div>`
+        : '<div class="email-add-empty">Both Therese and Thomas are already on this task.</div>';
+      const addTitle = enabled ? 'Add selected' : 'Add reminders';
+      const addHelp = enabled
+        ? 'Choose who else should get this task. Only newly added people get the task-created email now.'
+        : 'Choose who should get a task-created email now and the task-day reminder later.';
+      const pill = enabled ? '<span class="email-pill">On</span>' : '<span class="email-pill off">Off</span>';
+
+      return `
+        <div class="email-status-card" data-email-reminder-panel="${htmlEscape(context)}" data-email-source-id="${htmlEscape(sourceId)}">
+          <div class="email-status-title">
+            <span>Email reminders</span>
+            ${pill}
+          </div>
+          ${recipientSummary}
+          <div class="email-status-lines">
+            <div>${enabled ? (creationSent ? `Task-created email sent ${htmlEscape(formatReminderDateTime(new Date(reminder.creationEmailSentAt)))}` : 'Task-created email will show as sent after the server confirms it.') : 'Email reminders are off for this task.'}</div>
+            <div>${htmlEscape(taskReminderText)}</div>
+          </div>
+          <div class="email-add-box">
+            <div class="email-add-heading">${enabled ? 'Add recipient' : 'Turn on reminders'}</div>
+            <div class="email-status-lines"><div>${htmlEscape(addHelp)}</div></div>
+            ${contactRows}
+            <div class="email-add-new">
+              <button class="tiny-btn" type="button" data-display-add-email-reminders="${htmlEscape(sourceId)}">${addTitle}</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function recipientsFromDisplayEmailPanel(panel) {
+      if (!panel) return [];
+      const allowedEmails = getStoredReminderEmails();
+      const selected = [...panel.querySelectorAll('[data-display-email-recipient]:checked')]
+        .map(input => normalizeReminderEmail(input.value))
+        .filter(email => isValidReminderEmail(email) && allowedEmails.includes(email));
+      return [...new Set(selected)];
+    }
+
+    async function addEmailRemindersFromDisplay(sourceId, trigger) {
+      if (!ensureDisplayActionPin()) return;
+      const source = getSourceEvent(sourceId);
+      if (!source) throw new Error('Task not found.');
+      const panel = trigger?.closest?.('[data-email-reminder-panel]') || document.querySelector(`[data-email-source-id="${CSS.escape(String(sourceId))}"]`);
+      const recipients = recipientsFromDisplayEmailPanel(panel);
+      if (!recipients.length) throw new Error('Choose Therese, Thomas, or both.');
+      const existingRecipients = Array.isArray(source.emailReminder?.recipients)
+        ? source.emailReminder.recipients.map(normalizeReminderEmail).filter(isValidReminderEmail)
+        : [];
+      const mergedRecipients = [...new Set([...existingRecipients, ...recipients])];
+      const addedRecipients = recipients.filter(email => !existingRecipients.includes(email));
+      if (!addedRecipients.length) throw new Error('Choose a recipient that is not already on this task.');
+      const payload = {
+        ...source,
+        emailReminder: {
+          ...(source.emailReminder || {}),
+          enabled: true,
+          recipients: mergedRecipients,
+        }
+      };
+      await saveEvent(payload);
+      state.heroEventFlipped = true;
+      state.selectedEventFlipped = true;
+      scheduleTaskCardFlipBack();
+      setStatus?.(source.emailReminder?.enabled ? 'New email recipient added. The server will email only the new recipient now and update the task-day reminder.' : 'Email reminders added. The server will send the task-created email and schedule the task-day reminder.');
+      renderAdminEvents();
+      renderDisplay();
+    }
+
 
     function svgData(svg) {
       return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
@@ -602,16 +1236,26 @@
               const hasEvent = dayEvents.length > 0;
               const dayName = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(day);
               return `
-                <div class="daily-calendar-day${isToday ? ' today' : ''}${hasEvent ? ' has-event' : ''}">
+                <button class="daily-calendar-day${isToday ? ' today' : ''}${hasEvent ? ' has-event' : ''}" type="button" data-daily-calendar-day="${key}" ${hasEvent ? '' : 'disabled'} aria-label="${htmlEscape(`${dayName} ${day.getDate()}, ${dayEvents.length} task${dayEvents.length === 1 ? '' : 's'}`)}">
                   <div class="daily-calendar-name">${htmlEscape(dayName)}</div>
                   <div class="daily-calendar-number">${day.getDate()}</div>
                   <div class="daily-calendar-count">${hasEvent ? `${dayEvents.length} task${dayEvents.length === 1 ? '' : 's'}` : ''}</div>
-                </div>
+                </button>
               `;
             }).join('')}
           </div>
         </div>
       `;
+    }
+
+    function handleDailyCalendarDayPick(event) {
+      const dayButton = event.target.closest?.('[data-daily-calendar-day]');
+      if (!dayButton || dayButton.disabled) return false;
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      event.stopImmediatePropagation?.();
+      selectDayPreview(dayButton.dataset.dailyCalendarDay);
+      return true;
     }
 
     function hideSelectedEventPanel() {
@@ -646,19 +1290,53 @@
       return Math.max(0, Math.min(100, Math.round(number * 10) / 10));
     }
 
+    function clampZoom(value, fallback = 1.01) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return fallback;
+      return Math.max(1, Math.min(1.8, Math.round(number * 100) / 100));
+    }
+
     function imageFocusStyle(event, fallbackY = 38) {
       const hasImage = Boolean(event?.imageUrl);
       const x = clampPercent(event?.imageFocusX, 50);
       const y = clampPercent(event?.imageFocusY, hasImage ? fallbackY : 50);
-      return `--image-focus-x:${x}%;--image-focus-y:${y}%;`;
+      const zoom = clampZoom(event?.imageZoom, 1.01);
+      return `--image-focus-x:${x}%;--image-focus-y:${y}%;--image-scale:${zoom};`;
     }
 
     function applyImageFocus(imageElement, event, fallbackY = 38) {
       if (!imageElement) return;
+      const hasImage = Boolean(event?.imageUrl);
       const x = clampPercent(event?.imageFocusX, 50);
-      const y = clampPercent(event?.imageFocusY, event?.imageUrl ? fallbackY : 50);
+      const y = clampPercent(event?.imageFocusY, hasImage ? fallbackY : 50);
+      const zoom = clampZoom(event?.imageZoom, 1.01);
       imageElement.style.setProperty('--image-focus-x', `${x}%`);
       imageElement.style.setProperty('--image-focus-y', `${y}%`);
+      imageElement.style.setProperty('--image-scale', zoom);
+    }
+
+    function normalizeFocusBox(box) {
+      if (!box || typeof box !== 'object') return null;
+      const left = clampPercent(box.left, 0);
+      const top = clampPercent(box.top, 0);
+      const right = clampPercent(box.right, 100);
+      const bottom = clampPercent(box.bottom, 100);
+      if (!Number.isFinite(left + top + right + bottom) || right <= left || bottom <= top) return null;
+      return { left, top, right, bottom };
+    }
+
+    function focusPayloadExtras(source) {
+      if (!source || typeof source !== 'object') return {};
+      const extras = {};
+      const focusBox = normalizeFocusBox(source.imageFocusBox);
+      if (focusBox) extras.imageFocusBox = focusBox;
+
+      const naturalWidth = Number(source.imageNaturalWidth);
+      const naturalHeight = Number(source.imageNaturalHeight);
+      if (Number.isFinite(naturalWidth) && naturalWidth > 0) extras.imageNaturalWidth = Math.round(naturalWidth);
+      if (Number.isFinite(naturalHeight) && naturalHeight > 0) extras.imageNaturalHeight = Math.round(naturalHeight);
+
+      return extras;
     }
 
     function currentImageFocusPayload() {
@@ -666,7 +1344,9 @@
       return {
         imageFocusX: clampPercent(state.pendingImageFocus.imageFocusX, 50),
         imageFocusY: clampPercent(state.pendingImageFocus.imageFocusY, 38),
-        imageFocusSource: state.pendingImageFocus.imageFocusSource || 'manual'
+        imageFocusSource: 'manual',
+        imageZoom: clampZoom(state.pendingImageFocus.imageZoom, 1.01),
+        ...focusPayloadExtras(state.pendingImageFocus)
       };
     }
 
@@ -675,174 +1355,76 @@
       return {
         imageFocusX: clampPercent(event.imageFocusX, 50),
         imageFocusY: clampPercent(event.imageFocusY, 38),
-        imageFocusSource: event.imageFocusSource || 'saved'
+        imageFocusSource: event.imageFocusSource || 'manual',
+        imageZoom: clampZoom(event.imageZoom, 1.01),
+        ...focusPayloadExtras(event)
       };
     }
 
-    function facesToFocus(faces, image) {
-      if (!faces || !faces.length || !image) return null;
-      const naturalWidth = image.naturalWidth || image.width;
-      const naturalHeight = image.naturalHeight || image.height;
-      if (!naturalWidth || !naturalHeight) return null;
-
-      let left = Infinity;
-      let top = Infinity;
-      let right = -Infinity;
-      let bottom = -Infinity;
-
-      faces.forEach(face => {
-        const box = face.boundingBox || face;
-        const x = Number(box.x ?? box.left ?? 0);
-        const y = Number(box.y ?? box.top ?? 0);
-        const width = Number(box.width ?? 0);
-        const height = Number(box.height ?? 0);
-        if (!Number.isFinite(x + y + width + height) || width <= 0 || height <= 0) return;
-        left = Math.min(left, x);
-        top = Math.min(top, y);
-        right = Math.max(right, x + width);
-        bottom = Math.max(bottom, y + height);
-      });
-
-      if (!Number.isFinite(left) || !Number.isFinite(top) || right <= left || bottom <= top) return null;
-      const centerX = ((left + right) / 2 / naturalWidth) * 100;
-      const centerY = ((top + bottom) / 2 / naturalHeight) * 100;
-
-      return {
-        imageFocusX: clampPercent(centerX, 50),
-        imageFocusY: Math.max(18, Math.min(62, clampPercent(centerY, 38))),
-        imageFocusSource: 'face-detector'
-      };
+    function syncPendingFocusFromControls() {
+      if (!state.pendingImageFocus) state.pendingImageFocus = { imageFocusX: 50, imageFocusY: 38, imageZoom: 1.01, imageFocusSource: 'manual' };
+      state.pendingImageFocus.imageFocusX = clampPercent(els.imageFocusXInput?.value, 50);
+      state.pendingImageFocus.imageFocusY = clampPercent(els.imageFocusYInput?.value, 38);
+      state.pendingImageFocus.imageZoom = clampZoom(els.imageZoomInput?.value, 1.01);
+      state.pendingImageFocus.imageFocusSource = 'manual';
     }
 
-    function textBoxesToFocus(boxes, image) {
-      if (!boxes || !boxes.length || !image) return null;
-      const naturalWidth = image.naturalWidth || image.width;
-      const naturalHeight = image.naturalHeight || image.height;
-      if (!naturalWidth || !naturalHeight) return null;
-
-      let left = Infinity;
-      let top = Infinity;
-      let right = -Infinity;
-      let bottom = -Infinity;
-      let usableCount = 0;
-      let totalTextLength = 0;
-
-      boxes.forEach(item => {
-        const text = String(item.text || item.rawValue || '').trim();
-        const confidence = Number(item.confidence ?? item.conf ?? 100);
-        const box = item.bbox || item.boundingBox || item;
-        if (text.length < 2 || confidence < 35 || !box) return;
-
-        const x0 = Number(box.x0 ?? box.x ?? box.left ?? 0);
-        const y0 = Number(box.y0 ?? box.y ?? box.top ?? 0);
-        const x1 = Number(box.x1 ?? ((box.x ?? box.left ?? 0) + (box.width ?? 0)));
-        const y1 = Number(box.y1 ?? ((box.y ?? box.top ?? 0) + (box.height ?? 0)));
-        if (!Number.isFinite(x0 + y0 + x1 + y1) || x1 <= x0 || y1 <= y0) return;
-
-        left = Math.min(left, x0);
-        top = Math.min(top, y0);
-        right = Math.max(right, x1);
-        bottom = Math.max(bottom, y1);
-        usableCount += 1;
-        totalTextLength += text.length;
-      });
-
-      // Avoid letting one tiny accidental OCR mark override a useful face crop.
-      if (usableCount < 1 || totalTextLength < 4) return null;
-      if (!Number.isFinite(left) || !Number.isFinite(top) || right <= left || bottom <= top) return null;
-
-      const boxWidth = right - left;
-      const boxHeight = bottom - top;
-      const coversEnough = (boxWidth * boxHeight) / (naturalWidth * naturalHeight) > 0.004;
-      if (!coversEnough && totalTextLength < 8) return null;
-
-      const centerX = ((left + right) / 2 / naturalWidth) * 100;
-      const centerY = ((top + bottom) / 2 / naturalHeight) * 100;
-
-      return {
-        imageFocusX: clampPercent(centerX, 50),
-        imageFocusY: Math.max(12, Math.min(88, clampPercent(centerY, 38))),
-        imageFocusSource: 'text-detector'
-      };
+    function setManualImageControls(focus = {}) {
+      const x = clampPercent(focus.imageFocusX, 50);
+      const y = clampPercent(focus.imageFocusY, 38);
+      const zoom = clampZoom(focus.imageZoom, 1.01);
+      if (els.imageFocusXInput) els.imageFocusXInput.value = String(x);
+      if (els.imageFocusYInput) els.imageFocusYInput.value = String(y);
+      if (els.imageZoomInput) els.imageZoomInput.value = String(zoom);
+      state.pendingImageFocus = { imageFocusX: x, imageFocusY: y, imageZoom: zoom, imageFocusSource: 'manual' };
+      renderManualImagePreview();
     }
 
-    async function detectTextFocusFromImage(file, image) {
-      if (!file || !image) return null;
-
-      // Fast path where supported by the browser.
-      if ('TextDetector' in window) {
-        try {
-          const detector = new TextDetector();
-          const detections = await detector.detect(image);
-          const nativeFocus = textBoxesToFocus(detections, image);
-          if (nativeFocus) return nativeFocus;
-        } catch (error) {
-          console.warn('Native text crop detection unavailable:', error);
-        }
+    function setManualImagePreviewSource(src) {
+      if (!els.manualImageEditor || !els.imagePreview) return;
+      if (!src) {
+        els.manualImageEditor.classList.remove('visible');
+        els.imagePreview.removeAttribute('src');
+        return;
       }
-
-      // Wider browser fallback. Tesseract is loaded from CDN when online.
-      if (window.Tesseract?.recognize) {
-        try {
-          const result = await window.Tesseract.recognize(file, 'eng');
-          const words = result?.data?.words || [];
-          return textBoxesToFocus(words, image);
-        } catch (error) {
-          console.warn('OCR text crop detection unavailable:', error);
-        }
-      }
-
-      return null;
+      els.imagePreview.src = src;
+      els.manualImageEditor.classList.add('visible');
+      renderManualImagePreview();
     }
 
-    async function detectImageFocusFromFile(file) {
-      if (!file || !file.type?.startsWith('image/')) return null;
-
-      try {
-        const image = await loadImage(file);
-
-        // Best crop priority: readable text first, then faces, then a safe fallback.
-        const textFocus = await detectTextFocusFromImage(file, image);
-        if (textFocus) return textFocus;
-
-        if ('FaceDetector' in window) {
-          try {
-            const detector = new FaceDetector({ maxDetectedFaces: 10, fastMode: true });
-            const faces = await detector.detect(image);
-            const faceFocus = facesToFocus(faces, image);
-            if (faceFocus) return faceFocus;
-          } catch (error) {
-            console.warn('Face crop detection unavailable:', error);
-          }
-        }
-
-        return { imageFocusX: 50, imageFocusY: 38, imageFocusSource: 'fallback-human-crop' };
-      } catch (error) {
-        console.warn('Image focus detection unavailable:', error);
-        return { imageFocusX: 50, imageFocusY: 38, imageFocusSource: 'fallback-human-crop' };
-      }
+    function renderManualImagePreview() {
+      if (!els.manualImageEditor || !els.imagePreview) return;
+      syncPendingFocusFromControls();
+      const focus = state.pendingImageFocus || {};
+      els.imagePreview.style.setProperty('--image-focus-x', `${clampPercent(focus.imageFocusX, 50)}%`);
+      els.imagePreview.style.setProperty('--image-focus-y', `${clampPercent(focus.imageFocusY, 38)}%`);
+      els.imagePreview.style.setProperty('--image-scale', clampZoom(focus.imageZoom, 1.01));
+      if (els.imagePreviewTitle) els.imagePreviewTitle.textContent = els.titleInput?.value?.trim() || 'Task title';
     }
 
-    async function updateImageFocusPreview(file) {
-      state.pendingImageFocus = null;
-      const token = ++state.imageFocusToken;
-      if (!file) return;
+    function clearManualImagePreview() {
+      if (state.imagePreviewObjectUrl) {
+        URL.revokeObjectURL(state.imagePreviewObjectUrl);
+        state.imagePreviewObjectUrl = null;
+      }
+      setManualImagePreviewSource('');
+    }
 
+    function updateImageFocusPreview(file) {
+      state.pendingImageFocus = { imageFocusX: 50, imageFocusY: 38, imageZoom: 1.01, imageFocusSource: 'manual' };
+      state.imageFocusToken += 1;
+      if (state.imagePreviewObjectUrl) URL.revokeObjectURL(state.imagePreviewObjectUrl);
+      state.imagePreviewObjectUrl = file ? URL.createObjectURL(file) : null;
+      if (!file) {
+        clearManualImagePreview();
+        return;
+      }
+      setManualImageControls(state.pendingImageFocus);
+      setManualImagePreviewSource(state.imagePreviewObjectUrl);
       const baseMessage = file.size > MAX_UPLOAD_BYTES
         ? `${file.name} selected (${formatBytes(file.size)}). It will be compressed before upload.`
         : `${file.name} selected (${formatBytes(file.size)}).`;
-      els.imageStatus.textContent = `${baseMessage} Looking for text or faces to crop neatly…`;
-
-      const focus = await detectImageFocusFromFile(file);
-      if (token !== state.imageFocusToken) return;
-      state.pendingImageFocus = focus;
-      if (focus?.imageFocusSource === 'text-detector') {
-        els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">✓ Text crop saved for dashboard cards.</span>`;
-      } else if (focus?.imageFocusSource === 'face-detector') {
-        els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">✓ Face crop saved for dashboard cards.</span>`;
-      } else {
-        els.imageStatus.innerHTML = `${htmlEscape(baseMessage)} <span class="face-crop-note">Using a clean fallback crop.</span>`;
-      }
+      els.imageStatus.textContent = `${baseMessage} Adjust pan and zoom below before saving.`;
     }
 
     function renderHeroEvent(event) {
@@ -853,6 +1435,13 @@
       els.heroImage.src = event.imageUrl || placeholderFor(event.id, event.title);
       els.heroImage.alt = event.title;
       applyImageFocus(els.heroImage, event);
+      if (!els.heroImage.dataset.focusBound) {
+        els.heroImage.addEventListener('load', () => {
+          const currentMain = getDisplayEvents().main;
+          if (currentMain) applyImageFocus(els.heroImage, currentMain);
+        });
+        els.heroImage.dataset.focusBound = '1';
+      }
       els.heroKicker.textContent = `${dayLabel} · ${formatTime(date, false)}${repeat ? ` · ${repeat}` : ''}`;
       els.heroTitle.textContent = event.title;
       els.heroLocation.textContent = event.location || event.note || 'Shared calendar task';
@@ -862,6 +1451,7 @@
           <div class="selected-event-kicker">Task details</div>
           <h2 class="hero-back-title">${htmlEscape(event.title)}</h2>
           <div class="hero-back-detail">${htmlEscape(eventDetailsText(event))}</div>
+          ${emailReminderStatusHtml(event, 'hero')}
           <div class="hero-back-actions">
             <button class="tiny-btn done" type="button" data-hero-complete="${htmlEscape(event._instanceId)}">${event._completed ? 'Undo complete' : 'Mark complete'}</button>
             <button class="tiny-btn" type="button" data-hero-edit="${htmlEscape(event._sourceId || event.id)}">Change date / edit</button>
@@ -912,6 +1502,7 @@
               <div class="selected-event-kicker">Task details</div>
               <h2 class="selected-event-title">${htmlEscape(first.title)}</h2>
               <div class="selected-event-detail">${htmlEscape(details)}</div>
+              ${emailReminderStatusHtml(first, 'selected')}
               <div class="selected-event-actions">
                 <button class="tiny-btn done" type="button" data-display-complete="${htmlEscape(first._instanceId)}">${first._completed ? 'Undo complete' : 'Mark complete'}</button>
                 <button class="tiny-btn" type="button" data-display-edit="${htmlEscape(first._sourceId || first.id)}">Change date / edit</button>
@@ -1112,6 +1703,107 @@
       return `${LOCAL_EVENT_ID_PREFIX}${random}`;
     }
 
+    function minEventFetchGapMs() {
+      return adminMode ? MIN_ADMIN_FETCH_GAP_MS : MIN_DISPLAY_FETCH_GAP_MS;
+    }
+
+    function isAutomaticEventRefreshWindow(date = new Date()) {
+      const hour = date.getHours();
+      return hour >= AUTOMATIC_EVENT_REFRESH_START_HOUR && hour <= AUTOMATIC_EVENT_REFRESH_END_HOUR;
+    }
+
+    function msUntilNextHourlyEventRefresh() {
+      const now = new Date();
+      const next = new Date(now);
+
+      if (isAutomaticEventRefreshWindow(now)) {
+        // Next full hour inside the 06:00-21:00 window.
+        next.setHours(now.getHours() + 1, 0, 5, 0);
+        if (next.getHours() <= AUTOMATIC_EVENT_REFRESH_END_HOUR && next.getDate() === now.getDate()) {
+          return Math.max(1000, next.getTime() - now.getTime());
+        }
+      }
+
+      // Outside the daytime window, sleep until 06:00 next available day.
+      if (now.getHours() < AUTOMATIC_EVENT_REFRESH_START_HOUR) {
+        next.setHours(AUTOMATIC_EVENT_REFRESH_START_HOUR, 0, 5, 0);
+      } else {
+        next.setDate(now.getDate() + 1);
+        next.setHours(AUTOMATIC_EVENT_REFRESH_START_HOUR, 0, 5, 0);
+      }
+      return Math.max(1000, next.getTime() - now.getTime());
+    }
+
+    function scheduleNextHourlyEventRefresh() {
+      window.setTimeout(async () => {
+        if (isAutomaticEventRefreshWindow()) {
+          await fetchEvents({ force: true, reason: 'hourly-daytime' });
+          await processPendingWrites({ silent: true });
+        }
+        scheduleNextHourlyEventRefresh();
+      }, msUntilNextHourlyEventRefresh());
+    }
+
+    function requestInteractionRefresh() {
+      const now = Date.now();
+      if (state.interactionRefreshTimer) clearTimeout(state.interactionRefreshTimer);
+      state.interactionRefreshTimer = window.setTimeout(async () => {
+        if (state.eventFetchActive) return;
+        if (state.lastEventFetchAt && now - state.lastEventFetchAt < minEventFetchGapMs()) return;
+        await fetchEvents({ reason: 'interaction' });
+        await processPendingWrites({ silent: true });
+      }, INTERACTION_FETCH_DEBOUNCE_MS);
+    }
+
+    function bindInteractionRefresh() {
+      const handler = event => {
+        // Ignore synthetic events and the app's own timed re-renders. Real pointer/touch/keyboard
+        // use is the signal that the dashboard should spend a Blob read.
+        if (event.isTrusted === false) return;
+        requestInteractionRefresh();
+      };
+      document.addEventListener('pointerdown', handler, { passive: true, capture: true });
+      document.addEventListener('touchstart', handler, { passive: true, capture: true });
+      document.addEventListener('keydown', handler, { passive: true, capture: true });
+    }
+
+    function getCachedEventPayload() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(LOCAL_EVENTS_CACHE_KEY) || 'null');
+        if (!parsed || !Array.isArray(parsed.events)) return null;
+        const savedAtMs = Number(parsed.savedAtMs || 0);
+        if (!savedAtMs || Date.now() - savedAtMs > LOCAL_EVENTS_CACHE_MAX_AGE_MS) return null;
+        return parsed;
+      } catch {
+        return null;
+      }
+    }
+
+    function rememberCachedEvents(events) {
+      try {
+        localStorage.setItem(LOCAL_EVENTS_CACHE_KEY, JSON.stringify({
+          savedAtMs: Date.now(),
+          events: Array.isArray(events) ? events : []
+        }));
+      } catch {}
+    }
+
+    function hydrateEventsFromLocalCache() {
+      const cached = getCachedEventPayload();
+      if (!cached) return false;
+      state.serverEvents = cached.events;
+      refreshEventsFromServerEvents();
+      renderDisplay();
+      renderAdminEvents();
+      return true;
+    }
+
+    function renderFromLocalState() {
+      refreshEventsFromServerEvents();
+      renderDisplay();
+      renderAdminEvents();
+    }
+
     function getPendingWrites() {
       try {
         const parsed = JSON.parse(localStorage.getItem(PENDING_WRITES_KEY) || '[]');
@@ -1124,6 +1816,176 @@
     function setPendingWrites(queue) {
       localStorage.setItem(PENDING_WRITES_KEY, JSON.stringify(queue.slice(0, 200)));
       updateLocalQueueStatus?.();
+    }
+
+    function getCompletionOverrides() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(LOCAL_COMPLETION_OVERRIDES_KEY) || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function setCompletionOverrides(overrides) {
+      const now = Date.now();
+      const cleaned = {};
+      Object.entries(overrides || {}).forEach(([id, value]) => {
+        const updatedAtMs = Number(value?.updatedAtMs || 0);
+        // Keep local completion decisions for up to one day. In normal use they are cleared
+        // as soon as the server returns the same completed state.
+        if (updatedAtMs && now - updatedAtMs < 24 * 60 * 60 * 1000) cleaned[id] = value;
+      });
+      localStorage.setItem(LOCAL_COMPLETION_OVERRIDES_KEY, JSON.stringify(cleaned));
+    }
+
+
+    function getLocalEventMirror() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(LOCAL_EVENT_MIRROR_KEY) || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function setLocalEventMirror(mirror) {
+      const now = Date.now();
+      const cleanedEntries = Object.entries(mirror || {})
+        .filter(([id, value]) => id && value?.event && Number(value.savedAtMs || 0) && now - Number(value.savedAtMs || 0) < LOCAL_EVENT_MIRROR_TTL_MS)
+        .slice(-200);
+      localStorage.setItem(LOCAL_EVENT_MIRROR_KEY, JSON.stringify(Object.fromEntries(cleanedEntries)));
+    }
+
+    function rememberLocalEvent(event, opId, method = 'POST') {
+      if (!event?.id) return;
+      const mirror = getLocalEventMirror();
+      mirror[event.id] = {
+        event: { ...event },
+        opId: opId || '',
+        method,
+        savedAtMs: Date.now()
+      };
+      setLocalEventMirror(mirror);
+    }
+
+    function forgetLocalEvent(id) {
+      if (!id) return;
+      const mirror = getLocalEventMirror();
+      if (!mirror[id]) return;
+      delete mirror[id];
+      setLocalEventMirror(mirror);
+    }
+
+    function comparableEventSnapshot(event = {}) {
+      const reminder = event.emailReminder && typeof event.emailReminder === 'object' ? event.emailReminder : {};
+      return {
+        id: String(event.id || ''),
+        title: String(event.title || ''),
+        start: String(event.start || ''),
+        end: String(event.end || ''),
+        repeat: String(event.repeat || 'none'),
+        completed: Boolean(event.completed),
+        completedDates: Array.isArray(event.completedDates) ? [...new Set(event.completedDates.map(String))].sort() : [],
+        excludedDates: Array.isArray(event.excludedDates) ? [...new Set(event.excludedDates.map(String))].sort() : [],
+        location: String(event.location || ''),
+        note: String(event.note || ''),
+        imageUrl: String(event.imageUrl || ''),
+        imageFocusX: clampPercent(event.imageFocusX, 50),
+        imageFocusY: clampPercent(event.imageFocusY, 38),
+        imageFocusSource: String(event.imageFocusSource || ''),
+        imageZoom: clampZoom(event.imageZoom, 1.01),
+        imageFocusBox: normalizeFocusBox(event.imageFocusBox),
+        imageNaturalWidth: Number(event.imageNaturalWidth || 0) || 0,
+        imageNaturalHeight: Number(event.imageNaturalHeight || 0) || 0,
+        featured: Boolean(event.featured),
+        emailReminder: {
+          enabled: Boolean(reminder.enabled),
+          recipients: Array.isArray(reminder.recipients) ? [...new Set(reminder.recipients.map(String))].sort() : []
+        }
+      };
+    }
+
+    function serverEventConfirmsLocalMirror(serverEvent, localEvent) {
+      if (!serverEvent || !localEvent || String(serverEvent.id) !== String(localEvent.id)) return false;
+      return JSON.stringify(comparableEventSnapshot(serverEvent)) === JSON.stringify(comparableEventSnapshot(localEvent));
+    }
+
+    function cleanupConfirmedLocalEventMirror(serverEvents = state.serverEvents) {
+      const mirror = getLocalEventMirror();
+      let changed = false;
+      const now = Date.now();
+      Object.entries(mirror).forEach(([id, value]) => {
+        const savedAtMs = Number(value?.savedAtMs || 0);
+        const heldLongEnough = savedAtMs && now - savedAtMs >= LOCAL_EVENT_MIRROR_MIN_HOLD_MS;
+        const serverEvent = (serverEvents || []).find(event => String(event.id) === String(id));
+        if (heldLongEnough && serverEventConfirmsLocalMirror(serverEvent, value.event)) {
+          delete mirror[id];
+          changed = true;
+        }
+      });
+      if (changed) setLocalEventMirror(mirror);
+    }
+
+    function arraysEqualSet(a = [], b = []) {
+      const aa = [...new Set(a)].sort();
+      const bb = [...new Set(b)].sort();
+      return aa.length === bb.length && aa.every((value, index) => value === bb[index]);
+    }
+
+    function serverMatchesCompletionOverride(event, override) {
+      if (!event || !override) return false;
+      if ((event.repeat || 'none') === 'none') return Boolean(event.completed) === Boolean(override.completed);
+      return arraysEqualSet(Array.isArray(event.completedDates) ? event.completedDates : [], Array.isArray(override.completedDates) ? override.completedDates : []);
+    }
+
+    function cleanupConfirmedCompletionOverrides(serverEvents = state.serverEvents) {
+      const overrides = getCompletionOverrides();
+      let changed = false;
+      Object.entries(overrides).forEach(([id, override]) => {
+        const serverEvent = (serverEvents || []).find(event => String(event.id) === String(id));
+        if (serverMatchesCompletionOverride(serverEvent, override)) {
+          delete overrides[id];
+          changed = true;
+        }
+      });
+      if (changed) setCompletionOverrides(overrides);
+    }
+
+    function saveCompletionOverride(event) {
+      if (!event?.id) return;
+      const overrides = getCompletionOverrides();
+      if ((event.repeat || 'none') === 'none') {
+        overrides[event.id] = {
+          repeat: 'none',
+          completed: Boolean(event.completed),
+          updatedAtMs: Date.now()
+        };
+      } else {
+        overrides[event.id] = {
+          repeat: event.repeat || 'weekly',
+          completedDates: Array.isArray(event.completedDates) ? [...event.completedDates] : [],
+          updatedAtMs: Date.now()
+        };
+      }
+      setCompletionOverrides(overrides);
+    }
+
+    function applyCompletionOverrides(events) {
+      const overrides = getCompletionOverrides();
+      if (!Object.keys(overrides).length) return events;
+      return (events || []).map(event => {
+        const override = overrides[event.id];
+        if (!override) return event;
+        if ((event.repeat || 'none') === 'none') {
+          return { ...event, completed: Boolean(override.completed), _localCompletionPending: true };
+        }
+        return {
+          ...event,
+          completedDates: Array.isArray(override.completedDates) ? [...override.completedDates] : [],
+          _localCompletionPending: true
+        };
+      });
     }
 
     function queueWrite(op) {
@@ -1140,25 +2002,39 @@
       return !error.status || error.status === 408 || error.status === 409 || error.status === 425 || error.status === 429 || error.status >= 500;
     }
 
+    function upsertLocalVisibleEvent(events, event, extra = {}) {
+      if (!event?.id) return events;
+      const visibleEvent = { ...event, ...extra };
+      const index = events.findIndex(item => String(item.id) === String(visibleEvent.id));
+      if (index === -1) events.push(visibleEvent);
+      else events[index] = { ...events[index], ...visibleEvent };
+      return events;
+    }
+
     function applyPendingOps(baseEvents, queue = getPendingWrites()) {
       let events = Array.isArray(baseEvents) ? [...baseEvents] : [];
+
+      // Local mirror keeps just-created/just-edited tasks visible even if a server refresh
+      // briefly returns the older Blob file before the write is visible everywhere.
+      Object.values(getLocalEventMirror()).forEach(value => {
+        if (value?.event) events = upsertLocalVisibleEvent(events, value.event, { _pendingLocalSave: true, _localMirrorSave: true });
+      });
+
       queue.forEach(op => {
         if (op.method === 'DELETE_ALL') {
           events = [];
           return;
         }
         if (op.method === 'DELETE') {
-          events = events.filter(event => event.id !== op.id);
+          events = events.filter(event => String(event.id) !== String(op.id));
+          forgetLocalEvent(op.id);
           return;
         }
         if ((op.method === 'POST' || op.method === 'PUT') && op.event) {
-          const pendingEvent = { ...op.event, _pendingLocalSave: true };
-          const index = events.findIndex(event => event.id === pendingEvent.id);
-          if (index === -1) events.push(pendingEvent);
-          else events[index] = { ...events[index], ...pendingEvent };
+          events = upsertLocalVisibleEvent(events, op.event, { _pendingLocalSave: true });
         }
       });
-      return events.sort((a, b) => new Date(a.start) - new Date(b.start));
+      return applyCompletionOverrides(events).sort((a, b) => new Date(a.start) - new Date(b.start));
     }
 
     function signalOtherOpenViewsToRefresh() {
@@ -1166,6 +2042,8 @@
     }
 
     function refreshEventsFromServerEvents() {
+      cleanupConfirmedCompletionOverrides(state.serverEvents);
+      cleanupConfirmedLocalEventMirror(state.serverEvents);
       state.events = applyPendingOps(state.serverEvents);
     }
 
@@ -1199,32 +2077,48 @@
       if (state.pendingWriteActive) return;
       state.pendingWriteActive = true;
       let fatalError = null;
+      let blockedByRetryableError = false;
       try {
-        const queue = getPendingWrites();
-        for (const op of queue) {
-          try {
-            const data = await performServerWrite(op);
-            if (data.reminderSync) state.lastReminderSync = data.reminderSync;
-            removeQueuedWrite(op.opId);
-            if (Array.isArray(data.events)) {
-              state.serverEvents = data.events;
-              refreshEventsFromServerEvents();
-              signalOtherOpenViewsToRefresh();
-            }
-          } catch (error) {
-            if (!isRetryableError(error)) {
-              removeQueuedWrite(op.opId);
-              refreshEventsFromServerEvents();
-              if (!options.silent) setStatus(error.message, true);
-              if (options.throwNonRetryable && (!options.targetOpId || options.targetOpId === op.opId)) {
-                fatalError = error;
-                break;
+        while (true) {
+          const queue = getPendingWrites();
+          if (!queue.length) break;
+          blockedByRetryableError = false;
+
+          for (const op of queue) {
+            try {
+              const data = await performServerWrite(op);
+              if (data.reminderSync) state.lastReminderSync = data.reminderSync;
+              if (op.event && data.event && String(data.event.id) === String(op.event.id)) {
+                rememberLocalEvent(data.event, op.opId, op.method);
               }
-              continue;
+              const serverHasSavedEvent = !op.event || !Array.isArray(data.events) || data.events.some(event => String(event.id) === String(op.event.id));
+              if (serverHasSavedEvent) removeQueuedWrite(op.opId);
+              if (Array.isArray(data.events)) {
+                state.serverEvents = data.events;
+                rememberCachedEvents(state.serverEvents);
+                refreshEventsFromServerEvents();
+                signalOtherOpenViewsToRefresh();
+              }
+            } catch (error) {
+              if (!isRetryableError(error)) {
+                removeQueuedWrite(op.opId);
+                if (op.event?.id) forgetLocalEvent(op.event.id);
+                refreshEventsFromServerEvents();
+                if (!options.silent) setStatus(error.message, true);
+                if (options.throwNonRetryable && (!options.targetOpId || options.targetOpId === op.opId)) {
+                  fatalError = error;
+                  break;
+                }
+                continue;
+              }
+              blockedByRetryableError = true;
+              if (!options.silent) setStatus('Server is busy/offline. Saved on this device and will retry automatically.', true);
+              break;
             }
-            if (!options.silent) setStatus('Server is busy/offline. Saved on this device and will retry automatically.', true);
-            break;
           }
+
+          if (fatalError || blockedByRetryableError) break;
+          if (!getPendingWrites().length) break;
         }
       } finally {
         state.pendingWriteActive = false;
@@ -1236,16 +2130,30 @@
       if (fatalError) throw fatalError;
     }
 
-    async function fetchEvents() {
+    async function fetchEvents(options = {}) {
+      const now = Date.now();
+      if (state.eventFetchActive) return;
+      if (!options.force && state.lastEventFetchAt && now - state.lastEventFetchAt < minEventFetchGapMs()) {
+        renderFromLocalState();
+        return;
+      }
+
+      state.eventFetchActive = true;
+      state.lastEventFetchAt = now;
       try {
-        const response = await fetch(`/api/events?t=${Date.now()}`, { cache: 'no-store' });
+        const url = options.force ? `/api/events?fresh=1&t=${Date.now()}` : '/api/events';
+        const response = await fetch(url, { cache: options.force ? 'no-store' : 'default' });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Could not load events.');
         state.serverEvents = Array.isArray(data.events) ? data.events : [];
+        rememberCachedEvents(state.serverEvents);
         refreshEventsFromServerEvents();
       } catch (error) {
         console.warn(error);
-        refreshEventsFromServerEvents();
+        if (!state.serverEvents.length) hydrateEventsFromLocalCache();
+        else refreshEventsFromServerEvents();
+      } finally {
+        state.eventFetchActive = false;
       }
       renderDisplay();
       renderAdminEvents();
@@ -1254,50 +2162,160 @@
       if (adminMode && editParam && !state.editingId) setTimeout(() => editEvent(editParam), 50);
     }
 
+
+    function getUpcomingDisplayLimit() {
+      return DEFAULT_UPCOMING_LIMIT;
+    }
+
+    function getUpcomingCardAspectRatio() {
+      const grid = els.upcomingGrid;
+      const cols = Math.max(1, getUpcomingDisplayLimit());
+      if (grid) {
+        const styles = getComputedStyle(grid);
+        const gap = parseFloat(styles.columnGap || styles.gap || '0') || 0;
+        const width = (grid.clientWidth - gap * Math.max(0, cols - 1)) / cols;
+        const height = grid.clientHeight || grid.offsetHeight;
+        if (width > 0 && height > 0) return width / height;
+      }
+      return 2.35;
+    }
+
+    function upcomingImageFocusStyle(event) {
+      const hasImage = Boolean(event?.imageUrl);
+      const x = clampPercent(event?.imageFocusX, 50);
+      const y = clampPercent(event?.imageFocusY, hasImage ? 38 : 50);
+      const zoom = clampZoom(event?.imageZoom, 1.01);
+      return `--image-focus-x:${x}%;--image-focus-y:${y}%;--image-scale:${zoom};`;
+    }
+
+    function hiddenRepeatingTasksVisible() {
+      return Number(state.hiddenRepeatingTasksVisibleUntil || 0) > Date.now();
+    }
+
+    function scheduleHiddenRepeatingTasksHide() {
+      if (state.hiddenRepeatingTasksTimer) {
+        clearTimeout(state.hiddenRepeatingTasksTimer);
+        state.hiddenRepeatingTasksTimer = null;
+      }
+      const remaining = Number(state.hiddenRepeatingTasksVisibleUntil || 0) - Date.now();
+      if (remaining > 0) {
+        state.hiddenRepeatingTasksTimer = setTimeout(() => {
+          state.hiddenRepeatingTasksVisibleUntil = 0;
+          state.upcomingPage = 0;
+          renderDisplay();
+        }, Math.min(remaining, 5 * 60 * 1000 + 1000));
+      }
+    }
+
+    function isHiddenFutureRepeatingOccurrence(event, cutoff = endOfNextMonth(new Date())) {
+      if (!event || !event._isRecurring) return false;
+      const occurrenceDate = event.date instanceof Date ? event.date : new Date(event.start);
+      if (Number.isNaN(occurrenceDate.getTime())) return false;
+      return occurrenceDate > cutoff;
+    }
+
+    function showHiddenRepeatingTasksTemporarily() {
+      state.hiddenRepeatingTasksVisibleUntil = Date.now() + 5 * 60 * 1000;
+      scheduleHiddenRepeatingTasksHide();
+      renderDisplay();
+    }
+
     function getDisplayEvents() {
       const now = new Date();
       // Daily view should keep showing today's tasks for the full calendar day.
       // Do not drop a 15:00 task just because the current time is 19:23.
       const floor = todayStart();
-      const end = new Date(now.getTime() + 90 * 86400000);
-      const events = expandEventsInRange(floor, end, { includeCompleted: false });
-      if (state.selectedInstanceId && !events.some(event => event._instanceId === state.selectedInstanceId)) state.selectedInstanceId = null;
 
-      const todays = events.filter(event => sameDay(event.date, now) && !event._completed).sort((a, b) => new Date(a.start) - new Date(b.start));
-      const featured = todays.find(event => event.featured) || null;
-      const daily = featured || todays[0] || null;
+      // Look up to one year ahead so one-off future tasks like September events
+      // can appear. Long-range repeating occurrences are still limited below
+      // unless the temporary "load hidden repeats" button is used.
+      const end = new Date(now.getTime() + 365 * 86400000);
+      const expandedEvents = expandEventsInRange(floor, end, { includeCompleted: false });
+
+      const repeatCutoff = endOfNextMonth(now);
+      const showHiddenRepeats = hiddenRepeatingTasksVisible();
+      const hiddenRepeats = expandedEvents.filter(event => isHiddenFutureRepeatingOccurrence(event, repeatCutoff));
+      const events = showHiddenRepeats
+        ? expandedEvents
+        : expandedEvents.filter(event => !isHiddenFutureRepeatingOccurrence(event, repeatCutoff));
+
+      if (state.selectedInstanceId && !events.some(event => event._instanceId === state.selectedInstanceId)) {
+        state.selectedInstanceId = null;
+      }
+
+      const todays = events
+        .filter(event => sameDay(event.date, now) && !event._completed)
+        .sort((a, b) => new Date(a.start) - new Date(b.start));
+
+      const featuredToday = todays.find(event => event.featured) || null;
+
+      // Main hero should only show intentionally featured tasks for today.
+      // Featured future tasks belong in Upcoming, not the hero.
+      const daily = featuredToday || null;
       const selected = state.selectedInstanceId ? events.find(event => event._instanceId === state.selectedInstanceId) : null;
-      const selectedIsToday = selected && sameDay(selected.date || new Date(selected.start), now);
       const main = selected || daily;
       if (!selected && daily && todays.length > 1 && !state.todayCycleTimer) state.selectedInstanceId = daily._instanceId;
-      const allUpcoming = events.filter(event => !main || event._instanceId !== main._instanceId);
-      const maxUpcomingPage = Math.max(0, Math.ceil(allUpcoming.length / DISPLAY_EVENT_LIMIT) - 1);
+
+      const candidates = events
+        .filter(event => !main || event._instanceId !== main._instanceId)
+        .sort((a, b) => new Date(a.start) - new Date(b.start));
+
+      // Show the next 15 normal upcoming tasks, but always include manually
+      // featured future tasks within the one-year window even if they are past
+      // the first 15. This fixes the case where a September event is marked
+      // featured after creation but would otherwise be crowded out.
+      const nextUpcoming = candidates.slice(0, 15);
+      const included = new Set(nextUpcoming.map(event => event._instanceId));
+      const featuredFuture = candidates.filter(event => event.featured && !included.has(event._instanceId));
+      const allUpcoming = [...nextUpcoming, ...featuredFuture]
+        .sort((a, b) => new Date(a.start) - new Date(b.start));
+
+      const upcomingLimit = getUpcomingDisplayLimit();
+      const maxUpcomingPage = Math.max(0, Math.ceil(allUpcoming.length / upcomingLimit) - 1);
       if (state.upcomingPage > maxUpcomingPage) state.upcomingPage = maxUpcomingPage;
-      const startIndex = state.upcomingPage * DISPLAY_EVENT_LIMIT;
-      const upcoming = allUpcoming.slice(startIndex, startIndex + DISPLAY_EVENT_LIMIT);
-      return { daily, main, upcoming, allUpcomingCount: allUpcoming.length, upcomingPage: state.upcomingPage, maxUpcomingPage };
+      const startIndex = state.upcomingPage * upcomingLimit;
+      const upcoming = allUpcoming.slice(startIndex, startIndex + upcomingLimit);
+      return {
+        daily,
+        main,
+        upcoming,
+        allUpcomingCount: allUpcoming.length,
+        upcomingPage: state.upcomingPage,
+        maxUpcomingPage,
+        upcomingLimit,
+        hiddenRepeatsCount: showHiddenRepeats ? 0 : hiddenRepeats.length,
+        hiddenRepeatsVisible: showHiddenRepeats
+      };
     }
 
 
 
-    function renderUpcomingPager(total, page, maxPage) {
+    function renderUpcomingPager(total, page, maxPage, upcomingLimit = getUpcomingDisplayLimit(), hiddenRepeatsCount = 0, hiddenRepeatsVisible = false) {
       if (!els.upcomingPager) return;
-      if (total <= DISPLAY_EVENT_LIMIT) {
+      const showLoadHiddenButton = hiddenRepeatsCount > 0 && !hiddenRepeatsVisible && page >= maxPage;
+      if (total <= upcomingLimit && !showLoadHiddenButton) {
         els.upcomingPager.innerHTML = '';
         return;
       }
-      const currentStart = page * DISPLAY_EVENT_LIMIT + 1;
-      const currentEnd = Math.min(total, currentStart + DISPLAY_EVENT_LIMIT - 1);
+      const currentStart = total ? page * upcomingLimit + 1 : 0;
+      const currentEnd = total ? Math.min(total, currentStart + upcomingLimit - 1) : 0;
+      const pageCount = total
+        ? `<span class="upcoming-page-count">${currentStart}-${currentEnd} / ${total}</span>`
+        : `<span class="upcoming-page-count">0 / 0</span>`;
+      const loadHiddenButton = showLoadHiddenButton
+        ? `<button class="upcoming-load-hidden" type="button" data-load-hidden-repeats>Load hidden repeats · ${hiddenRepeatsCount}</button>`
+        : '';
       els.upcomingPager.innerHTML = `
         <button class="upcoming-arrow" type="button" data-upcoming-page="prev" ${page <= 0 ? 'disabled' : ''} aria-label="Previous upcoming tasks">‹</button>
-        <span class="upcoming-page-count">${currentStart}-${currentEnd} / ${total}</span>
+        ${pageCount}
         <button class="upcoming-arrow" type="button" data-upcoming-page="next" ${page >= maxPage ? 'disabled' : ''} aria-label="Next upcoming tasks">›</button>
+        ${loadHiddenButton}
       `;
     }
 
     function renderDisplay() {
       if (adminMode) return;
-      const { daily, main, upcoming, allUpcomingCount, upcomingPage, maxUpcomingPage } = getDisplayEvents();
+      const { daily, main, upcoming, allUpcomingCount, upcomingPage, maxUpcomingPage, upcomingLimit, hiddenRepeatsCount, hiddenRepeatsVisible } = getDisplayEvents();
       const hasMainEvent = Boolean(main);
       els.displayView.classList.toggle('no-daily', !hasMainEvent);
       els.displayView.classList.toggle('daily-calendar-mode', Boolean(hasMainEvent && state.dailyCalendarMode));
@@ -1313,21 +2331,24 @@
         renderHeroEvent(main);
       }
       fitKioskToScreen();
-      renderUpcomingPager(allUpcomingCount, upcomingPage, maxUpcomingPage);
+      scheduleHiddenRepeatingTasksHide();
+      renderUpcomingPager(allUpcomingCount, upcomingPage, maxUpcomingPage, upcomingLimit, hiddenRepeatsCount, hiddenRepeatsVisible);
 
       if (!upcoming.length) {
+        if (els.upcomingGrid) els.upcomingGrid.style.setProperty('--upcoming-cols', String(getUpcomingDisplayLimit()));
         els.upcomingGrid.innerHTML = '<div class="empty-upcoming" style="grid-column:1/-1">No upcoming events yet</div>';
         ensureTodayTaskCycle();
         return;
       }
 
       ensureTodayTaskCycle();
+      if (els.upcomingGrid) els.upcomingGrid.style.setProperty('--upcoming-cols', String(upcomingLimit));
       els.upcomingGrid.innerHTML = upcoming.map(event => {
         const date = new Date(event.start);
         const exactDate = formatUpcomingDate(date);
         return `
           <button class="mini-event" type="button" data-upcoming-pick="${htmlEscape(event._instanceId)}" aria-label="Open ${htmlEscape(event.title)} on ${htmlEscape(exactDate)}">
-            <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}" style="${imageFocusStyle(event)}">
+            <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}" style="${upcomingImageFocusStyle(event)}">
             <span class="mini-copy">
               <span class="mini-time">${htmlEscape(exactDate)} · ${formatTime(date, false)}</span>
               <span class="mini-title">${htmlEscape(event.title)}</span>
@@ -1692,7 +2713,14 @@
     function closeEventEditor(options = {}) {
       if (els.eventEditorCard) els.eventEditorCard.classList.add('hidden');
       if (els.adminView) els.adminView.classList.remove('editor-open');
+      state.editingId = null;
+      if (params.get('edit')) {
+        params.delete('edit');
+        const query = params.toString();
+        history.replaceState(null, '', `${location.pathname}${query ? `?${query}` : ''}${location.hash || ''}`);
+      }
       if (options.reset !== false && els.eventForm) resetForm();
+      setTimeout(() => els.adminCalendarCard?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 40);
     }
 
     function openNewEventEditor() {
@@ -1728,7 +2756,7 @@
       fillConfigForm();
       els.configOverlay.classList.remove('hidden');
       document.body.classList.add('config-open');
-      setConfigStatus('Local-only mode. Google Calendar sync is removed.');
+      setConfigStatus('Local dashboard settings loaded.');
       setTimeout(() => els.configPinInput?.focus?.(), 50);
     }
 
@@ -1736,6 +2764,106 @@
       if (!els.configOverlay) return;
       els.configOverlay.classList.add('hidden');
       document.body.classList.remove('config-open');
+    }
+
+    function setReminderMenuStatus(message, isError = false) {
+      if (!els.reminderMenuStatus) return;
+      els.reminderMenuStatus.textContent = message || '';
+      els.reminderMenuStatus.style.color = isError ? '#8d4138' : 'var(--muted)';
+    }
+
+    function setReminderMenuExpanded(expanded, { persist = true } = {}) {
+      state.reminderMenuExpanded = Boolean(expanded);
+      if (persist) {
+        localStorage.setItem('homeOrganizerReminderMenuExpanded', state.reminderMenuExpanded ? '1' : '0');
+      }
+      els.phoneReminderMenu?.classList.toggle('is-collapsed', !state.reminderMenuExpanded);
+      els.reminderMenuToggle?.setAttribute('aria-expanded', state.reminderMenuExpanded ? 'true' : 'false');
+      if (els.reminderMenuToggle) {
+        els.reminderMenuToggle.title = state.reminderMenuExpanded ? 'Collapse reminder menu' : 'Expand reminder menu';
+      }
+    }
+
+    function toggleReminderMenu() {
+      setReminderMenuExpanded(!state.reminderMenuExpanded);
+    }
+
+    function defaultReminderEmails() {
+      return HARD_CODED_REMINDER_CONTACTS.map(contact => normalizeReminderEmail(contact.email));
+    }
+
+    function normalizeReminderRecipientList(value, fallback = defaultReminderEmails()) {
+      const source = Array.isArray(value) ? value : fallback;
+      return [...new Set(source.map(normalizeReminderEmail).filter(email => isValidReminderEmail(email) && defaultReminderEmails().includes(email)))];
+    }
+
+    function setDigestRecipientInputs(selector, recipients) {
+      const selected = new Set(normalizeReminderRecipientList(recipients));
+      document.querySelectorAll(selector).forEach(input => {
+        input.checked = selected.has(normalizeReminderEmail(input.value));
+      });
+    }
+
+    function getDigestRecipientInputs(selector) {
+      return [...document.querySelectorAll(selector)]
+        .filter(input => input.checked)
+        .map(input => normalizeReminderEmail(input.value))
+        .filter(email => isValidReminderEmail(email) && defaultReminderEmails().includes(email));
+    }
+
+    function renderReminderSettings() {
+      const settings = state.reminderSettings || {};
+      const legacyRecipients = normalizeReminderRecipientList(settings.recipients);
+      if (els.weeklyUpdatesInput) els.weeklyUpdatesInput.checked = Boolean(settings.weeklyUpdates);
+      if (els.dailyNewTasksInput) els.dailyNewTasksInput.checked = Boolean(settings.endOfDayNewTasks);
+      setDigestRecipientInputs('[data-weekly-recipient]', settings.weeklyRecipients || legacyRecipients);
+      setDigestRecipientInputs('[data-daily-recipient]', settings.endOfDayRecipients || legacyRecipients);
+    }
+
+    async function loadReminderSettings() {
+      try {
+        const response = await fetch(`/api/reminder-settings?v=${Date.now()}`, { cache: 'no-store' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Could not load reminder settings.');
+        state.reminderSettings = data.settings || state.reminderSettings;
+        renderReminderSettings();
+        setReminderMenuStatus('Reminder settings loaded.');
+      } catch (error) {
+        renderReminderSettings();
+        setReminderMenuStatus(error.message || 'Could not load reminder settings.', true);
+      }
+    }
+
+    async function saveReminderSettings() {
+      const pin = (els.pinInput?.value || getPin() || '').trim();
+      if (!pin) {
+        setReminderMenuStatus('Enter and save the admin PIN first.', true);
+        return;
+      }
+      const weeklyRecipients = getDigestRecipientInputs('[data-weekly-recipient]');
+      const endOfDayRecipients = getDigestRecipientInputs('[data-daily-recipient]');
+      const settings = {
+        weeklyUpdates: Boolean(els.weeklyUpdatesInput?.checked),
+        endOfDayNewTasks: Boolean(els.dailyNewTasksInput?.checked),
+        weeklyRecipients,
+        endOfDayRecipients,
+        recipients: [...new Set([...weeklyRecipients, ...endOfDayRecipients])]
+      };
+      setReminderMenuStatus('Saving reminder settings…');
+      try {
+        const response = await fetch('/api/reminder-settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-admin-pin': pin },
+          body: JSON.stringify({ settings })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Could not save reminder settings.');
+        state.reminderSettings = data.settings || settings;
+        renderReminderSettings();
+        setReminderMenuStatus('Reminder settings saved.');
+      } catch (error) {
+        setReminderMenuStatus(error.message || 'Could not save reminder settings.', true);
+      }
     }
 
     async function loadConfig() {
@@ -1773,12 +2901,13 @@
       });
 
       const startHold = event => {
-        if (event.target.closest?.('.config-modal, input, textarea, button, select, a')) return;
+        if (event.target.closest?.('.month-modal, .config-modal, .weather-modal, .danger-modal, .task-action-sheet, input, textarea, button, select, a')) return;
+        if (els.monthOverlay && !els.monthOverlay.classList.contains('hidden')) return;
         state.longPressOpened = false;
         clearTimeout(state.longPressTimer);
         state.longPressTimer = setTimeout(() => {
           state.longPressOpened = true;
-          openConfigMenu();
+          openMonthView(true);
         }, 850);
       };
       const cancelHold = () => {
@@ -1815,9 +2944,10 @@
       els.eventForm.reset();
       els.eventId.value = '';
       els.imageUrlInput.value = '';
+      clearManualImagePreview();
+      setManualImageControls({ imageFocusX: 50, imageFocusY: 38, imageZoom: 1.01 });
       if (els.repeatInput) els.repeatInput.value = 'none';
       if (els.emailReminderInput) els.emailReminderInput.checked = false;
-      if (els.reminderMinutesInput) els.reminderMinutesInput.value = '30';
       renderEmailContacts([]);
       setEmailReminderOptionsVisible();
       els.saveEventBtn.textContent = 'Save event';
@@ -1860,9 +2990,17 @@
     }
 
     async function compressImageForUpload(file) {
-      if (file.size <= MAX_UPLOAD_BYTES) return file;
+      if (file.type === 'image/gif') {
+        if (file.size <= MAX_UPLOAD_BYTES) return file;
+        throw new Error('GIFs must be under 4 MB. Use a smaller GIF or a still image.');
+      }
 
-      els.imageStatus.textContent = `Compressing ${formatBytes(file.size)} image on this phone…`;
+      if (file.size <= IMAGE_UPLOAD_PASSTHROUGH_BYTES && ['image/jpeg', 'image/webp'].includes(file.type)) {
+        return file;
+      }
+
+      const action = file.size > MAX_UPLOAD_BYTES ? 'Compressing' : 'Optimizing';
+      els.imageStatus.textContent = `${action} ${formatBytes(file.size)} image before upload…`;
 
       const image = await loadImage(file);
       const naturalWidth = image.naturalWidth || image.width;
@@ -1873,10 +3011,10 @@
       let maxDimension = IMAGE_MAX_DIMENSION;
       let bestBlob = null;
 
-      for (let sizeAttempt = 0; sizeAttempt < 7; sizeAttempt++) {
+      for (let sizeAttempt = 0; sizeAttempt < 8; sizeAttempt++) {
         const scale = Math.min(1, maxDimension / Math.max(naturalWidth, naturalHeight));
-        const width = Math.max(320, Math.round(naturalWidth * scale));
-        const height = Math.max(240, Math.round(naturalHeight * scale));
+        const width = Math.max(360, Math.round(naturalWidth * scale));
+        const height = Math.max(260, Math.round(naturalHeight * scale));
 
         const canvas = document.createElement('canvas');
         canvas.width = width;
@@ -1890,9 +3028,9 @@
 
         for (const quality of JPEG_QUALITY_STEPS) {
           const blob = await canvasToBlob(canvas, 'image/jpeg', quality);
-          bestBlob = blob;
+          if (!bestBlob || blob.size < bestBlob.size) bestBlob = blob;
           if (blob.size <= COMPRESSED_UPLOAD_TARGET_BYTES) {
-            return new File([blob], `${baseName}-compressed.jpg`, {
+            return new File([blob], `${baseName}-optimized.jpg`, {
               type: 'image/jpeg',
               lastModified: Date.now()
             });
@@ -1903,7 +3041,7 @@
       }
 
       if (bestBlob && bestBlob.size <= MAX_UPLOAD_BYTES) {
-        return new File([bestBlob], `${baseName}-compressed.jpg`, {
+        return new File([bestBlob], `${baseName}-optimized.jpg`, {
           type: 'image/jpeg',
           lastModified: Date.now()
         });
@@ -1916,19 +3054,14 @@
       const file = els.imageInput.files?.[0];
       if (!file) return els.imageUrlInput.value;
 
-      if (!state.pendingImageFocus) {
-        const token = ++state.imageFocusToken;
-        els.imageStatus.textContent = 'Looking for text or faces before upload…';
-        const focus = await detectImageFocusFromFile(file);
-        if (token === state.imageFocusToken) state.pendingImageFocus = focus;
-      }
+      syncPendingFocusFromControls();
 
       const uploadFile = await compressImageForUpload(file);
       if (uploadFile.size > MAX_UPLOAD_BYTES) {
         throw new Error('Image is still over 4 MB after compression. Try a different image.');
       }
 
-      const compressedNote = uploadFile !== file ? `Compressed to ${formatBytes(uploadFile.size)}. ` : '';
+      const compressedNote = uploadFile !== file ? `Optimized to ${formatBytes(uploadFile.size)}. ` : '';
       els.imageStatus.textContent = `${compressedNote}Uploading image…`;
       const form = new FormData();
       form.append('image', uploadFile);
@@ -1941,7 +3074,7 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Upload failed.');
       els.imageStatus.textContent = uploadFile !== file
-        ? `Image compressed to ${formatBytes(uploadFile.size)} and uploaded.`
+        ? `Image optimized to ${formatBytes(uploadFile.size)} and uploaded.`
         : 'Image uploaded.';
       return data.url;
     }
@@ -1958,6 +3091,7 @@
 
       // Optimistic local save: show the task immediately on this device,
       // then sync to the server in the background.
+      rememberLocalEvent(eventToSave, op.opId, op.method);
       queueWrite(op);
       refreshEventsFromServerEvents();
       renderDisplay();
@@ -1988,6 +3122,7 @@
         createdAt: new Date().toISOString()
       };
 
+      forgetLocalEvent(id);
       queueWrite(op);
       refreshEventsFromServerEvents();
       renderDisplay();
@@ -2227,13 +3362,14 @@ Cancel = choose whether to delete the whole series.`);
       els.featuredInput.checked = Boolean(event.featured);
       const reminder = event.emailReminder || {};
       if (els.emailReminderInput) els.emailReminderInput.checked = Boolean(reminder.enabled);
-      if (els.reminderMinutesInput) els.reminderMinutesInput.value = String(reminder.minutesBefore ?? 30);
       renderEmailContacts(Array.isArray(reminder.recipients) ? reminder.recipients : []);
       setEmailReminderOptionsVisible();
       els.imageInput.value = '';
-      state.pendingImageFocus = focusFromEvent(event);
+      state.pendingImageFocus = focusFromEvent(event) || { imageFocusX: 50, imageFocusY: 38, imageZoom: 1.01, imageFocusSource: 'manual' };
       state.imageFocusToken += 1;
-      els.imageStatus.textContent = event.imageUrl ? 'Current image will be kept unless you upload a new one.' : 'No image selected. A calm placeholder will be used.';
+      setManualImageControls(state.pendingImageFocus);
+      setManualImagePreviewSource(event.imageUrl || '');
+      els.imageStatus.textContent = event.imageUrl ? 'Current image will be kept unless you upload a new one. Adjust pan/zoom below if needed.' : 'No image selected. A calm placeholder will be used.';
       els.saveEventBtn.textContent = 'Update event';
       if (els.eventEditorTitle) els.eventEditorTitle.textContent = 'Edit task/event';
       showEventEditor();
@@ -2262,6 +3398,13 @@ Cancel = choose whether to delete the whole series.`);
         }
         payload.completedDates = dates;
       }
+
+      // Save the completion change locally before the server request starts, so the task
+      // stays hidden/visible exactly as chosen even while Blob/Vercel is still catching up.
+      saveCompletionOverride(payload);
+      refreshEventsFromServerEvents();
+      renderAdminEvents();
+      renderDisplay();
 
       const result = await saveEvent(payload);
       if (willBeCompleted) {
@@ -2413,7 +3556,7 @@ Cancel = choose whether to delete the whole series.`);
         if (adminMode) return;
         // Do not let the day buttons inside the clock card trigger "return to today".
         // Only the actual clock/date area should use this shortcut.
-        if (event.target?.closest?.('.week-view, .week-day')) return;
+        if (event.target?.closest?.('.week-view, .week-day, .daily-calendar-panel, .daily-calendar-day')) return;
         const now = Date.now();
         const isDoublePress = now - lastPress < 420;
 
@@ -2455,6 +3598,14 @@ Cancel = choose whether to delete the whole series.`);
       });
 
       els.newTaskBtn?.addEventListener('click', openNewEventEditor);
+      setReminderMenuExpanded(state.reminderMenuExpanded, { persist: false });
+      els.reminderMenuToggle?.addEventListener('click', toggleReminderMenu);
+      els.saveReminderSettingsBtn?.addEventListener('click', saveReminderSettings);
+      els.weeklyUpdatesInput?.addEventListener('change', () => setReminderMenuStatus('Unsaved reminder setting. Press Save.'));
+      els.dailyNewTasksInput?.addEventListener('change', () => setReminderMenuStatus('Unsaved reminder setting. Press Save.'));
+      document.querySelectorAll('[data-weekly-recipient], [data-daily-recipient]').forEach(input => {
+        input.addEventListener('change', () => setReminderMenuStatus('Unsaved recipient setting. Press Save.'));
+      });
       els.showFrequentRepeatingInput?.addEventListener('change', () => {
         state.showFrequentRepeatingTasks = Boolean(els.showFrequentRepeatingInput.checked);
         localStorage.setItem('homeOrganizerShowFrequentRepeatingTasks', state.showFrequentRepeatingTasks ? '1' : '0');
@@ -2463,27 +3614,7 @@ Cancel = choose whether to delete the whole series.`);
       els.closeEditorBtn?.addEventListener('click', () => closeEventEditor());
       els.emailReminderInput?.addEventListener('change', () => {
         setEmailReminderOptionsVisible();
-        if (els.emailReminderInput.checked) {
-          renderEmailContacts(getSelectedReminderRecipients());
-          if (!getStoredReminderEmails().length) setTimeout(() => els.newEmailInput?.focus?.(), 40);
-        }
-      });
-      els.addEmailBtn?.addEventListener('click', () => addReminderEmailFromInput(true));
-      els.newEmailInput?.addEventListener('keydown', event => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          addReminderEmailFromInput(true);
-        }
-      });
-      els.emailContactList?.addEventListener('click', event => {
-        const remove = event.target.closest('[data-remove-reminder-email]')?.dataset.removeReminderEmail;
-        if (!remove) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const selected = new Set(getSelectedReminderRecipients());
-        selected.delete(normalizeReminderEmail(remove));
-        saveStoredReminderEmails(getStoredReminderEmails().filter(email => email !== normalizeReminderEmail(remove)));
-        renderEmailContacts([...selected]);
+        if (els.emailReminderInput.checked) renderEmailContacts(getSelectedReminderRecipients());
       });
 
       els.imageInput.addEventListener('change', () => {
@@ -2498,6 +3629,17 @@ Cancel = choose whether to delete the whole series.`);
         }
 
         updateImageFocusPreview(file);
+      });
+
+      [els.imageFocusXInput, els.imageFocusYInput, els.imageZoomInput].forEach(input => {
+        input?.addEventListener('input', renderManualImagePreview);
+      });
+      els.titleInput?.addEventListener('input', renderManualImagePreview);
+      els.imageCenterBtn?.addEventListener('click', () => {
+        setManualImageControls({ imageFocusX: 50, imageFocusY: 50, imageZoom: 1.01 });
+      });
+      els.imageTextSafeBtn?.addEventListener('click', () => {
+        setManualImageControls({ imageFocusX: 50, imageFocusY: 34, imageZoom: 1.08 });
       });
 
       els.eventForm.addEventListener('submit', async event => {
@@ -2564,7 +3706,8 @@ Cancel = choose whether to delete the whole series.`);
 
     function bindWeatherOverlay() {
       els.weatherCard?.addEventListener('click', event => {
-        if (event.target.closest?.('.selected-event-panel, button, a')) return;
+        if (event.target.closest?.('.selected-event-panel, .daily-calendar-panel, button, a')) return;
+        if (state.dailyCalendarMode) return;
         openWeatherOverlay();
       });
       els.weatherOverlayCloseBtn?.addEventListener('click', closeWeatherOverlay);
@@ -2593,7 +3736,7 @@ Cancel = choose whether to delete the whole series.`);
           if (!ensureDisplayActionPin()) return true;
           completeButton.disabled = true;
           await toggleComplete(completeButton.dataset.heroComplete);
-          state.heroEventFlipped = false;
+          setTaskCardFlipped('hero', false);
           renderDisplay();
           return true;
         }
@@ -2683,6 +3826,7 @@ Cancel = choose whether to delete the whole series.`);
       ctx: null,
       previousFrame: null,
       timer: null,
+      bootHideTimer: null,
       button: null,
       overlay: null,
     };
@@ -2691,6 +3835,18 @@ Cancel = choose whether to delete the whole series.`);
       if (!motionDimmer.button) return;
       motionDimmer.button.textContent = motionDimmer.enabled ? 'Camera dimmer on' : 'Camera dimmer off';
       motionDimmer.button.classList.toggle('is-on', motionDimmer.enabled);
+    }
+
+    function hideMotionDimmerBootButton() {
+      if (!motionDimmer.button) return;
+      motionDimmer.button.classList.add('is-boot-hidden');
+      motionDimmer.button.setAttribute('aria-hidden', 'true');
+      motionDimmer.button.tabIndex = -1;
+    }
+
+    function startMotionDimmerBootVisibilityTimer() {
+      clearTimeout(motionDimmer.bootHideTimer);
+      motionDimmer.bootHideTimer = setTimeout(hideMotionDimmerBootButton, 30 * 1000);
     }
 
     async function setScreenBrightnessPercent(percent) {
@@ -2816,6 +3972,11 @@ Cancel = choose whether to delete the whole series.`);
     }
 
     function bindMotionDimmer() {
+      if (isPhoneLike) {
+        motionDimmer.enabled = false;
+        document.body.classList.remove('motion-dimmed');
+        return;
+      }
       motionDimmer.overlay = document.createElement('div');
       motionDimmer.overlay.className = 'motion-dim-overlay';
       document.body.appendChild(motionDimmer.overlay);
@@ -2825,6 +3986,7 @@ Cancel = choose whether to delete the whole series.`);
       motionDimmer.button.className = 'motion-dimmer-toggle';
       motionDimmer.button.addEventListener('click', toggleMotionDimmer);
       document.body.appendChild(motionDimmer.button);
+      startMotionDimmerBootVisibilityTimer();
 
       motionDimmer.enabled = localStorage.getItem(MOTION_DIMMER_ENABLED_KEY) === '1';
       updateMotionDimmerButton();
@@ -2833,8 +3995,9 @@ Cancel = choose whether to delete the whole series.`);
 
     function init() {
       setMode();
-      window.addEventListener('resize', fitKioskToScreen);
+      window.addEventListener('resize', () => { fitKioskToScreen(); if (!adminMode) renderDisplay(); });
       window.addEventListener('orientationchange', () => setTimeout(fitKioskToScreen, 250));
+      bindMonthView();
       bindConfigMenu();
       bindWeatherOverlay();
       bindDangerMenu();
@@ -2845,7 +4008,7 @@ Cancel = choose whether to delete the whole series.`);
         handleHeroBackActionClick(event);
       }, true);
       document.addEventListener('pointerdown', event => {
-        if (event.target.closest?.('[data-hero-complete], [data-hero-edit], [data-hero-delete-instance], [data-hero-close]')) {
+        if (event.target.closest?.('[data-hero-complete], [data-hero-edit], [data-hero-delete-instance], [data-hero-close], [data-display-add-email-reminders], [data-display-email-recipient]')) {
           event.stopPropagation();
         }
       }, true);
@@ -2862,8 +4025,29 @@ Cancel = choose whether to delete the whole series.`);
           selectDayPreview(dayButton.dataset.day);
         });
       }
+      if (els.dailyCalendarPanel) {
+        els.dailyCalendarPanel.addEventListener('pointerdown', event => {
+          if (event.target.closest?.('[data-daily-calendar-day]')) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation?.();
+          }
+        }, true);
+        els.dailyCalendarPanel.addEventListener('pointerup', event => {
+          handleDailyCalendarDayPick(event);
+        }, true);
+        els.dailyCalendarPanel.addEventListener('click', event => {
+          handleDailyCalendarDayPick(event);
+        }, true);
+      }
       if (els.upcomingPager) {
         els.upcomingPager.addEventListener('click', event => {
+          const loadHidden = event.target.closest('[data-load-hidden-repeats]');
+          if (loadHidden) {
+            event.stopPropagation();
+            showHiddenRepeatingTasksTemporarily();
+            return;
+          }
           const direction = event.target.closest('[data-upcoming-page]')?.dataset.upcomingPage;
           if (!direction) return;
           event.stopPropagation();
@@ -2886,9 +4070,16 @@ Cancel = choose whether to delete the whole series.`);
           const editId = event.target.closest('[data-hero-edit]')?.dataset.heroEdit;
           const deleteInstanceId = event.target.closest('[data-hero-delete-instance]')?.dataset.heroDeleteInstance;
           const close = event.target.closest('[data-hero-close]');
-          if (completeId || editId || deleteInstanceId || close || event.target.closest('button, input, textarea, select, a')) event.stopPropagation();
+          const addEmail = event.target.closest('[data-display-add-email-reminders]');
+          const interactive = event.target.closest('button, input, textarea, select, a, label');
+          if (completeId || editId || deleteInstanceId || close || addEmail || interactive) event.stopPropagation();
 
           try {
+            if (addEmail) {
+              await addEmailRemindersFromDisplay(addEmail.dataset.displayAddEmailReminders, addEmail);
+              return;
+            }
+            if (interactive && !completeId && !editId && !deleteInstanceId && !close) return;
             if (completeId) {
               if (!ensureDisplayActionPin()) return;
               await toggleComplete(completeId);
@@ -2907,12 +4098,12 @@ Cancel = choose whether to delete the whole series.`);
               return;
             }
             if (close) {
-              state.heroEventFlipped = false;
+              setTaskCardFlipped('hero', false);
               renderDisplay();
               return;
             }
-            if (event.target.closest('[data-hero-flip]')) {
-              state.heroEventFlipped = !state.heroEventFlipped;
+            if (event.target.closest('[data-hero-flip]') && !state.heroEventFlipped) {
+              setTaskCardFlipped('hero', true);
               renderDisplay();
             }
           } catch (error) {
@@ -2929,10 +4120,17 @@ Cancel = choose whether to delete the whole series.`);
           const editId = event.target.closest('[data-display-edit]')?.dataset.displayEdit;
           const deleteInstanceId = event.target.closest('[data-display-delete-instance]')?.dataset.displayDeleteInstance;
           const close = event.target.closest('[data-selected-close]');
+          const addEmail = event.target.closest('[data-display-add-email-reminders]');
 
-          if (pickId || completeId || editId || deleteInstanceId || close || event.target.closest('button, input, textarea, select, a')) event.stopPropagation();
+          const interactive = event.target.closest('button, input, textarea, select, a, label');
+          if (pickId || completeId || editId || deleteInstanceId || close || addEmail || interactive) event.stopPropagation();
 
           try {
+            if (addEmail) {
+              await addEmailRemindersFromDisplay(addEmail.dataset.displayAddEmailReminders, addEmail);
+              return;
+            }
+            if (interactive && !pickId && !completeId && !editId && !deleteInstanceId && !close) return;
             if (pickId) {
               state.selectedInstanceId = pickId;
               state.selectedEventFlipped = false;
@@ -2957,12 +4155,12 @@ Cancel = choose whether to delete the whole series.`);
               return;
             }
             if (close) {
-              state.selectedEventFlipped = false;
+              setTaskCardFlipped('selected', false);
               renderDisplay();
               return;
             }
-            if (flip) {
-              state.selectedEventFlipped = !state.selectedEventFlipped;
+            if (flip && !state.selectedEventFlipped) {
+              setTaskCardFlipped('selected', true);
               renderDisplay();
             }
           } catch (error) {
@@ -2972,16 +4170,30 @@ Cancel = choose whether to delete the whole series.`);
       }
       updateClock();
       setInterval(updateClock, 1000);
+      if (!adminMode) setInterval(renderDisplay, 60 * 1000);
       fetchWeather();
       setInterval(fetchWeather, 30 * 60 * 1000);
-      fetchEvents();
-      setInterval(fetchEvents, REFRESH_EVENTS_MS);
-      setInterval(() => processPendingWrites({ silent: true }), 15_000);
+      hydrateEventsFromLocalCache();
+      // Page boot should always spend one fresh read so the dashboard starts with newest data.
+      // Local cache still renders instantly first, then this refresh replaces it when loaded.
+      fetchEvents({ force: true, reason: 'page-boot' });
+      bindInteractionRefresh();
+      scheduleNextHourlyEventRefresh();
       window.addEventListener('online', () => processPendingWrites({ silent: true }));
-      window.addEventListener('storage', event => { if (event.key === LAST_WRITE_SIGNAL_KEY) fetchEvents(); });
-      document.addEventListener('visibilitychange', () => { if (!document.hidden) fetchEvents(); });
-      window.addEventListener('pageshow', () => fetchEvents());
-      if (adminMode) bindAdmin();
+      window.addEventListener('storage', event => {
+        if (event.key === LAST_WRITE_SIGNAL_KEY) {
+          renderFromLocalState();
+          // Another open tab already updated local state. Do not spend a Blob read here.
+        }
+      });
+      window.addEventListener('pageshow', () => {
+        hydrateEventsFromLocalCache();
+        renderFromLocalState();
+      });
+      if (adminMode) {
+        bindAdmin();
+        loadReminderSettings();
+      }
     }
 
     init();

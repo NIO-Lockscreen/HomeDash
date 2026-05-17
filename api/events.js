@@ -61,6 +61,13 @@ function cleanPositiveInt(value, existingValue, fallback = 0) {
   return Math.round(number);
 }
 
+function cleanZoom(value, existingValue, fallback = 1.01) {
+  const raw = value ?? existingValue;
+  const number = Number(raw);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(1, Math.min(1.8, Math.round(number * 100) / 100));
+}
+
 function normalizeFocusBox(value, existingValue = null) {
   const source = value && typeof value === 'object'
     ? value
@@ -167,11 +174,11 @@ function cleanEvent(input, existing = {}) {
   const imageUrl = String(input.imageUrl || '').trim();
   const imageFocusX = cleanPercent(input.imageFocusX, existing.imageFocusX, 50);
   const imageFocusY = cleanPercent(input.imageFocusY, existing.imageFocusY, 38);
-  const imageFocusSource = String(input.imageFocusSource || existing.imageFocusSource || '').trim().slice(0, 40);
+  const imageFocusSource = String(input.imageFocusSource || existing.imageFocusSource || 'manual').trim().slice(0, 40);
+  const imageZoom = cleanZoom(input.imageZoom, existing.imageZoom, 1.01);
   const imageFocusBox = normalizeFocusBox(input.imageFocusBox, existing.imageFocusBox);
   const imageNaturalWidth = cleanPositiveInt(input.imageNaturalWidth, existing.imageNaturalWidth, 0);
   const imageNaturalHeight = cleanPositiveInt(input.imageNaturalHeight, existing.imageNaturalHeight, 0);
-  const imageFocusFacesCount = cleanPositiveInt(input.imageFocusFacesCount, existing.imageFocusFacesCount, 0);
   const allowedRepeats = new Set(['none', 'yearly', 'weekly', 'biweekly']);
   const repeat = allowedRepeats.has(String(input.repeat || existing.repeat || 'none'))
     ? String(input.repeat || existing.repeat || 'none')
@@ -195,10 +202,10 @@ function cleanEvent(input, existing = {}) {
     imageFocusX,
     imageFocusY,
     imageFocusSource,
+    imageZoom,
     imageFocusBox,
     imageNaturalWidth,
     imageNaturalHeight,
-    imageFocusFacesCount,
     featured: Boolean(input.featured ?? existing.featured),
     emailReminder,
     updatedAt: new Date().toISOString(),
