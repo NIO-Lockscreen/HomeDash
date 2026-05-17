@@ -1765,6 +1765,73 @@
 
     .phone-admin .phone-reminder-menu { display: grid; gap: 12px; }
 
+    .phone-reminder-menu.is-collapsed {
+      gap: 0;
+      padding-bottom: 12px;
+    }
+
+    .reminder-menu-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .reminder-menu-toggle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 2px 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .reminder-menu-toggle-text {
+      display: grid;
+      gap: 3px;
+    }
+
+    .reminder-menu-toggle-subtitle {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
+    .reminder-menu-chevron {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(132,118,94,.28);
+      border-radius: 999px;
+      background: rgba(255,255,255,.58);
+      color: var(--ink);
+      font-size: 16px;
+      font-weight: 950;
+      transition: transform .18s ease;
+    }
+
+    .phone-reminder-menu:not(.is-collapsed) .reminder-menu-chevron {
+      transform: rotate(180deg);
+    }
+
+    .phone-reminder-menu-body {
+      display: grid;
+      gap: 12px;
+    }
+
+    .phone-reminder-menu.is-collapsed .phone-reminder-menu-body {
+      display: none;
+    }
+
     .reminder-digest-block {
       display: grid;
       gap: 8px;
@@ -3325,53 +3392,63 @@
           </label>
         </div>
       </div>
-      <div id="phoneReminderMenu" class="phone-reminder-menu" aria-label="Reminder menu">
-        <h3 class="phone-reminder-menu-title">Reminder menu</h3>
-        <div class="phone-reminder-menu-help">These are shared email settings for the household reminder cron.</div>
-        <div class="reminder-digest-block">
-          <label class="repeat-toggle">
-            <input id="weeklyUpdatesInput" type="checkbox" />
-            <span>
-              <span>Weekly Sunday email</span>
-              <small>Everything happening the coming week.</small>
+      <div id="phoneReminderMenu" class="phone-reminder-menu is-collapsed" aria-label="Reminder menu">
+        <div class="reminder-menu-header">
+          <button id="reminderMenuToggle" class="reminder-menu-toggle" type="button" aria-expanded="false" aria-controls="phoneReminderMenuBody">
+            <span class="reminder-menu-toggle-text">
+              <span class="phone-reminder-menu-title">Reminder menu</span>
+              <span class="reminder-menu-toggle-subtitle">Tap to show weekly and end-of-day email options.</span>
             </span>
-          </label>
-          <div class="email-contact-list reminder-digest-recipients" aria-label="Weekly email recipients">
-            <label class="email-contact-row">
-              <input type="checkbox" data-weekly-recipient value="theresesaksgard@hotmail.com" />
-              <span>Therese</span>
-              <small>Weekly</small>
-            </label>
-            <label class="email-contact-row">
-              <input type="checkbox" data-weekly-recipient value="diemetrix@gmail.com" />
-              <span>Thomas</span>
-              <small>Weekly</small>
-            </label>
-          </div>
+            <span id="reminderMenuChevron" class="reminder-menu-chevron" aria-hidden="true">⌄</span>
+          </button>
         </div>
-        <div class="reminder-digest-block">
-          <label class="repeat-toggle">
-            <input id="dailyNewTasksInput" type="checkbox" />
-            <span>
-              <span>End-of-day new tasks</span>
-              <small>Email summary of tasks added today.</small>
-            </span>
-          </label>
-          <div class="email-contact-list reminder-digest-recipients" aria-label="End-of-day email recipients">
-            <label class="email-contact-row">
-              <input type="checkbox" data-daily-recipient value="theresesaksgard@hotmail.com" />
-              <span>Therese</span>
-              <small>Daily</small>
+        <div id="phoneReminderMenuBody" class="phone-reminder-menu-body">
+          <div class="phone-reminder-menu-help">These are shared email settings for the household reminder cron.</div>
+          <div class="reminder-digest-block">
+            <label class="repeat-toggle">
+              <input id="weeklyUpdatesInput" type="checkbox" />
+              <span>
+                <span>Weekly Sunday email</span>
+                <small>Everything happening the coming week.</small>
+              </span>
             </label>
-            <label class="email-contact-row">
-              <input type="checkbox" data-daily-recipient value="diemetrix@gmail.com" />
-              <span>Thomas</span>
-              <small>Daily</small>
-            </label>
+            <div class="email-contact-list reminder-digest-recipients" aria-label="Weekly email recipients">
+              <label class="email-contact-row">
+                <input type="checkbox" data-weekly-recipient value="theresesaksgard@hotmail.com" />
+                <span>Therese</span>
+                <small>Weekly</small>
+              </label>
+              <label class="email-contact-row">
+                <input type="checkbox" data-weekly-recipient value="diemetrix@gmail.com" />
+                <span>Thomas</span>
+                <small>Weekly</small>
+              </label>
+            </div>
           </div>
+          <div class="reminder-digest-block">
+            <label class="repeat-toggle">
+              <input id="dailyNewTasksInput" type="checkbox" />
+              <span>
+                <span>End-of-day new tasks</span>
+                <small>Email summary of tasks added today.</small>
+              </span>
+            </label>
+            <div class="email-contact-list reminder-digest-recipients" aria-label="End-of-day email recipients">
+              <label class="email-contact-row">
+                <input type="checkbox" data-daily-recipient value="theresesaksgard@hotmail.com" />
+                <span>Therese</span>
+                <small>Daily</small>
+              </label>
+              <label class="email-contact-row">
+                <input type="checkbox" data-daily-recipient value="diemetrix@gmail.com" />
+                <span>Thomas</span>
+                <small>Daily</small>
+              </label>
+            </div>
+          </div>
+          <button id="saveReminderSettingsBtn" class="btn secondary" type="button">Save reminder settings</button>
+          <div id="reminderMenuStatus" class="reminder-menu-status"></div>
         </div>
-        <button id="saveReminderSettingsBtn" class="btn secondary" type="button">Save reminder settings</button>
-        <div id="reminderMenuStatus" class="reminder-menu-status"></div>
       </div>
       <div id="adminEvents" class="admin-events"></div>
     </section>
@@ -3683,7 +3760,8 @@
       showFrequentRepeatingTasks: localStorage.getItem('homeOrganizerShowFrequentRepeatingTasks') === '1',
       pendingImageFocus: null,
       imageFocusToken: 0,
-      lastReminderSync: null
+      lastReminderSync: null,
+      reminderMenuExpanded: localStorage.getItem('homeOrganizerReminderMenuExpanded') === '1'
     };
 
     const els = {
@@ -3721,6 +3799,9 @@
       repeatVisibilityToggle: document.getElementById('repeatVisibilityToggle'),
       showFrequentRepeatingInput: document.getElementById('showFrequentRepeatingInput'),
       phoneReminderMenu: document.getElementById('phoneReminderMenu'),
+      reminderMenuToggle: document.getElementById('reminderMenuToggle'),
+      phoneReminderMenuBody: document.getElementById('phoneReminderMenuBody'),
+      reminderMenuChevron: document.getElementById('reminderMenuChevron'),
       weeklyUpdatesInput: document.getElementById('weeklyUpdatesInput'),
       dailyNewTasksInput: document.getElementById('dailyNewTasksInput'),
       saveReminderSettingsBtn: document.getElementById('saveReminderSettingsBtn'),
@@ -6566,6 +6647,22 @@
       els.reminderMenuStatus.style.color = isError ? '#8d4138' : 'var(--muted)';
     }
 
+    function setReminderMenuExpanded(expanded, { persist = true } = {}) {
+      state.reminderMenuExpanded = Boolean(expanded);
+      if (persist) {
+        localStorage.setItem('homeOrganizerReminderMenuExpanded', state.reminderMenuExpanded ? '1' : '0');
+      }
+      els.phoneReminderMenu?.classList.toggle('is-collapsed', !state.reminderMenuExpanded);
+      els.reminderMenuToggle?.setAttribute('aria-expanded', state.reminderMenuExpanded ? 'true' : 'false');
+      if (els.reminderMenuToggle) {
+        els.reminderMenuToggle.title = state.reminderMenuExpanded ? 'Collapse reminder menu' : 'Expand reminder menu';
+      }
+    }
+
+    function toggleReminderMenu() {
+      setReminderMenuExpanded(!state.reminderMenuExpanded);
+    }
+
     function defaultReminderEmails() {
       return HARD_CODED_REMINDER_CONTACTS.map(contact => normalizeReminderEmail(contact.email));
     }
@@ -7377,6 +7474,8 @@ Cancel = choose whether to delete the whole series.`);
       });
 
       els.newTaskBtn?.addEventListener('click', openNewEventEditor);
+      setReminderMenuExpanded(state.reminderMenuExpanded, { persist: false });
+      els.reminderMenuToggle?.addEventListener('click', toggleReminderMenu);
       els.saveReminderSettingsBtn?.addEventListener('click', saveReminderSettings);
       els.weeklyUpdatesInput?.addEventListener('change', () => setReminderMenuStatus('Unsaved reminder setting. Press Save.'));
       els.dailyNewTasksInput?.addEventListener('change', () => setReminderMenuStatus('Unsaved reminder setting. Press Save.'));
