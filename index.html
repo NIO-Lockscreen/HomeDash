@@ -1752,6 +1752,58 @@
 
     .phone-only-control { display: none; }
     .phone-admin .phone-only-control { display: inline-flex; }
+
+    .phone-reminder-menu {
+      display: none;
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: rgba(255,255,255,0.66);
+      box-shadow: 0 12px 26px rgba(70,58,44,.06);
+    }
+
+    .phone-admin .phone-reminder-menu { display: grid; gap: 12px; }
+
+    .reminder-digest-block {
+      display: grid;
+      gap: 8px;
+    }
+
+    .reminder-digest-recipients {
+      margin-left: 6px;
+      padding-left: 12px;
+      border-left: 2px solid rgba(132,118,94,.20);
+    }
+
+    .reminder-digest-recipients .email-contact-row {
+      padding: 8px 10px;
+      border-radius: 15px;
+      background: rgba(255,255,255,0.55);
+    }
+
+    .phone-reminder-menu-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 950;
+      color: var(--ink);
+    }
+
+    .phone-reminder-menu-help {
+      margin: -4px 0 2px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1.35;
+    }
+
+    .reminder-menu-status {
+      min-height: 16px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
     .phone-admin .desktop-return-btn { display: none !important; }
 
     .admin-list-title {
@@ -3273,6 +3325,54 @@
           </label>
         </div>
       </div>
+      <div id="phoneReminderMenu" class="phone-reminder-menu" aria-label="Reminder menu">
+        <h3 class="phone-reminder-menu-title">Reminder menu</h3>
+        <div class="phone-reminder-menu-help">These are shared email settings for the household reminder cron.</div>
+        <div class="reminder-digest-block">
+          <label class="repeat-toggle">
+            <input id="weeklyUpdatesInput" type="checkbox" />
+            <span>
+              <span>Weekly Sunday email</span>
+              <small>Everything happening the coming week.</small>
+            </span>
+          </label>
+          <div class="email-contact-list reminder-digest-recipients" aria-label="Weekly email recipients">
+            <label class="email-contact-row">
+              <input type="checkbox" data-weekly-recipient value="theresesaksgard@hotmail.com" />
+              <span>Therese</span>
+              <small>Weekly</small>
+            </label>
+            <label class="email-contact-row">
+              <input type="checkbox" data-weekly-recipient value="diemetrix@gmail.com" />
+              <span>Thomas</span>
+              <small>Weekly</small>
+            </label>
+          </div>
+        </div>
+        <div class="reminder-digest-block">
+          <label class="repeat-toggle">
+            <input id="dailyNewTasksInput" type="checkbox" />
+            <span>
+              <span>End-of-day new tasks</span>
+              <small>Email summary of tasks added today.</small>
+            </span>
+          </label>
+          <div class="email-contact-list reminder-digest-recipients" aria-label="End-of-day email recipients">
+            <label class="email-contact-row">
+              <input type="checkbox" data-daily-recipient value="theresesaksgard@hotmail.com" />
+              <span>Therese</span>
+              <small>Daily</small>
+            </label>
+            <label class="email-contact-row">
+              <input type="checkbox" data-daily-recipient value="diemetrix@gmail.com" />
+              <span>Thomas</span>
+              <small>Daily</small>
+            </label>
+          </div>
+        </div>
+        <button id="saveReminderSettingsBtn" class="btn secondary" type="button">Save reminder settings</button>
+        <div id="reminderMenuStatus" class="reminder-menu-status"></div>
+      </div>
       <div id="adminEvents" class="admin-events"></div>
     </section>
 
@@ -3620,6 +3720,11 @@
       newTaskBtn: document.getElementById('newTaskBtn'),
       repeatVisibilityToggle: document.getElementById('repeatVisibilityToggle'),
       showFrequentRepeatingInput: document.getElementById('showFrequentRepeatingInput'),
+      phoneReminderMenu: document.getElementById('phoneReminderMenu'),
+      weeklyUpdatesInput: document.getElementById('weeklyUpdatesInput'),
+      dailyNewTasksInput: document.getElementById('dailyNewTasksInput'),
+      saveReminderSettingsBtn: document.getElementById('saveReminderSettingsBtn'),
+      reminderMenuStatus: document.getElementById('reminderMenuStatus'),
       repeatVisibilityText: document.getElementById('repeatVisibilityText'),
       repeatVisibilityHelp: document.getElementById('repeatVisibilityHelp'),
       eventEditorCard: document.getElementById('eventEditorCard'),
@@ -6455,6 +6560,90 @@
       document.body.classList.remove('config-open');
     }
 
+    function setReminderMenuStatus(message, isError = false) {
+      if (!els.reminderMenuStatus) return;
+      els.reminderMenuStatus.textContent = message || '';
+      els.reminderMenuStatus.style.color = isError ? '#8d4138' : 'var(--muted)';
+    }
+
+    function defaultReminderEmails() {
+      return HARD_CODED_REMINDER_CONTACTS.map(contact => normalizeReminderEmail(contact.email));
+    }
+
+    function normalizeReminderRecipientList(value, fallback = defaultReminderEmails()) {
+      const source = Array.isArray(value) ? value : fallback;
+      return [...new Set(source.map(normalizeReminderEmail).filter(email => isValidReminderEmail(email) && defaultReminderEmails().includes(email)))];
+    }
+
+    function setDigestRecipientInputs(selector, recipients) {
+      const selected = new Set(normalizeReminderRecipientList(recipients));
+      document.querySelectorAll(selector).forEach(input => {
+        input.checked = selected.has(normalizeReminderEmail(input.value));
+      });
+    }
+
+    function getDigestRecipientInputs(selector) {
+      return [...document.querySelectorAll(selector)]
+        .filter(input => input.checked)
+        .map(input => normalizeReminderEmail(input.value))
+        .filter(email => isValidReminderEmail(email) && defaultReminderEmails().includes(email));
+    }
+
+    function renderReminderSettings() {
+      const settings = state.reminderSettings || {};
+      const legacyRecipients = normalizeReminderRecipientList(settings.recipients);
+      if (els.weeklyUpdatesInput) els.weeklyUpdatesInput.checked = Boolean(settings.weeklyUpdates);
+      if (els.dailyNewTasksInput) els.dailyNewTasksInput.checked = Boolean(settings.endOfDayNewTasks);
+      setDigestRecipientInputs('[data-weekly-recipient]', settings.weeklyRecipients || legacyRecipients);
+      setDigestRecipientInputs('[data-daily-recipient]', settings.endOfDayRecipients || legacyRecipients);
+    }
+
+    async function loadReminderSettings() {
+      try {
+        const response = await fetch(`/api/reminder-settings?v=${Date.now()}`, { cache: 'no-store' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Could not load reminder settings.');
+        state.reminderSettings = data.settings || state.reminderSettings;
+        renderReminderSettings();
+        setReminderMenuStatus('Reminder settings loaded.');
+      } catch (error) {
+        renderReminderSettings();
+        setReminderMenuStatus(error.message || 'Could not load reminder settings.', true);
+      }
+    }
+
+    async function saveReminderSettings() {
+      const pin = (els.pinInput?.value || getPin() || '').trim();
+      if (!pin) {
+        setReminderMenuStatus('Enter and save the admin PIN first.', true);
+        return;
+      }
+      const weeklyRecipients = getDigestRecipientInputs('[data-weekly-recipient]');
+      const endOfDayRecipients = getDigestRecipientInputs('[data-daily-recipient]');
+      const settings = {
+        weeklyUpdates: Boolean(els.weeklyUpdatesInput?.checked),
+        endOfDayNewTasks: Boolean(els.dailyNewTasksInput?.checked),
+        weeklyRecipients,
+        endOfDayRecipients,
+        recipients: [...new Set([...weeklyRecipients, ...endOfDayRecipients])]
+      };
+      setReminderMenuStatus('Saving reminder settings…');
+      try {
+        const response = await fetch('/api/reminder-settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-admin-pin': pin },
+          body: JSON.stringify({ settings })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Could not save reminder settings.');
+        state.reminderSettings = data.settings || settings;
+        renderReminderSettings();
+        setReminderMenuStatus('Reminder settings saved.');
+      } catch (error) {
+        setReminderMenuStatus(error.message || 'Could not save reminder settings.', true);
+      }
+    }
+
     async function loadConfig() {
       fillConfigForm();
       return state.config;
@@ -7188,6 +7377,12 @@ Cancel = choose whether to delete the whole series.`);
       });
 
       els.newTaskBtn?.addEventListener('click', openNewEventEditor);
+      els.saveReminderSettingsBtn?.addEventListener('click', saveReminderSettings);
+      els.weeklyUpdatesInput?.addEventListener('change', () => setReminderMenuStatus('Unsaved reminder setting. Press Save.'));
+      els.dailyNewTasksInput?.addEventListener('change', () => setReminderMenuStatus('Unsaved reminder setting. Press Save.'));
+      document.querySelectorAll('[data-weekly-recipient], [data-daily-recipient]').forEach(input => {
+        input.addEventListener('change', () => setReminderMenuStatus('Unsaved recipient setting. Press Save.'));
+      });
       els.showFrequentRepeatingInput?.addEventListener('change', () => {
         state.showFrequentRepeatingTasks = Boolean(els.showFrequentRepeatingInput.checked);
         localStorage.setItem('homeOrganizerShowFrequentRepeatingTasks', state.showFrequentRepeatingTasks ? '1' : '0');
@@ -7761,7 +7956,10 @@ Cancel = choose whether to delete the whole series.`);
         hydrateEventsFromLocalCache();
         renderFromLocalState();
       });
-      if (adminMode) bindAdmin();
+      if (adminMode) {
+        bindAdmin();
+        loadReminderSettings();
+      }
     }
 
     init();

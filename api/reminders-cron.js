@@ -1,4 +1,4 @@
-import { loadEventsForReminderCron, syncReminderSchedulesForEvents } from './_reminders.js';
+import { loadEventsForReminderCron, syncReminderSchedulesForEvents, syncReminderDigests } from './_reminders.js';
 
 function send(res, status, payload) {
   res.statusCode = status;
@@ -38,11 +38,13 @@ export default async function handler(req, res) {
 
     const events = await loadEventsForReminderCron();
     const result = await syncReminderSchedulesForEvents(events, { all: true });
+    const digestResult = await syncReminderDigests(events);
 
     send(res, result.ok ? 200 : 207, {
       ok: result.ok,
       checkedEvents: events.length,
       ...result,
+      digests: digestResult,
     });
   } catch (error) {
     send(res, 500, { ok: false, error: error.message || 'Reminder cron failed.' });

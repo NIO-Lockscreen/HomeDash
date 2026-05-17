@@ -3,9 +3,10 @@ import crypto from 'crypto';
 
 const EVENTS_PATH = 'home-organizer/events.json';
 const REMINDER_STATE_PATH = 'home-organizer/reminders-state.json';
-const RESEND_SCHEDULE_HORIZON_MS = 29 * 24 * 60 * 60 * 1000; // Resend allows up to 30 days. Keep a safety buffer.
+const REMINDER_SETTINGS_PATH = 'home-organizer/reminder-settings.json';
+const RESEND_SCHEDULE_HORIZON_MS = 8 * 24 * 60 * 60 * 1000; // Only queue near-term reminders; the cron refreshes this daily.
 const RESEND_SEND_NOW_GRACE_MS = 90 * 1000;
-const MAX_OCCURRENCE_LOOKAHEAD_MS = 45 * 24 * 60 * 60 * 1000;
+const MAX_OCCURRENCE_LOOKAHEAD_MS = 8 * 24 * 60 * 60 * 1000;
 const DEFAULT_TIME_ZONE = 'Europe/Oslo';
 const HARD_CODED_REMINDER_RECIPIENTS = new Set(['theresesaksgard@hotmail.com', 'diemetrix@gmail.com']);
 
@@ -28,6 +29,7 @@ function getReminderConfig(event) {
     enabled: Boolean(reminder.enabled) && recipients.length > 0,
     recipients,
     creationEmailSentAt: /^\d{4}-\d{2}-\d{2}T/.test(creationEmailSentAt) ? creationEmailSentAt : '',
+    minutesBefore: Number.isFinite(Number(reminder.minutesBefore)) ? Math.max(0, Math.min(10080, Math.round(Number(reminder.minutesBefore)))) : null,
   };
 }
 
@@ -111,8 +113,18 @@ function previousLocalDateParts(year, month, day) {
   };
 }
 
-function dailyReminderTimeForOccurrence(occurrenceStart) {
+function dailyReminderTimeForOccurrence(occurrenceStart, reminder = {}) {
   const parts = zonedParts(occurrenceStart);
+  const minutesBefore = Number.isFinite(Number(reminder.minutesBefore)) ? Number(reminder.minutesBefore) : null;
+
+  if (minutesBefore !== null) {
+    const remindAt = new Date(occurrenceStart.getTime() - Math.max(0, minutesBefore) * 60 * 1000);
+    return {
+      remindAt,
+      variant: minutesBefore === 0 ? 'atStart' : 'beforeTask',
+    };
+  }
+
   const isEarlyTask = parts.hour < 8;
 
   if (isEarlyTask) {
@@ -273,7 +285,7 @@ function buildDesiredReminders(events, options = {}) {
       const eventAtMs = new Date(occurrence.start).getTime();
       if (!Number.isFinite(eventAtMs)) continue;
 
-      const reminderTime = dailyReminderTimeForOccurrence(new Date(occurrence.start));
+      const reminderTime = dailyReminderTimeForOccurrence(new Date(occurrence.start), reminder);
       const remindAtMs = reminderTime.remindAt.getTime();
       if (!Number.isFinite(remindAtMs)) continue;
       // Do not send task-day reminders immediately when the planned reminder time has already passed.
@@ -468,7 +480,11 @@ function buildEmail(reminder) {
 
   const message = reminder.type === 'earlyTomorrow'
     ? 'Remember this task early tomorrow'
-    : 'Remember this task today';
+    : reminder.type === 'beforeTask'
+      ? 'Upcoming task reminder'
+      : reminder.type === 'atStart'
+        ? 'Task starting now'
+        : 'Remember this task today';
 
   return {
     subject: `${message}: ${rawTitle}`,
@@ -536,10 +552,176 @@ async function resendCancel(emailId) {
   return { ok: true, data };
 }
 
+
+function normalizeRecipientList(value, fallback = [...HARD_CODED_REMINDER_RECIPIENTS]) {
+  const source = Array.isArray(value) ? value : fallback;
+  return [...new Set(source.map(normalizeEmail).filter(email => isValidEmail(email) && HARD_CODED_REMINDER_RECIPIENTS.has(email)))];
+}
+
+function normalizeReminderSettings(value = {}) {
+  const source = value && typeof value === 'object' ? value : {};
+  const legacyRecipients = normalizeRecipientList(source.recipients);
+  const weeklyRecipients = normalizeRecipientList(source.weeklyRecipients, legacyRecipients);
+  const endOfDayRecipients = normalizeRecipientList(source.endOfDayRecipients, legacyRecipients);
+  return {
+    weeklyUpdates: Boolean(source.weeklyUpdates),
+    endOfDayNewTasks: Boolean(source.endOfDayNewTasks),
+    weeklyRecipients,
+    endOfDayRecipients,
+    // Kept for older clients. New code uses the per-digest recipient lists above.
+    recipients: legacyRecipients,
+    updatedAt: source.updatedAt || null,
+  };
+}
+
+export async function loadReminderSettings() {
+  return normalizeReminderSettings(await readJsonBlob(REMINDER_SETTINGS_PATH, {}));
+}
+
+export async function saveReminderSettings(settings) {
+  const clean = normalizeReminderSettings({ ...settings, updatedAt: new Date().toISOString() });
+  await writeJsonBlob(REMINDER_SETTINGS_PATH, clean);
+  return clean;
+}
+
+function localDateAt(year, month, day, hour = 0, minute = 0) {
+  return zonedDateTimeToUtc(year, month, day, hour, minute);
+}
+
+function addLocalDays(parts, days) {
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + days, 12, 0, 0, 0));
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() };
+}
+
+function digestKey(type, dateKey, recipient = '') {
+  const suffix = recipient ? `::${normalizeEmail(recipient)}` : '';
+  return `digest::${type}::${dateKey}${suffix}`;
+}
+
+function buildDigestEmail({ type, title, intro, items }) {
+  const rows = items.map(item => `• ${item.when} — ${item.title}${item.location ? ` (${item.location})` : ''}`).join('\n');
+  const htmlRows = items.map(item => `
+    <li style="margin:0 0 12px; padding:12px 14px; border-radius:16px; background:#fffaf2; border:1px solid #efe4d2;">
+      <strong style="display:block; color:#2f2b27; font-size:16px;">${escapeHtml(item.title)}</strong>
+      <span style="display:block; color:#8a7d6f; margin-top:3px;">${escapeHtml(item.when)}</span>
+      ${item.location ? `<span style="display:block; color:#8a7d6f; margin-top:3px;">${escapeHtml(item.location)}</span>` : ''}
+    </li>`).join('');
+  return {
+    subject: title,
+    text: `${intro}\n\n${rows || 'Nothing to show.'}`,
+    html: `
+      <div style="margin:0; padding:0; background:#f4efe7; font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif; color:#2f2b27; line-height:1.5;">
+        <div style="max-width:620px; margin:0 auto; padding:28px 14px;">
+          <div style="background:#fffdf8; border:1px solid #e6dccd; border-radius:28px; padding:22px; box-shadow:0 18px 50px rgba(47,43,39,.10);">
+            <div style="font-size:12px; font-weight:900; color:#9a8062; text-transform:uppercase; letter-spacing:.12em;">Family Organizer</div>
+            <h1 style="margin:8px 0 8px; font-size:30px; line-height:1.08; letter-spacing:-.03em; color:#2f2b27;">${escapeHtml(title)}</h1>
+            <p style="margin:0 0 18px; color:#6f6257; font-weight:700;">${escapeHtml(intro)}</p>
+            <ul style="list-style:none; padding:0; margin:0;">${htmlRows || '<li style="color:#8a7d6f;">Nothing to show.</li>'}</ul>
+            <p style="margin:22px 0 0; color:#9b8f82; font-size:12px;">Sent by your Family Organizer dashboard.</p>
+          </div>
+        </div>
+      </div>`,
+  };
+}
+
+async function sendDigestEmail(key, recipient, email, state) {
+  if (state.scheduled?.[key]?.sentAt) return { skipped: true, recipient };
+  requireResendConfig();
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': `home-organizer-${key}`,
+    },
+    body: JSON.stringify({ from: process.env.REMINDER_FROM, to: [recipient], subject: email.subject, text: email.text, html: email.html }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || data.error || `Resend error ${response.status}`);
+  state.scheduled[key] = { type: 'digest', resendEmailId: data.id, sentAt: new Date().toISOString(), recipients: [recipient] };
+  return { sent: true, recipient };
+}
+
+async function sendDigestToRecipients(type, dateKey, recipients, email, state) {
+  const cleanRecipients = normalizeRecipientList(recipients, []);
+  const result = { sent: 0, skipped: 0, recipients: [] };
+  for (const recipient of cleanRecipients) {
+    const sent = await sendDigestEmail(digestKey(type, dateKey, recipient), recipient, email, state);
+    if (sent.sent) {
+      result.sent += 1;
+      result.recipients.push(recipient);
+    }
+    if (sent.skipped) result.skipped += 1;
+  }
+  return result;
+}
+
+export async function syncReminderDigests(events, options = {}) {
+  const now = options.now || new Date();
+  const settings = await loadReminderSettings();
+  const state = await loadReminderState();
+  const parts = zonedParts(now);
+  const todayKey = dateKeyInTimeZone(now);
+  const result = { ok: true, weeklySent: false, dailySent: false, skipped: [], errors: [] };
+
+  try {
+    const localWeekday = new Intl.DateTimeFormat('en-US', { timeZone: process.env.ORGANIZER_TIME_ZONE || DEFAULT_TIME_ZONE, weekday: 'short' }).format(now);
+    if (settings.weeklyUpdates && localWeekday === 'Sun' && parts.hour >= 18) {
+      const startParts = addLocalDays(parts, 1);
+      const endParts = addLocalDays(parts, 8);
+      const rangeStart = localDateAt(startParts.year, startParts.month, startParts.day, 0, 0);
+      const rangeEnd = localDateAt(endParts.year, endParts.month, endParts.day, 0, 0);
+      const occurrences = (Array.isArray(events) ? events : []).flatMap(event => expandEventOccurrences(event, rangeStart, rangeEnd));
+      const items = occurrences.sort((a, b) => new Date(a.start) - new Date(b.start)).map(item => ({
+        title: item.title,
+        when: formatDateTime(item.start),
+        location: item.location || '',
+      }));
+      const sent = await sendDigestToRecipients('weekly', todayKey, settings.weeklyRecipients, buildDigestEmail({
+        type: 'weekly',
+        title: 'Coming week in Family Organizer',
+        intro: 'Everything planned for the coming Monday to Sunday.',
+        items,
+      }), state);
+      result.weeklySent = sent.sent > 0;
+      result.weeklyRecipientsSent = sent.recipients;
+      if (!settings.weeklyRecipients.length) result.skipped.push('weekly has no recipients enabled');
+      if (sent.skipped) result.skipped.push('weekly already sent for some recipients');
+    }
+
+    if (settings.endOfDayNewTasks && parts.hour >= 20) {
+      const items = (Array.isArray(events) ? events : [])
+        .filter(event => dateKeyInTimeZone(event.createdAt || event.updatedAt || event.start) === todayKey)
+        .sort((a, b) => new Date(a.createdAt || a.start) - new Date(b.createdAt || b.start))
+        .map(event => ({ title: event.title, when: formatDateTime(event.start), location: event.location || '' }));
+      if (items.length) {
+        const sent = await sendDigestToRecipients('daily-new', todayKey, settings.endOfDayRecipients, buildDigestEmail({
+          type: 'daily-new',
+          title: 'New tasks added today',
+          intro: 'These tasks were added to Family Organizer today.',
+          items,
+        }), state);
+        result.dailySent = sent.sent > 0;
+        result.dailyRecipientsSent = sent.recipients;
+        if (!settings.endOfDayRecipients.length) result.skipped.push('daily has no recipients enabled');
+        if (sent.skipped) result.skipped.push('daily already sent for some recipients');
+      } else {
+        result.skipped.push('no new tasks today');
+      }
+    }
+  } catch (error) {
+    result.ok = false;
+    result.errors.push(error.message || 'Digest sync failed.');
+  }
+
+  await saveReminderState(state);
+  return result;
+}
+
 export async function syncReminderSchedulesForEvents(events, options = {}) {
   const now = new Date();
   const state = await loadReminderState();
-  const desired = buildDesiredReminders(events, { now, eventIds: options.eventIds, newEventIds: options.newEventIds });
+  const desired = buildDesiredReminders(events, { now, eventIds: options.eventIds, newEventIds: options.newEventIds, createdRecipientsByEvent: options.createdRecipientsByEvent });
   const currentEntries = Object.entries(state.scheduled || {});
   const eventIdFilter = Array.isArray(options.eventIds) && options.eventIds.length
     ? new Set(options.eventIds.map(String))
