@@ -3398,6 +3398,49 @@
       .motion-dimmer-toggle { display: none !important; }
     }
 
+
+    /* Mobile fix: iOS datetime-local inputs can keep a wide native minimum width.
+       Force the start/end bubbles to respect the editor card width. */
+    #startInput,
+    #endInput {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      -webkit-appearance: none;
+      appearance: none;
+      overflow: hidden;
+    }
+
+    #startInput::-webkit-date-and-time-value,
+    #endInput::-webkit-date-and-time-value {
+      min-width: 0;
+      max-width: 100%;
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    @media (max-width: 680px) {
+      .event-editor,
+      .event-editor-body,
+      .form-grid,
+      .form-grid label,
+      .two-col,
+      .two-col label {
+        min-width: 0;
+        max-width: 100%;
+      }
+
+      #startInput,
+      #endInput {
+        display: block;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0;
+      }
+    }
+
   </style>
 </head>
 <body>

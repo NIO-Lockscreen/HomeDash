@@ -170,6 +170,9 @@ function makeOccurrence(event, occurrenceStart, index) {
     note: event.note || '',
     location: event.location || '',
     imageUrl: event.imageUrl || '',
+    imageFocusX: event.imageFocusX,
+    imageFocusY: event.imageFocusY,
+    imageZoom: event.imageZoom,
     occurrenceKey: `${dateKeyInTimeZone(occurrenceStart)}-${index}`,
     start: occurrenceStart.toISOString(),
     end: duration ? new Date(occurrenceStart.getTime() + duration).toISOString() : '',
@@ -615,6 +618,42 @@ function digestItemCalendarUrl(item) {
   });
 }
 
+function clampDigestPercent(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(number * 10) / 10));
+}
+
+function clampDigestZoom(value, fallback = 1.01) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(1, Math.min(1.8, Math.round(number * 100) / 100));
+}
+
+function imageStyleFromItem(item) {
+  const focusX = clampDigestPercent(item.imageFocusX, 50);
+  const focusY = clampDigestPercent(item.imageFocusY, 38);
+  const zoom = clampDigestZoom(item.imageZoom, 1.01);
+  return {
+    objectPosition: `${focusX}% ${focusY}%`,
+    transform: zoom > 1.01 ? `scale(${zoom})` : 'scale(1)',
+  };
+}
+
+function digestImageHtml(item) {
+  const imageUrl = String(item.imageUrl || '').trim();
+  if (!imageUrl) return '';
+  const style = imageStyleFromItem(item);
+  const title = escapeHtml(item.title || 'Family task');
+  return `
+    <div style="margin:-16px -16px 14px; border-radius:22px 22px 16px 16px; overflow:hidden; background:#efe4d2; height:164px; position:relative;">
+      <img src="${escapeHtml(imageUrl)}" alt="${title}" style="display:block; width:100%; height:164px; object-fit:cover; object-position:${style.objectPosition}; transform:${style.transform}; transform-origin:${style.objectPosition}; border:0;" />
+      <div style="position:absolute; left:0; right:0; bottom:0; padding:26px 14px 12px; background:linear-gradient(180deg, rgba(47,43,39,0) 0%, rgba(47,43,39,.62) 100%); color:#fffaf2; font-size:12px; font-weight:900;">
+        ${escapeHtml(item.when || '')}
+      </div>
+    </div>`;
+}
+
 function buildDigestEmail({ type, title, intro, items }) {
   const safeItems = Array.isArray(items) ? items : [];
   const decoratedItems = safeItems.map(item => ({
@@ -625,9 +664,10 @@ function buildDigestEmail({ type, title, intro, items }) {
   const countText = decoratedItems.length === 1 ? '1 item' : `${decoratedItems.length} items`;
   const rows = decoratedItems.map((item, index) => {
     const calendarLine = item.calendarUrl ? `\n   Add to phone calendar: ${item.calendarUrl}` : '';
+    const imageLine = item.imageUrl ? `\n   Image: ${item.imageUrl}` : '';
     const noteLine = item.notePreview ? `\n   Note: ${item.notePreview}` : '';
     const locationLine = item.location ? `\n   Where: ${item.location}` : '';
-    return `${index + 1}. ${item.when} — ${item.title}${locationLine}${noteLine}${calendarLine}`;
+    return `${index + 1}. ${item.when} — ${item.title}${locationLine}${noteLine}${imageLine}${calendarLine}`;
   }).join('\n\n');
 
   const emptyState = `
@@ -636,6 +676,7 @@ function buildDigestEmail({ type, title, intro, items }) {
     </div>`;
 
   const htmlRows = decoratedItems.map(item => {
+    const imageBlock = digestImageHtml(item);
     const addButton = item.calendarUrl ? `
       <div style="margin-top:14px;">
         <a href="${escapeHtml(item.calendarUrl)}" style="display:inline-block; padding:11px 14px; border-radius:999px; background:#2f2b27; color:#fffaf2; text-decoration:none; font-weight:850; font-size:13px;">
@@ -651,7 +692,8 @@ function buildDigestEmail({ type, title, intro, items }) {
         ${escapeHtml(item.notePreview)}
       </div>` : '';
     return `
-      <div style="margin:0 0 12px; padding:16px; border-radius:22px; background:#fffaf2; border:1px solid #efe4d2;">
+      <div style="margin:0 0 12px; padding:16px; border-radius:22px; background:#fffaf2; border:1px solid #efe4d2; overflow:hidden;">
+        ${imageBlock}
         <div style="display:inline-block; margin:0 0 8px; padding:5px 9px; border-radius:999px; background:#f0e4d4; color:#80674c; font-size:12px; font-weight:900;">
           ${escapeHtml(item.when)}
         </div>
@@ -746,6 +788,10 @@ export async function syncReminderDigests(events, options = {}) {
         note: item.note || '',
         start: item.start,
         end: item.end || '',
+        imageUrl: item.imageUrl || '',
+        imageFocusX: item.imageFocusX,
+        imageFocusY: item.imageFocusY,
+        imageZoom: item.imageZoom,
       }));
       const sent = await sendDigestToRecipients('weekly', todayKey, settings.weeklyRecipients, buildDigestEmail({
         type: 'weekly',
@@ -770,6 +816,10 @@ export async function syncReminderDigests(events, options = {}) {
           note: event.note || '',
           start: event.start,
           end: event.end || '',
+          imageUrl: event.imageUrl || '',
+          imageFocusX: event.imageFocusX,
+          imageFocusY: event.imageFocusY,
+          imageZoom: event.imageZoom,
         }));
       if (items.length) {
         const sent = await sendDigestToRecipients('daily-new', todayKey, settings.endOfDayRecipients, buildDigestEmail({
