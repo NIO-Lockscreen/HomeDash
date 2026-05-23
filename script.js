@@ -38,6 +38,7 @@ const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone
       lastEventFetchAt: 0,
       weather: null,
       editingId: null,
+      clockDateKey: null,
       selectedDayKey: null,
       selectedDayTimer: null,
       selectedDayCycleTimer: null,
@@ -1705,6 +1706,15 @@ const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone
       }
       els.adminClock.textContent = formatTime(now, false);
       if (!adminMode && els.displayView.classList.contains('no-daily')) renderWeekView();
+
+      // When the calendar date rolls over (midnight), force a fresh fetch so that
+      // events deleted or added on another device are reflected immediately rather
+      // than waiting for the next scheduled hourly refresh (which only runs 06-21).
+      const todayKey = dateKey(now);
+      if (state.clockDateKey && state.clockDateKey !== todayKey) {
+        fetchEvents({ force: true, reason: 'day-change' }).catch(() => {});
+      }
+      state.clockDateKey = todayKey;
     }
 
     function makeLocalEventId() {
