@@ -2328,8 +2328,12 @@
         renderWeekView();
         hideSelectedEventPanel();
       } else {
-        hideSelectedEventPanel();
         renderHeroEvent(main);
+        if (state.selectedDayKey) {
+          renderSelectedEventPanel(eventsForDayKey(state.selectedDayKey));
+        } else {
+          hideSelectedEventPanel();
+        }
       }
       fitKioskToScreen();
       scheduleHiddenRepeatingTasksHide();
@@ -3545,6 +3549,11 @@ Cancel = choose whether to delete the whole series.`);
 
         state.selectedDayKey = null;
         state.dailyCalendarMode = !state.dailyCalendarMode;
+        if (state.dailyCalendarMode) {
+          // Force a fresh fetch whenever the calendar is opened so that events
+          // added on another device (or via the admin panel) appear immediately.
+          fetchEvents({ force: true, reason: 'calendar-open' }).catch(() => {});
+        }
         state.upcomingPage = 0;
         state.selectedEventFlipped = false;
         state.heroEventFlipped = false;
