@@ -662,6 +662,7 @@ const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone
         if (period) {
           renderDaughterPeriodEditor(period);
           renderMonthView();
+          els.daughterPeriodEditor?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
         } else {
           state.selectedDaughterPeriodKey = null;
           renderDaughterPeriodEditor(null);
