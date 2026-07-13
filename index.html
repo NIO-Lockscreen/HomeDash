@@ -728,13 +728,20 @@
       display: grid;
     }
 
+    .selected-event-media {
+      display: block;
+      min-height: 0;
+      overflow: hidden;
+      border-radius: calc(var(--radius-xl) - 8px);
+      box-shadow: 0 12px 26px rgba(70, 58, 44, 0.1);
+    }
+
     .selected-event-image {
+      display: block;
       width: 100%;
       height: 100%;
       min-height: 0;
       object-fit: cover;
-      border-radius: calc(var(--radius-xl) - 8px);
-      box-shadow: 0 12px 26px rgba(70, 58, 44, 0.1);
       filter: saturate(.92) contrast(.96);
     }
 
@@ -2137,11 +2144,19 @@
       align-items: center;
     }
 
-    .admin-event-simple img {
+    .admin-event-simple .event-thumb {
+      display: block;
       width: 82px;
       height: 62px;
-      object-fit: cover;
       border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .admin-event-simple img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
 
     .admin-event-simple .admin-event-note {
@@ -2216,12 +2231,20 @@
       margin-bottom: 12px;
     }
 
-    .task-action-head img {
+    .task-action-head .event-thumb {
+      display: block;
       width: 78px;
       height: 62px;
       border-radius: 18px;
-      object-fit: cover;
+      overflow: hidden;
       box-shadow: 0 10px 22px rgba(70,58,44,.12);
+    }
+
+    .task-action-head img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
 
     .task-action-title {
@@ -2293,7 +2316,7 @@
       .task-action-overlay { padding: max(10px, env(safe-area-inset-top, 0px)) 10px max(10px, env(safe-area-inset-bottom, 0px)); }
       .task-action-sheet { border-radius: 24px; }
       .task-action-head { grid-template-columns: 66px minmax(0, 1fr) auto; }
-      .task-action-head img { width: 66px; height: 56px; border-radius: 16px; }
+      .task-action-head .event-thumb { width: 66px; height: 56px; border-radius: 16px; }
       .task-action-title { font-size: 20px; }
       .task-action-buttons { grid-template-columns: 1fr; }
       .task-action-buttons .wide { grid-column: auto; }
@@ -2914,11 +2937,19 @@
       align-items: center;
     }
 
-    .admin-event-simple img {
+    .admin-event-simple .event-thumb {
+      display: block;
       width: 82px;
       height: 62px;
-      object-fit: cover;
       border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .admin-event-simple img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
 
     .admin-event-simple .admin-event-note {
@@ -5279,6 +5310,21 @@
       if (els.imagePreviewTitle) els.imagePreviewTitle.textContent = els.titleInput?.value?.trim() || 'Task title';
     }
 
+    function bindEventImageFallbacks() {
+      // An event can reference an image that no longer exists in Blob storage
+      // (e.g. it was replaced from another device and the old file was cleaned
+      // up). Swap any event image that fails to load for the calm placeholder
+      // instead of showing the browser's broken-image icon.
+      document.addEventListener('error', errorEvent => {
+        const img = errorEvent.target;
+        if (!img || img.tagName !== 'IMG') return;
+        if (img.dataset.fallbackSeed === undefined) return;
+        if (img.dataset.fallbackApplied === '1') return;
+        img.dataset.fallbackApplied = '1';
+        img.src = placeholderFor(img.dataset.fallbackSeed, img.dataset.fallbackLabel || 'Task');
+      }, true);
+    }
+
     function clearManualImagePreview() {
       if (state.imagePreviewObjectUrl) {
         URL.revokeObjectURL(state.imagePreviewObjectUrl);
@@ -5309,6 +5355,9 @@
       const date = new Date(event.start);
       const dayLabel = sameDay(date, new Date()) ? 'Today' : new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(date);
       const repeat = repeatLabel(event);
+      els.heroImage.dataset.fallbackSeed = event.id || '';
+      els.heroImage.dataset.fallbackLabel = event.title || '';
+      delete els.heroImage.dataset.fallbackApplied;
       els.heroImage.src = event.imageUrl || placeholderFor(event.id, event.title);
       els.heroImage.alt = event.title;
       applyImageFocus(els.heroImage, event);
@@ -5362,7 +5411,7 @@
         <div class="selected-event-flip${state.selectedEventFlipped ? ' is-flipped' : ''}" data-selected-flip>
           <div class="selected-event-inner">
             <div class="selected-event-face selected-event-front">
-              <img class="selected-event-image" alt="" src="${htmlEscape(first.imageUrl || placeholderFor(first.id, first.title))}" style="${imageFocusStyle(first)}">
+              <span class="selected-event-media"><img class="selected-event-image" alt="" src="${htmlEscape(first.imageUrl || placeholderFor(first.id, first.title))}" style="${imageFocusStyle(first)}" data-fallback-seed="${htmlEscape(first.id)}" data-fallback-label="${htmlEscape(first.title)}"></span>
               <div class="selected-event-copy">
                 <div class="selected-event-kicker">${htmlEscape(dayLabel)} · ${htmlEscape(timeLabel)}${repeat ? ` · ${htmlEscape(repeat)}` : ''}</div>
                 <h2 class="selected-event-title">${htmlEscape(first.title)}</h2>
@@ -6225,7 +6274,7 @@
         const exactDate = formatUpcomingDate(date);
         return `
           <button class="mini-event" type="button" data-upcoming-pick="${htmlEscape(event._instanceId)}" aria-label="Open ${htmlEscape(event.title)} on ${htmlEscape(exactDate)}">
-            <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}" style="${upcomingImageFocusStyle(event)}">
+            <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}" style="${upcomingImageFocusStyle(event)}" data-fallback-seed="${htmlEscape(event.id)}" data-fallback-label="${htmlEscape(event.title)}">
             <span class="mini-copy">
               <span class="mini-time">${htmlEscape(exactDate)} · ${formatTime(date, false)}</span>
               <span class="mini-title">${htmlEscape(event.title)}</span>
@@ -7068,7 +7117,7 @@ Cancel = choose whether to delete the whole series.`);
       return `
         <button class="admin-event-simple${event._completed ? ' admin-event-complete' : ''}" type="button" data-admin-card="${htmlEscape(event._instanceId)}" aria-label="Open actions for ${htmlEscape(event.title)}">
           <div class="admin-event-main">
-            <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}" style="${imageFocusStyle(event)}">
+            <span class="event-thumb"><img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}" style="${imageFocusStyle(event)}" data-fallback-seed="${htmlEscape(sourceId)}" data-fallback-label="${htmlEscape(event.title)}"></span>
             <div>
               <div class="admin-event-title">${htmlEscape(event.title)} ${event.featured ? '· Featured' : ''}${completeText}</div>
               <div class="admin-event-meta">${htmlEscape(dateText)}</div>
@@ -7101,7 +7150,7 @@ Cancel = choose whether to delete the whole series.`);
       const recurringText = event._isRecurring ? '<div class="task-action-meta">Repeating task. Delete will ask if you want this one occurrence or the whole series.</div>' : '';
       els.taskActionContent.innerHTML = `
         <div class="task-action-head">
-          <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}" style="${imageFocusStyle(event)}">
+          <span class="event-thumb"><img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}" style="${imageFocusStyle(event)}" data-fallback-seed="${htmlEscape(sourceId)}" data-fallback-label="${htmlEscape(event.title)}"></span>
           <div>
             <div class="task-action-title">${htmlEscape(event.title)}</div>
             <div class="task-action-meta">${htmlEscape(dateText)}${event.location ? ` · ${htmlEscape(event.location)}` : ''}</div>
@@ -8051,6 +8100,7 @@ Cancel = choose whether to delete the whole series.`);
           }
         });
       }
+      bindEventImageFallbacks();
       updateClock();
       setInterval(updateClock, 1000);
       if (!adminMode) setInterval(renderDisplay, 60 * 1000);

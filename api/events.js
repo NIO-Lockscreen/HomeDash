@@ -267,6 +267,40 @@ function isOrganizerBlobImage(value) {
   }
 }
 
+function isBlobNotFoundError(error) {
+  return String(error?.name || '') === 'BlobNotFoundError'
+    || /does not exist|not.?found/i.test(String(error?.message || ''));
+}
+
+async function organizerImageExists(url) {
+  try {
+    await head(url);
+    return true;
+  } catch (error) {
+    if (isBlobNotFoundError(error)) return false;
+    // Transient blob/network error: assume the image is still there rather
+    // than dropping a live reference.
+    return true;
+  }
+}
+
+// Two devices can edit the same event: device A replaces the image (the old
+// blob gets deleted below), then device B re-sends the event with the old,
+// now-deleted URL from its stale local copy. Without this check that stale
+// write would point the event at a dead blob AND trigger deletion of the
+// image device A just uploaded. Never accept an organizer blob URL that no
+// longer exists: keep the currently stored image, or fall back to none.
+async function resolveImageUrl(inputUrl, existingUrl) {
+  const requested = String(inputUrl || '').trim();
+  if (!isOrganizerBlobImage(requested)) return requested;
+  if (await organizerImageExists(requested)) return requested;
+  const current = String(existingUrl || '').trim();
+  if (current && current !== requested && (!isOrganizerBlobImage(current) || await organizerImageExists(current))) {
+    return current;
+  }
+  return '';
+}
+
 function imageUrlsFromEvents(events) {
   return [...new Set((Array.isArray(events) ? events : [])
     .map(event => event && event.imageUrl)
@@ -324,6 +358,7 @@ export default async function handler(req, res) {
       const events = await loadEvents({ force: true });
       const existingIndex = payload.id ? events.findIndex(event => event.id === payload.id) : -1;
       const previousEvent = existingIndex === -1 ? null : events[existingIndex];
+      payload.imageUrl = await resolveImageUrl(payload.imageUrl, previousEvent?.imageUrl);
       const event = cleanEvent(payload, previousEvent || {});
       if (existingIndex === -1) events.push(event);
       else events[existingIndex] = event;
@@ -358,6 +393,7 @@ export default async function handler(req, res) {
         return;
       }
       const previousEvent = events[index];
+      payload.imageUrl = await resolveImageUrl(payload.imageUrl, previousEvent?.imageUrl);
       const event = cleanEvent(payload, previousEvent);
       const createdRecipientsToSend = newlyAddedReminderRecipients(previousEvent, event);
       events[index] = event;
