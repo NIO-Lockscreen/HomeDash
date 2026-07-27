@@ -963,8 +963,17 @@
       border: 1px solid rgba(255,255,255,.78);
       border-radius: calc(var(--radius-xl) - 8px);
       padding: clamp(16px, 1.8vmin, 24px);
-      align-content: center;
-      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      /* The back face holds a variable number of blocks (the email reminder
+         status is optional), so a fixed grid template left the actions and the
+         note clipped. Flex lets the note absorb the slack and keeps the
+         buttons on screen at every card size. */
+      display: flex;
+      flex-direction: column;
+      align-content: stretch;
+      /* Safety net for very short cards, where even the fixed blocks (title,
+         optional email reminder card, buttons) cannot all fit. */
+      overflow-y: auto;
+      overscroll-behavior: contain;
     }
 
     .flip-hint {
@@ -978,12 +987,32 @@
 
     .selected-event-detail {
       white-space: pre-wrap;
-      overflow: auto;
       color: var(--ink);
       font-weight: 750;
       line-height: 1.42;
+    }
+
+    /* The note and the email reminder card share one scroll region so the
+       action buttons stay pinned and reachable on the small weather card. */
+    .selected-event-scroll {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      display: grid;
+      align-content: start;
+      gap: clamp(8px, 1vmin, 14px);
       padding-right: 3px;
     }
+
+    .selected-event-back > .selected-event-kicker,
+    .selected-event-back > .selected-event-title,
+    .selected-event-back > .selected-event-actions,
+    .selected-event-back > .selected-event-return {
+      flex: 0 0 auto;
+    }
+
+    .selected-event-back > * + * { margin-top: clamp(8px, 1vmin, 14px); }
 
     .selected-event-actions {
       display: flex;
@@ -3874,6 +3903,7 @@
       lastEventFetchAt: 0,
       weather: null,
       editingId: null,
+      clockDateKey: null,
       selectedDayKey: null,
       selectedDayTimer: null,
       selectedDayCycleTimer: null,
@@ -5375,8 +5405,10 @@
             <div class="selected-event-face selected-event-back">
               <div class="selected-event-kicker">Task details</div>
               <h2 class="selected-event-title">${htmlEscape(first.title)}</h2>
-              <div class="selected-event-detail">${htmlEscape(details)}</div>
-              ${emailReminderStatusHtml(first, 'selected')}
+              <div class="selected-event-scroll">
+                <div class="selected-event-detail">${htmlEscape(details)}</div>
+                ${emailReminderStatusHtml(first, 'selected')}
+              </div>
               <div class="selected-event-actions">
                 <button class="tiny-btn done" type="button" data-display-complete="${htmlEscape(first._instanceId)}">${first._completed ? 'Undo complete' : 'Mark complete'}</button>
                 <button class="tiny-btn" type="button" data-display-edit="${htmlEscape(first._sourceId || first.id)}">Change date / edit</button>
@@ -5572,6 +5604,15 @@
       }
       els.adminClock.textContent = formatTime(now, false);
       if (!adminMode && els.displayView.classList.contains('no-daily')) renderWeekView();
+
+      // When the calendar date rolls over (midnight), force a fresh fetch so that
+      // events deleted or added on another device are reflected immediately rather
+      // than waiting for the next scheduled hourly refresh (which only runs 06-21).
+      const todayKey = dateKey(now);
+      if (state.clockDateKey && state.clockDateKey !== todayKey) {
+        fetchEvents({ force: true, reason: 'day-change' }).catch(() => {});
+      }
+      state.clockDateKey = todayKey;
     }
 
     function makeLocalEventId() {
@@ -7502,6 +7543,11 @@ Cancel = choose whether to delete the whole series.`);
 
         state.selectedDayKey = null;
         state.dailyCalendarMode = !state.dailyCalendarMode;
+        if (state.dailyCalendarMode) {
+          // Force a fresh fetch whenever the calendar is opened so that events
+          // added on another device (or via the admin panel) appear immediately.
+          fetchEvents({ force: true, reason: 'calendar-open' }).catch(() => {});
+        }
         state.upcomingPage = 0;
         state.selectedEventFlipped = false;
         state.heroEventFlipped = false;

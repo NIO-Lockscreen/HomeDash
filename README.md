@@ -156,7 +156,7 @@ This version is tuned to use far fewer Vercel Blob operations:
 
 ## Weather effects
 
-The whole dashboard lives in `index.html` — the `<style>` and `<script>` blocks inside it are what the browser runs. `script.js` and `inline.js` are older exported copies and are **not** loaded by the page; editing them has no effect.
+The whole dashboard lives in `index.html` — the `<style>` and `<script>` blocks inside it are what the browser runs. There is no separate bundle to edit. (Two exported copies, `script.js` and `inline.js`, used to sit next to it; nothing loaded them, and two bug fixes were accidentally applied only to those copies and never reached the app. They have been deleted — put dashboard changes in `index.html`.)
 
 The weather card paints an ambience layer (`#weatherEffect`) behind the readout:
 
