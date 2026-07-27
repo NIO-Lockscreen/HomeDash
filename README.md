@@ -153,3 +153,16 @@ This version is tuned to use far fewer Vercel Blob operations:
 - Normal `/api/events` reads still use short API/CDN caching and a small in-memory cache per serverless instance. Fresh boot/midnight reads bypass that cache on purpose.
 - Uploaded images are optimized before upload, usually targeting about 650 KB instead of allowing multi-megabyte photos.
 - Re-uploading the exact same image now reuses the existing Blob URL by hashing the file instead of creating duplicates.
+
+## Weather effects
+
+The whole dashboard lives in `index.html` — the `<style>` and `<script>` blocks inside it are what the browser runs. `script.js` and `inline.js` are older exported copies and are **not** loaded by the page; editing them has no effect.
+
+The weather card paints an ambience layer (`#weatherEffect`) behind the readout:
+
+- Every condition gets a full-card colour wash, so rain, snow, fog, sun and thunder are recognisable from across the room. The wash is on in both layouts — previously the effects were invisible whenever a task was showing.
+- Particles are generated per condition: rain streaks and ground splashes, swaying snowflakes at three depths, drifting fog banks, layered clouds, a sun with a corona and slow rays, a moon with a star field, and lightning with a full-card flash.
+- Day/night comes from Open-Meteo's `is_day`. At night the card swings dark and the readout flips to light text (`.wx-dark`).
+- Wind above 7.5 m/s adds gust streaks and appends the speed to the description line.
+- Particles move in container-query units so they cross the card itself, and they are only rebuilt when the sky actually changes — the minute-by-minute re-render no longer restarts every animation.
+- `prefers-reduced-motion` keeps the wash and static sky but drops everything that moves.
