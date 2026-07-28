@@ -154,6 +154,10 @@ This version is tuned to use far fewer Vercel Blob operations:
 - Uploaded images are optimized before upload, usually targeting about 650 KB instead of allowing multi-megabyte photos.
 - Re-uploading the exact same image now reuses the existing Blob URL by hashing the file instead of creating duplicates.
 
+## Picking a day on the display
+
+Tapping the clock opens the day selector in the left card. Picking a day there shows that day's task in the big hero panel on the right, and the selector **stays up** with the picked day outlined, so the next day is one tap away. The task is deliberately not repeated in the left card. If a day holds several tasks the selector shows the count and the hero cycles through them; flipping the hero gives complete / edit / delete for whichever one is showing. Tapping the clock again returns to today and brings the weather back.
+
 ## Weather effects
 
 The whole dashboard lives in `index.html` — the `<style>` and `<script>` blocks inside it are what the browser runs. There is no separate bundle to edit. (Two exported copies, `script.js` and `inline.js`, used to sit next to it; nothing loaded them, and two bug fixes were accidentally applied only to those copies and never reached the app. They have been deleted — put dashboard changes in `index.html`.)

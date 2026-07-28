@@ -1834,6 +1834,18 @@
       border-color: rgba(47,42,36,.9);
     }
 
+    /* The day currently previewed in the hero. */
+    .daily-calendar-day.selected {
+      border-color: rgba(47,43,39,.55);
+      box-shadow: 0 0 0 3px rgba(47,43,39,.16), 0 8px 18px rgba(70,58,44,.08);
+      background: rgba(255,255,255,.9);
+    }
+
+    .daily-calendar-day.today.selected {
+      background: #2f2a24;
+      box-shadow: 0 0 0 3px rgba(47,43,39,.28), 0 8px 18px rgba(70,58,44,.12);
+    }
+
     .daily-calendar-name {
       color: currentColor;
       opacity: .68;
@@ -5109,7 +5121,7 @@
               const hasEvent = dayEvents.length > 0;
               const dayName = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(day);
               return `
-                <button class="daily-calendar-day${isToday ? ' today' : ''}${hasEvent ? ' has-event' : ''}" type="button" data-daily-calendar-day="${key}" ${hasEvent ? '' : 'disabled'} aria-label="${htmlEscape(`${dayName} ${day.getDate()}, ${dayEvents.length} task${dayEvents.length === 1 ? '' : 's'}`)}">
+                <button class="daily-calendar-day${isToday ? ' today' : ''}${hasEvent ? ' has-event' : ''}${key === state.selectedDayKey ? ' selected' : ''}" type="button" data-daily-calendar-day="${key}" ${hasEvent ? '' : 'disabled'} aria-label="${htmlEscape(`${dayName} ${day.getDate()}, ${dayEvents.length} task${dayEvents.length === 1 ? '' : 's'}`)}">
                   <div class="daily-calendar-name">${htmlEscape(dayName)}</div>
                   <div class="daily-calendar-number">${day.getDate()}</div>
                   <div class="daily-calendar-count">${hasEvent ? `${dayEvents.length} task${dayEvents.length === 1 ? '' : 's'}` : ''}</div>
@@ -5546,7 +5558,9 @@
       const firstEvent = [...events].sort((a, b) => new Date(a.start) - new Date(b.start))[0];
       closeWeatherOverlay();
       state.selectedDayKey = dayKey;
-      state.dailyCalendarMode = false;
+      // Keep the day selector on screen so the next day is one tap away, and
+      // so the weather card does not pop back over the day being previewed.
+      state.dailyCalendarMode = true;
       stopDailyHomeTimer();
       state.upcomingPage = 0;
       state.selectedEventFlipped = false;
@@ -6232,14 +6246,10 @@
         hideSelectedEventPanel();
       } else {
         renderHeroEvent(main);
-        // Keep the selected day's tasks on the weather card. Without this the
-        // panel was wiped on every re-render (clock tick, task cycle, fetch)
-        // and the weather view popped back over the day you had picked.
-        if (state.selectedDayKey) {
-          renderSelectedEventPanel(eventsForDayKey(state.selectedDayKey));
-        } else {
-          hideSelectedEventPanel();
-        }
+        // The hero already shows the picked day's task, so the left card keeps
+        // the day selector instead of repeating it. selectDayPreview() holds
+        // dailyCalendarMode on for exactly this reason.
+        hideSelectedEventPanel();
       }
       fitKioskToScreen();
       scheduleHiddenRepeatingTasksHide();
@@ -7708,8 +7718,11 @@ Cancel = choose whether to delete the whole series.`);
       // Only the plain weather readout opens the weekly forecast. While the
       // card is showing a picked day, the calendar strip, or a day preview,
       // a tap belongs to that view instead.
+      // Blocked whenever the card is showing the day selector rather than the
+      // weather. A day preview keeps the selector up, so selectedDayKey on its
+      // own is not a reason to refuse — the weather is still on screen after
+      // picking an upcoming task.
       if (state.dailyCalendarMode) return false;
-      if (state.selectedDayKey) return false;
       if (els.weatherCard?.classList.contains('show-selected-event')) return false;
       return true;
     }
