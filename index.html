@@ -3903,6 +3903,7 @@
       lastEventFetchAt: 0,
       weather: null,
       editingId: null,
+      initialEditOpened: false,
       clockDateKey: null,
       selectedDayKey: null,
       selectedDayTimer: null,
@@ -4061,6 +4062,11 @@
     };
 
     const params = new URLSearchParams(location.search);
+    // Captured once at boot. closeEventEditor() deletes `edit` from `params`,
+    // and it runs during start-up, so reading the parameter later would always
+    // come back empty and the "Change date / edit" deep link would open admin
+    // mode with an empty form instead of the task.
+    const initialEditEventId = params.get('edit');
     const forceAdmin = params.has('admin');
     const forceDisplay = params.has('display');
     const isPhoneLike = matchMedia('(max-width: 780px), ((pointer: coarse) and (max-height: 520px))').matches;
@@ -4724,16 +4730,6 @@
 
     function getStoredReminderEmails() {
       return HARD_CODED_REMINDER_CONTACTS.map(contact => contact.email);
-    }
-
-    function saveStoredReminderEmails() {
-      return getStoredReminderEmails();
-    }
-
-    function reminderContactLabel(email) {
-      const normalized = normalizeReminderEmail(email);
-      const contact = HARD_CODED_REMINDER_CONTACTS.find(item => normalizeReminderEmail(item.email) === normalized);
-      return contact ? `${contact.name} (${contact.email})` : email;
     }
 
     function reminderRecipientNames(emails = []) {
@@ -6075,26 +6071,17 @@
       renderDisplay();
       renderAdminEvents();
       processPendingWrites({ silent: true });
-      const editParam = params.get('edit');
-      if (adminMode && editParam && !state.editingId) setTimeout(() => editEvent(editParam), 50);
+      // Wait until the task is actually loaded before opening the editor, so a
+      // deep link still works if the first read did not include it yet.
+      if (adminMode && initialEditEventId && !state.editingId && !state.initialEditOpened && getSourceEvent(initialEditEventId)) {
+        state.initialEditOpened = true;
+        setTimeout(() => editEvent(initialEditEventId), 50);
+      }
     }
 
 
     function getUpcomingDisplayLimit() {
       return DEFAULT_UPCOMING_LIMIT;
-    }
-
-    function getUpcomingCardAspectRatio() {
-      const grid = els.upcomingGrid;
-      const cols = Math.max(1, getUpcomingDisplayLimit());
-      if (grid) {
-        const styles = getComputedStyle(grid);
-        const gap = parseFloat(styles.columnGap || styles.gap || '0') || 0;
-        const width = (grid.clientWidth - gap * Math.max(0, cols - 1)) / cols;
-        const height = grid.clientHeight || grid.offsetHeight;
-        if (width > 0 && height > 0) return width / height;
-      }
-      return 2.35;
     }
 
     function upcomingImageFocusStyle(event) {
@@ -6710,10 +6697,13 @@
     }
 
     function closeEventEditor(options = {}) {
+      const wasEditing = Boolean(state.editingId);
       if (els.eventEditorCard) els.eventEditorCard.classList.add('hidden');
       if (els.adminView) els.adminView.classList.remove('editor-open');
       state.editingId = null;
-      if (params.get('edit')) {
+      // Only drop the deep link once the editor it opened is really closed.
+      // The boot-time calls used to strip it before it had been used.
+      if (wasEditing && params.get('edit')) {
         params.delete('edit');
         const query = params.toString();
         history.replaceState(null, '', `${location.pathname}${query ? `?${query}` : ''}${location.hash || ''}`);
