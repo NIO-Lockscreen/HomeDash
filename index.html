@@ -3358,7 +3358,7 @@
     .motion-dim-overlay {
       position: fixed;
       inset: 0;
-      z-index: 9998;
+      z-index: 9999;
       pointer-events: none;
       background: rgba(0, 0, 0, 0.72);
       opacity: 0;
@@ -3367,11 +3367,29 @@
 
     body.motion-dimmed .motion-dim-overlay { opacity: 1; }
 
-    .motion-dimmer-toggle {
+    /* Kiosk controls (camera dimmer + full screen). They sit under the dim
+       overlay so they darken with the rest of the dashboard, fade in on any
+       activity and fade back out once the screen is left alone. */
+    .screen-controls {
       position: fixed;
       right: 14px;
       bottom: 14px;
-      z-index: 9999;
+      z-index: 9998;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      opacity: .5;
+      transition: opacity .6s ease;
+    }
+
+    .screen-controls:hover { opacity: .95; }
+
+    .screen-controls.is-hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .screen-control {
       border: 1px solid rgba(47,43,39,.13);
       background: rgba(255,255,255,.72);
       color: rgba(47,43,39,.74);
@@ -3383,14 +3401,11 @@
       box-shadow: 0 10px 24px rgba(47,43,39,.10);
       backdrop-filter: blur(12px);
       cursor: pointer;
-      opacity: .5;
     }
 
-    .motion-dimmer-toggle:hover,
-    .motion-dimmer-toggle.is-on { opacity: .95; }
-
-    .motion-dimmer-toggle.is-boot-hidden {
-      display: none !important;
+    .screen-control.is-on {
+      background: rgba(255,255,255,.94);
+      color: rgba(47,43,39,.92);
     }
 
     .motion-camera-video {
@@ -3404,7 +3419,7 @@
     }
 
     @media (max-width: 780px), ((pointer: coarse) and (max-height: 520px)) {
-      .motion-dimmer-toggle { display: none !important; }
+      .screen-controls { display: none !important; }
     }
 
 
@@ -7506,27 +7521,36 @@ Cancel = choose whether to delete the whole series.`);
       location.href = `${url.pathname}${url.search}${url.hash}`;
     }
 
+    function isFullscreenActive() {
+      return Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+    }
+
     async function toggleFullscreen() {
       if (adminMode) return;
       try {
-        if (document.fullscreenElement) {
-          await document.exitFullscreen();
+        if (isFullscreenActive()) {
+          const exit = document.exitFullscreen || document.webkitExitFullscreen;
+          if (exit) await exit.call(document);
           setTimeout(fitKioskToScreen, 120);
           return;
         }
         const target = document.documentElement;
-        if (target.requestFullscreen) {
-          await target.requestFullscreen({ navigationUI: 'hide' });
-        }
+        const request = target.requestFullscreen || target.webkitRequestFullscreen;
+        if (request) await request.call(target, { navigationUI: 'hide' });
         setTimeout(fitKioskToScreen, 120);
       } catch (error) {
         console.warn('Fullscreen request failed:', error);
+      } finally {
+        updateFullscreenButton();
       }
     }
 
     function bindFullscreenShortcut() {
       const clock = els.clockCard;
       if (!clock) return;
+      // The single-press action has to wait out the whole double-press window,
+      // otherwise a slightly slow double press fires both actions at once.
+      const DOUBLE_PRESS_MS = 450;
       let lastPress = 0;
       let singlePressTimer = null;
 
@@ -7562,7 +7586,7 @@ Cancel = choose whether to delete the whole series.`);
         // Only the actual clock/date area should use this shortcut.
         if (event.target?.closest?.('.week-view, .week-day, .daily-calendar-panel, .daily-calendar-day')) return;
         const now = Date.now();
-        const isDoublePress = now - lastPress < 420;
+        const isDoublePress = now - lastPress < DOUBLE_PRESS_MS;
 
         if (isDoublePress) {
           event.preventDefault?.();
@@ -7579,7 +7603,7 @@ Cancel = choose whether to delete the whole series.`);
           singlePressTimer = null;
           lastPress = 0;
           returnToToday();
-        }, 260);
+        }, DOUBLE_PRESS_MS);
       };
 
       clock.addEventListener('pointerup', handleClockPress);
@@ -7588,7 +7612,13 @@ Cancel = choose whether to delete the whole series.`);
         if (singlePressTimer) clearTimeout(singlePressTimer);
         singlePressTimer = null;
       });
-      document.addEventListener('fullscreenchange', () => setTimeout(fitKioskToScreen, 120));
+      const onFullscreenChange = () => {
+        setTimeout(fitKioskToScreen, 120);
+        updateFullscreenButton();
+        showScreenControls();
+      };
+      document.addEventListener('fullscreenchange', onFullscreenChange);
+      document.addEventListener('webkitfullscreenchange', onFullscreenChange);
     }
 
     function bindAdmin() {
@@ -7868,7 +7898,6 @@ Cancel = choose whether to delete the whole series.`);
       ctx: null,
       previousFrame: null,
       timer: null,
-      bootHideTimer: null,
       button: null,
       overlay: null,
     };
@@ -7877,18 +7906,6 @@ Cancel = choose whether to delete the whole series.`);
       if (!motionDimmer.button) return;
       motionDimmer.button.textContent = motionDimmer.enabled ? 'Camera dimmer on' : 'Camera dimmer off';
       motionDimmer.button.classList.toggle('is-on', motionDimmer.enabled);
-    }
-
-    function hideMotionDimmerBootButton() {
-      if (!motionDimmer.button) return;
-      motionDimmer.button.classList.add('is-boot-hidden');
-      motionDimmer.button.setAttribute('aria-hidden', 'true');
-      motionDimmer.button.tabIndex = -1;
-    }
-
-    function startMotionDimmerBootVisibilityTimer() {
-      clearTimeout(motionDimmer.bootHideTimer);
-      motionDimmer.bootHideTimer = setTimeout(hideMotionDimmerBootButton, 30 * 1000);
     }
 
     async function setScreenBrightnessPercent(percent) {
@@ -8014,7 +8031,7 @@ Cancel = choose whether to delete the whole series.`);
     }
 
     function bindMotionDimmer() {
-      if (isPhoneLike) {
+      if (isPhoneLike || !screenControls.root) {
         motionDimmer.enabled = false;
         document.body.classList.remove('motion-dimmed');
         return;
@@ -8025,14 +8042,80 @@ Cancel = choose whether to delete the whole series.`);
 
       motionDimmer.button = document.createElement('button');
       motionDimmer.button.type = 'button';
-      motionDimmer.button.className = 'motion-dimmer-toggle';
+      motionDimmer.button.className = 'screen-control';
       motionDimmer.button.addEventListener('click', toggleMotionDimmer);
-      document.body.appendChild(motionDimmer.button);
-      startMotionDimmerBootVisibilityTimer();
+      screenControls.root.appendChild(motionDimmer.button);
 
       motionDimmer.enabled = localStorage.getItem(MOTION_DIMMER_ENABLED_KEY) === '1';
       updateMotionDimmerButton();
       if (motionDimmer.enabled) startMotionDimmer();
+    }
+
+    // Kiosk controls: full screen + camera dimmer. They fade out when the room
+    // is quiet and fade straight back in on any touch, mouse or key activity,
+    // so the dashboard stays clean without the buttons becoming unreachable.
+    const SCREEN_CONTROLS_IDLE_MS = 12 * 1000;
+    const SCREEN_CONTROLS_NUDGE_MS = 400;
+
+    const screenControls = {
+      root: null,
+      fullscreenButton: null,
+      hideTimer: null,
+      lastNudge: 0,
+    };
+
+    function updateFullscreenButton() {
+      if (!screenControls.fullscreenButton) return;
+      const active = isFullscreenActive();
+      screenControls.fullscreenButton.textContent = active ? 'Leave full screen' : 'Full screen';
+      screenControls.fullscreenButton.classList.toggle('is-on', active);
+    }
+
+    function hideScreenControls() {
+      screenControls.root?.classList.add('is-hidden');
+    }
+
+    function showScreenControls() {
+      if (!screenControls.root) return;
+      screenControls.root.classList.remove('is-hidden');
+      clearTimeout(screenControls.hideTimer);
+      screenControls.hideTimer = setTimeout(hideScreenControls, SCREEN_CONTROLS_IDLE_MS);
+    }
+
+    // Someone is clearly in front of the screen, so treat it as motion too.
+    function noteUserPresence() {
+      motionDimmer.lastMotionAt = Date.now();
+      if (motionDimmer.dimmed) setMotionDimmed(false);
+    }
+
+    function bindScreenControls() {
+      if (isPhoneLike) return;
+
+      screenControls.root = document.createElement('div');
+      screenControls.root.className = 'screen-controls';
+      document.body.appendChild(screenControls.root);
+
+      if (!adminMode) {
+        screenControls.fullscreenButton = document.createElement('button');
+        screenControls.fullscreenButton.type = 'button';
+        screenControls.fullscreenButton.className = 'screen-control';
+        screenControls.fullscreenButton.addEventListener('click', toggleFullscreen);
+        screenControls.root.appendChild(screenControls.fullscreenButton);
+        updateFullscreenButton();
+      }
+
+      const nudge = () => {
+        const now = Date.now();
+        if (now - screenControls.lastNudge < SCREEN_CONTROLS_NUDGE_MS) return;
+        screenControls.lastNudge = now;
+        showScreenControls();
+        noteUserPresence();
+      };
+      ['pointerdown', 'pointermove', 'keydown', 'wheel'].forEach(type => {
+        document.addEventListener(type, nudge, { passive: true });
+      });
+
+      showScreenControls();
     }
 
     function init() {
@@ -8044,6 +8127,7 @@ Cancel = choose whether to delete the whole series.`);
       bindWeatherOverlay();
       bindDangerMenu();
       bindFullscreenShortcut();
+      bindScreenControls();
       bindMotionDimmer();
       els.returnToDisplayBtn?.addEventListener('click', goToDisplayMode);
       document.addEventListener('click', event => {
