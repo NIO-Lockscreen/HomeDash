@@ -3911,6 +3911,11 @@
     const LOCAL_EVENT_MIRROR_KEY = 'homeOrganizerLocalEventMirror';
     const LOCAL_EVENT_MIRROR_TTL_MS = 24 * 60 * 60 * 1000;
     const LOCAL_EVENT_MIRROR_MIN_HOLD_MS = 2 * 60 * 1000;
+    // How long after the server accepted a task we still treat its later
+    // absence as a lost write worth re-sending, rather than as a delete from
+    // another device.
+    const LOCAL_EVENT_MIRROR_RESEND_WINDOW_MS = 10 * 60 * 1000;
+    const LOCAL_EVENT_MIRROR_MAX_RESENDS = 2;
     const LOCAL_EVENT_ID_PREFIX = 'local-';
     const LAST_WRITE_SIGNAL_KEY = 'homeOrganizerLastWrite';
     const DAUGHTER_PERIOD_OVERRIDES_KEY = 'homeOrganizerDaughterPeriodOverridesV1';
@@ -3928,6 +3933,11 @@
       pendingWriteActive: false,
       eventFetchActive: false,
       lastEventFetchAt: 0,
+      // True only while state.serverEvents came from the server rather than
+      // from the local cache. Dropping a task must never be decided on a
+      // cached list.
+      serverEventsFresh: false,
+      pendingWriteFlushTimer: null,
       weather: null,
       editingId: null,
       initialEditOpened: false,
@@ -5734,6 +5744,7 @@
       const cached = getCachedEventPayload();
       if (!cached) return false;
       state.serverEvents = cached.events;
+      state.serverEventsFresh = false;
       refreshEventsFromServerEvents();
       renderDisplay();
       renderAdminEvents();
@@ -5785,7 +5796,13 @@
     function getLocalEventMirror() {
       try {
         const parsed = JSON.parse(localStorage.getItem(LOCAL_EVENT_MIRROR_KEY) || '{}');
-        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+        // The TTL used to be applied only while writing the mirror, so an entry
+        // the server never confirmed kept drawing its task on this device
+        // forever. Expire on read as well.
+        const now = Date.now();
+        return Object.fromEntries(Object.entries(parsed).filter(([, value]) =>
+          value?.event && now - Number(value.savedAtMs || 0) < LOCAL_EVENT_MIRROR_TTL_MS));
       } catch {
         return {};
       }
@@ -5799,14 +5816,21 @@
       localStorage.setItem(LOCAL_EVENT_MIRROR_KEY, JSON.stringify(Object.fromEntries(cleanedEntries)));
     }
 
-    function rememberLocalEvent(event, opId, method = 'POST') {
+    function rememberLocalEvent(event, opId, method = 'POST', options = {}) {
       if (!event?.id) return;
       const mirror = getLocalEventMirror();
+      const previous = mirror[event.id] || {};
+      const now = Date.now();
       mirror[event.id] = {
         event: { ...event },
         opId: opId || '',
         method,
-        savedAtMs: Date.now()
+        savedAtMs: now,
+        // Set only once the server has actually replied that it took the task.
+        // That is what separates "still sending" from "the server had it and
+        // then lost it", which need opposite handling.
+        serverAcceptedAtMs: options.serverAccepted ? now : Number(previous.serverAcceptedAtMs || 0),
+        resendCount: Number(previous.resendCount || 0)
       };
       setLocalEventMirror(mirror);
     }
@@ -5853,20 +5877,76 @@
       return JSON.stringify(comparableEventSnapshot(serverEvent)) === JSON.stringify(comparableEventSnapshot(localEvent));
     }
 
-    function cleanupConfirmedLocalEventMirror(serverEvents = state.serverEvents) {
+    // Reconciles what this device drew optimistically against what the server
+    // actually holds. Three outcomes per mirrored task:
+    //   - the server has it        -> drop the mirror entry, the server is truth
+    //   - the server never had it  -> keep it only while a send is still queued
+    //   - the server had it, then lost it (another device's save overwrote the
+    //     shared file) -> send it again, and stop drawing it if that does not
+    //     take, so this device can never show a task nobody else has.
+    function reconcileLocalEventMirror(serverEvents = state.serverEvents) {
       const mirror = getLocalEventMirror();
-      let changed = false;
+      const queuedIds = new Set(getPendingWrites().filter(op => op.event?.id).map(op => String(op.event.id)));
+      const serverListIsFresh = Boolean(state.serverEventsFresh);
       const now = Date.now();
+      let changed = false;
+      const toResend = [];
+
       Object.entries(mirror).forEach(([id, value]) => {
         const savedAtMs = Number(value?.savedAtMs || 0);
         const heldLongEnough = savedAtMs && now - savedAtMs >= LOCAL_EVENT_MIRROR_MIN_HOLD_MS;
         const serverEvent = (serverEvents || []).find(event => String(event.id) === String(id));
+
         if (heldLongEnough && serverEventConfirmsLocalMirror(serverEvent, value.event)) {
+          delete mirror[id];
+          changed = true;
+          return;
+        }
+        // Still settling, still queued, or judged against a cached list: leave it.
+        if (!heldLongEnough || queuedIds.has(String(id)) || !serverListIsFresh) return;
+
+        const acceptedAtMs = Number(value.serverAcceptedAtMs || 0);
+        if (!acceptedAtMs) {
+          // Nothing accepted it and nothing is queued to send it, so this entry
+          // can only ever draw a task that exists on no other device.
+          delete mirror[id];
+          changed = true;
+          return;
+        }
+        // Present but different: another device edited it and the server wins.
+        if (serverEvent) return;
+
+        const resendCount = Number(value.resendCount || 0);
+        if (now - acceptedAtMs <= LOCAL_EVENT_MIRROR_RESEND_WINDOW_MS && resendCount < LOCAL_EVENT_MIRROR_MAX_RESENDS) {
+          mirror[id] = { ...value, resendCount: resendCount + 1 };
+          changed = true;
+          toResend.push(value.event);
+          return;
+        }
+        if (now - acceptedAtMs > LOCAL_EVENT_MIRROR_RESEND_WINDOW_MS) {
+          // Past the repair window the likeliest explanation is a delete from
+          // another device, so stop showing it and match everyone else.
           delete mirror[id];
           changed = true;
         }
       });
+
       if (changed) setLocalEventMirror(mirror);
+      toResend.forEach(event => queueWrite({
+        opId: `resend-${event.id}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        method: 'POST',
+        event,
+        createdAt: new Date().toISOString()
+      }));
+      if (toResend.length) schedulePendingWriteFlush();
+    }
+
+    function schedulePendingWriteFlush() {
+      if (state.pendingWriteFlushTimer) return;
+      state.pendingWriteFlushTimer = window.setTimeout(() => {
+        state.pendingWriteFlushTimer = null;
+        processPendingWrites({ silent: true });
+      }, 0);
     }
 
     function arraysEqualSet(a = [], b = []) {
@@ -5985,7 +6065,7 @@
 
     function refreshEventsFromServerEvents() {
       cleanupConfirmedCompletionOverrides(state.serverEvents);
-      cleanupConfirmedLocalEventMirror(state.serverEvents);
+      reconcileLocalEventMirror(state.serverEvents);
       state.events = applyPendingOps(state.serverEvents);
     }
 
@@ -6025,18 +6105,20 @@
           const queue = getPendingWrites();
           if (!queue.length) break;
           blockedByRetryableError = false;
+          const queueBefore = queue.length;
 
           for (const op of queue) {
             try {
               const data = await performServerWrite(op);
               if (data.reminderSync) state.lastReminderSync = data.reminderSync;
               if (op.event && data.event && String(data.event.id) === String(op.event.id)) {
-                rememberLocalEvent(data.event, op.opId, op.method);
+                rememberLocalEvent(data.event, op.opId, op.method, { serverAccepted: true });
               }
               const serverHasSavedEvent = !op.event || !Array.isArray(data.events) || data.events.some(event => String(event.id) === String(op.event.id));
               if (serverHasSavedEvent) removeQueuedWrite(op.opId);
               if (Array.isArray(data.events)) {
                 state.serverEvents = data.events;
+                state.serverEventsFresh = true;
                 rememberCachedEvents(state.serverEvents);
                 refreshEventsFromServerEvents();
                 signalOtherOpenViewsToRefresh();
@@ -6060,6 +6142,9 @@
           }
 
           if (fatalError || blockedByRetryableError) break;
+          // A pass that accepted every reply yet shrank the queue by nothing
+          // would otherwise spin here forever hammering the server.
+          if (getPendingWrites().length >= queueBefore) break;
           if (!getPendingWrites().length) break;
         }
       } finally {
@@ -6088,6 +6173,7 @@
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Could not load events.');
         state.serverEvents = Array.isArray(data.events) ? data.events : [];
+        state.serverEventsFresh = true;
         rememberCachedEvents(state.serverEvents);
         refreshEventsFromServerEvents();
       } catch (error) {
@@ -6751,12 +6837,20 @@
     }
 
     function updateLocalQueueStatus() {
+      if (!els.localQueueStatus) return;
       const count = getPendingWrites().length;
-      if (els.localQueueStatus) {
-        els.localQueueStatus.textContent = count
-          ? `Pending saves waiting to sync: ${count}`
-          : 'Pending saves: 0. Everything on this device has been sent.';
+      // Tasks drawn from the local mirror with nothing queued to send them are
+      // not "sent" — reporting them as sent is what hid the lost task.
+      const queuedIds = new Set(getPendingWrites().filter(op => op.event?.id).map(op => String(op.event.id)));
+      const unconfirmed = Object.keys(getLocalEventMirror()).filter(id => !queuedIds.has(String(id))).length;
+
+      const parts = [count ? `Pending saves waiting to sync: ${count}.` : 'Pending saves: 0.'];
+      if (unconfirmed) {
+        parts.push(`${unconfirmed} task${unconfirmed === 1 ? '' : 's'} saved here but not confirmed by the server yet.`);
+      } else if (!count) {
+        parts.push('Everything on this device has been sent.');
       }
+      els.localQueueStatus.textContent = parts.join(' ');
     }
 
     function fillConfigForm() {

@@ -39,7 +39,31 @@ https://your-project.vercel.app/?admin=1
 
 When you create, edit, complete, or delete a task from the phone, the app first stores the change on the phone in a pending queue. It then sends the change to Vercel. If Vercel is busy or the network fails, the task stays in the local queue and the app retries automatically every 15 seconds and whenever the phone comes back online.
 
-Open the hidden config menu by holding anywhere on the dashboard/admin screen. It shows the number of pending saves and has a retry button.
+Open the hidden config menu by holding anywhere on the dashboard/admin screen. It shows the number of pending saves and has a retry button. It also reports tasks that are drawn on this device but that the server has not confirmed yet, so a task can no longer look saved while it is missing everywhere else.
+
+## How concurrent saves are kept safe
+
+All tasks live in one shared `events.json` in Vercel Blob, so every save is a
+read-modify-write of the whole file. Three things keep two devices saving at
+once from erasing each other:
+
+- **Reads are cache-busted.** The Blob URL is CDN-backed and the path is reused
+  on every overwrite, so the edge can replay an older copy of `events.json`.
+  `cache: 'no-store'` does not reach that layer, so every read appends a unique
+  query string. Without this, a save that landed seconds earlier could be read
+  back as missing and then written away.
+- **Writes are verified.** After each write the file is read back. If the change
+  did not survive, it is re-applied on top of whatever is there now, up to three
+  times. A write that still cannot be confirmed answers `503`, which keeps the
+  change in the phone's queue instead of dropping it.
+- **A failed read never becomes a write.** Blob trouble answers `5xx` rather
+  than overwriting the file with a guess, and only genuine validation problems
+  (missing title or start) answer `4xx`.
+
+If a task still goes missing from the server shortly after it was accepted, the
+device that created it notices on its next fresh read and sends it once more.
+Past a ten-minute repair window it assumes the task was deleted from another
+device and stops drawing it, so a delete is never resurrected.
 
 ## Repeating tasks
 
