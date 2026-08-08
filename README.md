@@ -39,6 +39,10 @@ https://your-project.vercel.app/?admin=1
 
 When you create, edit, complete, or delete a task from the phone, the app first stores the change on the phone in a pending queue. It then sends the change to Vercel. If Vercel is busy or the network fails, the task stays in the local queue and the app retries automatically every 15 seconds and whenever the phone comes back online.
 
+Saving several tasks in a row is safe: changes queued while an earlier send is
+still in flight are picked up by that same send, so they do not have to wait for
+the next refresh. A retry pass never re-sends a change the server already took.
+
 Open the hidden config menu by holding anywhere on the dashboard/admin screen. It shows the number of pending saves and has a retry button. It also reports tasks that are drawn on this device but that the server has not confirmed yet, so a task can no longer look saved while it is missing everywhere else.
 
 ## How concurrent saves are kept safe
@@ -58,7 +62,11 @@ once from erasing each other:
   change in the phone's queue instead of dropping it.
 - **A failed read never becomes a write.** Blob trouble answers `5xx` rather
   than overwriting the file with a guess, and only genuine validation problems
-  (missing title or start) answer `4xx`.
+  (missing title or start) answer `4xx`. "The blob is missing" is decided from
+  the error's name or a `404`, never from loose text matching — Node reports a
+  DNS failure as `ENOTFOUND`, which reads as "not found" and would otherwise
+  turn a network blip into an empty events list, or quietly strip the image
+  from the task being saved.
 
 If a task still goes missing from the server shortly after it was accepted, the
 device that created it notices on its next fresh read and sends it once more.

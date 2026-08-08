@@ -3907,6 +3907,10 @@
     const IMAGE_MAX_DIMENSION = 1280;
     const JPEG_QUALITY_STEPS = [0.78, 0.7, 0.62, 0.54, 0.46, 0.38, 0.32];
     const PENDING_WRITES_KEY = 'homeOrganizerPendingWrites';
+    // Only ever spends a request while something is actually waiting to be sent,
+    // so an idle device still costs nothing. Without this, a queue left behind by
+    // a busy server sat until the next deliberate interaction or page load.
+    const PENDING_WRITE_RETRY_MS = 15 * 1000;
     const LOCAL_COMPLETION_OVERRIDES_KEY = 'homeOrganizerCompletionOverrides';
     const LOCAL_EVENT_MIRROR_KEY = 'homeOrganizerLocalEventMirror';
     const LOCAL_EVENT_MIRROR_TTL_MS = 24 * 60 * 60 * 1000;
@@ -6100,14 +6104,22 @@
       state.pendingWriteActive = true;
       let fatalError = null;
       let blockedByRetryableError = false;
+      // Every op this run has already sent. Saving three tasks quickly puts the
+      // second and third in the queue while the first is still in flight, so
+      // each pass has to re-read the queue to see them — and this set is what
+      // stops that re-read from sending the same op twice or spinning when the
+      // server accepts a write it then does not list.
+      const attemptedOpIds = new Set();
       try {
         while (true) {
-          const queue = getPendingWrites();
-          if (!queue.length) break;
+          // Deliberately re-read rather than reusing the first snapshot: ops
+          // queued mid-pass belong to this run, not to some later refresh.
+          const batch = getPendingWrites().filter(op => !attemptedOpIds.has(op.opId));
+          if (!batch.length) break;
           blockedByRetryableError = false;
-          const queueBefore = queue.length;
 
-          for (const op of queue) {
+          for (const op of batch) {
+            attemptedOpIds.add(op.opId);
             try {
               const data = await performServerWrite(op);
               if (data.reminderSync) state.lastReminderSync = data.reminderSync;
@@ -6142,10 +6154,6 @@
           }
 
           if (fatalError || blockedByRetryableError) break;
-          // A pass that accepted every reply yet shrank the queue by nothing
-          // would otherwise spin here forever hammering the server.
-          if (getPendingWrites().length >= queueBefore) break;
-          if (!getPendingWrites().length) break;
         }
       } finally {
         state.pendingWriteActive = false;
@@ -8401,6 +8409,10 @@ Cancel = choose whether to delete the whole series.`);
       bindInteractionRefresh();
       scheduleNextHourlyEventRefresh();
       window.addEventListener('online', () => processPendingWrites({ silent: true }));
+      setInterval(() => {
+        if (!getPendingWrites().length) return;
+        processPendingWrites({ silent: true });
+      }, PENDING_WRITE_RETRY_MS);
       window.addEventListener('storage', event => {
         if (event.key === LAST_WRITE_SIGNAL_KEY) {
           renderFromLocalState();

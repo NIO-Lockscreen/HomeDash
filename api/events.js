@@ -348,9 +348,38 @@ function isOrganizerBlobImage(value) {
   }
 }
 
+// Node reports a DNS failure as ENOTFOUND, which the old loose /not.?found/i
+// test read as "the blob is missing". A network blip therefore looked exactly
+// like a deleted blob: an image reference was dropped from the event being
+// saved, and a failed read of events.json became an empty list that the very
+// next write put back over everyone's tasks.
+const NETWORK_ERROR_CODES = new Set([
+  'ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE',
+  'EHOSTUNREACH', 'ENETUNREACH', 'ECONNABORTED', 'EMFILE',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_SOCKET'
+]);
+
+function isNetworkError(error) {
+  for (let current = error, depth = 0; current && depth < 5; current = current.cause, depth += 1) {
+    if (NETWORK_ERROR_CODES.has(String(current.code || ''))) return true;
+  }
+  return /\b(?:ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH)\b/
+    .test(String(error?.message || ''));
+}
+
+// Only a real "this blob is gone" answer counts. Anything else — network
+// trouble, a 5xx from the store, an auth problem — has to keep propagating so
+// the caller fails loudly instead of treating missing data as absent data.
 function isBlobNotFoundError(error) {
-  return String(error?.name || '') === 'BlobNotFoundError'
-    || /does not exist|not.?found/i.test(String(error?.message || ''));
+  if (!error) return false;
+  if (isNetworkError(error)) return false;
+  if (String(error.name || '') === 'BlobNotFoundError') return true;
+  const status = Number(error.status ?? error.statusCode ?? 0);
+  if (status) return status === 404;
+  // `\b` before "not" is what keeps ENOTFOUND out: there is no word boundary
+  // inside "enotfound", while "not found", "not_found" and a standalone
+  // "notfound" all still match.
+  return /\bdoes not exist\b|\bnot[ _-]?found\b|blobnotfound/i.test(String(error.message || ''));
 }
 
 async function organizerImageExists(url) {
