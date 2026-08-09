@@ -89,6 +89,36 @@ The browser expands those into temporary occurrences for display only. The serve
 - If admin and display are open in two tabs on the same device, the display tab is notified immediately after a successful save. Across different devices there is no polling; page boot, midnight, and user interaction trigger refreshes.
 
 
+## Resyncing a stuck image
+
+Sometimes one task keeps showing the calm placeholder while every other task
+shows its photo. The editor has a **Resync image** button under the image field
+for that. It only appears while editing a task that already exists.
+
+What it does:
+
+1. Takes the photo you picked in the file field. If you did not pick one, it
+   downloads the photo the task currently points at, cache-busted, so it works
+   from whatever Blob storage really holds right now.
+2. Uploads it to `/api/upload?force=1`. A forced upload **skips the
+   reuse-by-content shortcut** and writes a brand new path, so the picture comes
+   back on a link nothing has cached.
+3. Saves the task with the new link and waits for the server instead of handing
+   the change to the background queue, then reads back what the server kept.
+4. Reports one of three outcomes: confirmed, still queued (server busy — it
+   retries by itself), or the server refused the link.
+
+Why the forced upload matters: a normal upload hashes the file and reuses the
+existing blob for identical bytes. Re-uploading the same photo therefore returns
+the *same* URL — which is useless when the URL itself is the problem (the blob
+was deleted and re-created at that path, or a CDN/browser is holding a stale copy
+behind the one-year cache header). That is why uploading the same picture again
+never fixed the last stuck image, and why a resync mints a fresh path.
+
+If the stored image cannot be downloaded at all — it was deleted from Blob
+storage — the button says so. Pick the photo again in the file field and resync;
+that path does not depend on the dead link.
+
 ## Face-aware image cropping
 
 When you upload a task image, the admin page tries to detect faces in the browser and saves a simple focus point with the event. The dashboard then uses that focus point for daily, selected, upcoming, and admin thumbnails so faces are less likely to be cropped out.

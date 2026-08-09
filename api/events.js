@@ -439,6 +439,7 @@ export default async function handler(req, res) {
     if (req.method === 'POST' || req.method === 'PUT') {
       const payload = parsePayload(await readBody(req));
       const isPut = req.method === 'PUT';
+      const requestedImageUrl = String(payload.imageUrl || '').trim();
       let previousEvent = null;
       let event = null;
       let created = false;
@@ -488,7 +489,11 @@ export default async function handler(req, res) {
       const imageCleanup = previousEvent
         ? await deleteUnusedImages(imageUrlsNoLongerUsed([previousEvent], next))
         : { attempted: 0, deleted: 0, failed: 0 };
-      send(res, created ? 201 : 200, { event, events: next, localSaved: true, synced: true, idempotent: !created, imageCleanup, reminderSync });
+      // resolveImageUrl can quietly refuse an image URL that no longer exists in
+      // Blob storage and keep the previous one instead. Say so in the reply, or
+      // the phone believes it just fixed a picture that is still broken.
+      const imageUrlAccepted = String(event.imageUrl || '') === requestedImageUrl;
+      send(res, created ? 201 : 200, { event, events: next, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, requestedImageUrl, imageCleanup, reminderSync });
       return;
     }
 

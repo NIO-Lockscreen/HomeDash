@@ -40,6 +40,14 @@ function parseForm(req) {
   });
 }
 
+function isForcedUpload(req) {
+  try {
+    return new URL(req.url, `https://${req.headers.host || 'localhost'}`).searchParams.get('force') === '1';
+  } catch {
+    return false;
+  }
+}
+
 function safeExtension(file) {
   const byType = {
     'image/jpeg': '.jpg',
@@ -75,13 +83,25 @@ export default async function handler(req, res) {
     const buffer = await fs.readFile(image.filepath);
     const ext = safeExtension(image);
     const hash = crypto.createHash('sha256').update(buffer).digest('hex');
-    const pathname = `home-organizer/images/${hash.slice(0, 2)}/${hash.slice(0, 32)}${ext}`;
 
-    try {
-      const existing = await head(pathname);
-      send(res, 200, { url: existing.url, pathname: existing.pathname || pathname, reused: true });
-      return;
-    } catch {}
+    // Normal uploads reuse the blob for identical bytes, which keeps duplicates
+    // out of the store. A forced upload must NOT do that: it exists to repair a
+    // picture that never appears, and the usual suspect is the URL itself —
+    // deleted and re-created at the same path, or a stale copy pinned in a CDN
+    // or browser cache by the one-year cache header. Re-sending the same bytes
+    // to the same URL cannot fix any of those, so a resync mints a fresh path
+    // that nothing has cached yet.
+    const forced = isForcedUpload(req);
+    const suffix = forced ? `-${Date.now().toString(36)}${crypto.randomBytes(3).toString('hex')}` : '';
+    const pathname = `home-organizer/images/${hash.slice(0, 2)}/${hash.slice(0, 32)}${suffix}${ext}`;
+
+    if (!forced) {
+      try {
+        const existing = await head(pathname);
+        send(res, 200, { url: existing.url, pathname: existing.pathname || pathname, reused: true });
+        return;
+      } catch {}
+    }
 
     const blob = await put(pathname, buffer, {
       access: 'public',
@@ -90,7 +110,7 @@ export default async function handler(req, res) {
       cacheControlMaxAge: 60 * 60 * 24 * 365
     });
 
-    send(res, 200, { url: blob.url, pathname: blob.pathname, reused: false });
+    send(res, 200, { url: blob.url, pathname: blob.pathname, reused: false, forced });
   } catch (error) {
     send(res, 400, { error: error.message || 'Upload failed.' });
   }

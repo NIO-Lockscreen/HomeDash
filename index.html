@@ -1619,6 +1619,19 @@
       font-weight: 750;
     }
 
+    .image-resync-row {
+      display: grid;
+      gap: 8px;
+      justify-items: start;
+    }
+
+    .image-resync-help {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      font-weight: 750;
+    }
+
     .empty-upcoming {
       display: grid;
       place-items: center;
@@ -3706,6 +3719,11 @@
         <input id="imageUrlInput" type="hidden" />
         <div id="imageStatus" class="image-status">No image selected. A calm placeholder will be used.</div>
 
+        <div id="imageResyncRow" class="image-resync-row hidden">
+          <button id="resyncImageBtn" class="btn secondary" type="button">Resync image</button>
+          <span class="image-resync-help">Use this when a task keeps showing the plain placeholder on the dashboard. It re-uploads the picture under a brand new link and waits for the server to confirm it. Pick a photo above first to resync that one instead.</span>
+        </div>
+
         <section id="manualImageEditor" class="manual-image-editor" aria-label="Manual image pan and zoom">
           <div class="manual-image-editor-title">
             <span>Manual image position</span>
@@ -4040,6 +4058,8 @@
       imageInput: document.getElementById('imageInput'),
       imageUrlInput: document.getElementById('imageUrlInput'),
       imageStatus: document.getElementById('imageStatus'),
+      imageResyncRow: document.getElementById('imageResyncRow'),
+      resyncImageBtn: document.getElementById('resyncImageBtn'),
       manualImageEditor: document.getElementById('manualImageEditor'),
       imagePreview: document.getElementById('imagePreview'),
       imagePreviewTitle: document.getElementById('imagePreviewTitle'),
@@ -7060,6 +7080,7 @@
       setEmailReminderOptionsVisible();
       els.saveEventBtn.textContent = 'Save event';
       els.imageStatus.textContent = 'No image selected. A calm placeholder will be used.';
+      setImageResyncVisible(false);
       setStatus('');
       const start = new Date(Date.now() + 60 * 60 * 1000);
       start.setMinutes(0, 0, 0);
@@ -7158,6 +7179,24 @@
       throw new Error('Could not compress this image under 4 MB. Try a different image.');
     }
 
+    async function uploadImageFile(file, options = {}) {
+      const form = new FormData();
+      form.append('image', file);
+
+      // A forced upload skips the server's reuse-by-content shortcut, so the
+      // picture comes back on a link nothing has cached yet.
+      const response = await fetch(options.force ? '/api/upload?force=1' : '/api/upload', {
+        method: 'POST',
+        headers: { 'x-admin-pin': getPin() },
+        body: form
+      });
+      let data = {};
+      try { data = await response.json(); } catch {}
+      if (!response.ok) throw new Error(data.error || 'Upload failed.');
+      if (!data.url) throw new Error('The upload finished without returning an image link.');
+      return data.url;
+    }
+
     async function uploadImageIfNeeded() {
       const file = els.imageInput.files?.[0];
       if (!file) return els.imageUrlInput.value;
@@ -7171,20 +7210,118 @@
 
       const compressedNote = uploadFile !== file ? `Optimized to ${formatBytes(uploadFile.size)}. ` : '';
       els.imageStatus.textContent = `${compressedNote}Uploading image…`;
-      const form = new FormData();
-      form.append('image', uploadFile);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'x-admin-pin': getPin() },
-        body: form
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Upload failed.');
+      const url = await uploadImageFile(uploadFile);
       els.imageStatus.textContent = uploadFile !== file
         ? `Image optimized to ${formatBytes(uploadFile.size)} and uploaded.`
         : 'Image uploaded.';
-      return data.url;
+      return url;
+    }
+
+    function setImageResyncVisible(visible) {
+      els.imageResyncRow?.classList.toggle('hidden', !visible);
+    }
+
+    // Pulls the picture the task currently points at back out of Blob storage so
+    // it can be re-uploaded under a new link. Cache-busted and `reload`, because
+    // the whole point is to find out what the store really holds right now.
+    async function fetchStoredImageAsFile(imageUrl) {
+      const separator = imageUrl.includes('?') ? '&' : '?';
+      let response;
+      try {
+        response = await fetch(`${imageUrl}${separator}resync=${Date.now()}`, { cache: 'reload' });
+      } catch {
+        throw new Error('Could not reach the stored image. Check the connection, or pick the photo again and resync.');
+      }
+      if (!response.ok) {
+        throw new Error(response.status === 404 || response.status === 410
+          ? 'The stored image is gone from Blob storage. Pick the photo again above, then resync.'
+          : `The stored image answered ${response.status}. Pick the photo again above, then resync.`);
+      }
+      const blob = await response.blob();
+      if (!blob.size) throw new Error('The stored image came back empty. Pick the photo again above, then resync.');
+      const extensions = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
+      const extension = extensions[blob.type];
+      if (!extension) throw new Error('The stored image is not a JPEG, PNG, WEBP or GIF. Pick the photo again above, then resync.');
+      return new File([blob], `resynced-image${extension}`, { type: blob.type, lastModified: Date.now() });
+    }
+
+    // "Save" hands the change to the background queue and returns straight away.
+    // A resync has to say whether it actually worked, so it waits for the server
+    // and then reads back what the server kept.
+    async function saveEventAndWaitForServer(eventToSave) {
+      const op = {
+        opId: `resync-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        method: 'PUT',
+        event: eventToSave,
+        createdAt: new Date().toISOString()
+      };
+      rememberLocalEvent(eventToSave, op.opId, op.method);
+      queueWrite(op);
+      refreshEventsFromServerEvents();
+      renderDisplay();
+      renderAdminEvents();
+      await processPendingWrites({ silent: true, throwNonRetryable: true, targetOpId: op.opId });
+      signalOtherOpenViewsToRefresh();
+      return {
+        storedEvent: (state.serverEvents || []).find(item => String(item.id) === String(eventToSave.id)) || null,
+        stillQueued: getPendingWrites().some(item => item.opId === op.opId)
+      };
+    }
+
+    async function resyncEventImage() {
+      const sourceId = els.eventId.value || state.editingId;
+      const source = sourceId ? getSourceEvent(sourceId) : null;
+      if (!source) throw new Error('Save this task first, then resync its image.');
+
+      syncPendingFocusFromControls();
+
+      const pickedFile = els.imageInput.files?.[0] || null;
+      let uploadFile;
+      let note;
+
+      if (pickedFile) {
+        uploadFile = await compressImageForUpload(pickedFile);
+        note = 'Picked photo re-uploaded';
+      } else {
+        const storedUrl = String(els.imageUrlInput.value || '').trim();
+        if (!storedUrl) throw new Error('This task has no image yet. Pick a photo above, then resync.');
+        els.imageStatus.textContent = 'Reading the stored image…';
+        uploadFile = await compressImageForUpload(await fetchStoredImageAsFile(storedUrl));
+        note = 'Stored photo re-uploaded';
+      }
+
+      if (uploadFile.size > MAX_UPLOAD_BYTES) {
+        throw new Error('Image is still over 4 MB after compression. Try a different image.');
+      }
+
+      els.imageStatus.textContent = 'Uploading the image under a fresh link…';
+      const imageUrl = await uploadImageFile(uploadFile, { force: true });
+
+      const eventToSave = { ...source, imageUrl, ...currentImageFocusPayload() };
+      els.imageStatus.textContent = 'Saving the fresh link to the server…';
+      const { storedEvent, stillQueued } = await saveEventAndWaitForServer(eventToSave);
+
+      els.imageUrlInput.value = imageUrl;
+      els.imageInput.value = '';
+      state.imageFocusToken += 1;
+      if (state.imagePreviewObjectUrl) {
+        URL.revokeObjectURL(state.imagePreviewObjectUrl);
+        state.imagePreviewObjectUrl = null;
+      }
+      setManualImagePreviewSource(imageUrl);
+
+      const uploadedNote = `${note} (${formatBytes(uploadFile.size)})`;
+      if (stillQueued || !storedEvent) {
+        els.imageStatus.textContent = `${uploadedNote}, but the server has not taken the new link yet. It stays queued on this device and retries automatically.`;
+        return { imageUrl, confirmed: false, queued: true };
+      }
+      if (String(storedEvent.imageUrl || '') !== imageUrl) {
+        els.imageStatus.textContent = `${uploadedNote}, but the server kept a different image link. Pick the photo again above and resync once more.`;
+        return { imageUrl, confirmed: false, queued: false };
+      }
+
+      els.imageStatus.textContent = `${uploadedNote} and confirmed by the server.`;
+      return { imageUrl, confirmed: true, queued: false };
     }
 
     async function saveEvent(event) {
@@ -7478,6 +7615,7 @@ Cancel = choose whether to delete the whole series.`);
       setManualImageControls(state.pendingImageFocus);
       setManualImagePreviewSource(event.imageUrl || '');
       els.imageStatus.textContent = event.imageUrl ? 'Current image will be kept unless you upload a new one. Adjust pan/zoom below if needed.' : 'No image selected. A calm placeholder will be used.';
+      setImageResyncVisible(true);
       els.saveEventBtn.textContent = 'Update event';
       if (els.eventEditorTitle) els.eventEditorTitle.textContent = 'Edit task/event';
       showEventEditor();
@@ -7774,6 +7912,26 @@ Cancel = choose whether to delete the whole series.`);
       });
       els.imageTextSafeBtn?.addEventListener('click', () => {
         setManualImageControls({ imageFocusX: 50, imageFocusY: 34, imageZoom: 1.08 });
+      });
+
+      els.resyncImageBtn?.addEventListener('click', async () => {
+        els.resyncImageBtn.disabled = true;
+        els.saveEventBtn.disabled = true;
+        setStatus('Resyncing the image for this task…');
+        try {
+          const result = await resyncEventImage();
+          setStatus(result.confirmed
+            ? 'Image resynced. The dashboard picks it up on its next refresh.'
+            : result.queued
+              ? 'Image uploaded and queued. The server has not confirmed it yet, so it will retry automatically.'
+              : 'Image uploaded, but the server did not keep the new link. See the note under the image field.', !result.confirmed);
+        } catch (error) {
+          setStatus(error.message, true);
+          els.imageStatus.textContent = error.message;
+        } finally {
+          els.resyncImageBtn.disabled = false;
+          els.saveEventBtn.disabled = false;
+        }
       });
 
       els.eventForm.addEventListener('submit', async event => {
