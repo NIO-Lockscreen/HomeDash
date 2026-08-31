@@ -5722,7 +5722,7 @@
       state.interactionRefreshTimer = window.setTimeout(async () => {
         if (state.eventFetchActive) return;
         if (state.lastEventFetchAt && now - state.lastEventFetchAt < minEventFetchGapMs()) return;
-        await fetchEvents({ reason: 'interaction' });
+        await fetchEvents({ force: true, reason: 'interaction' });
         await processPendingWrites({ silent: true });
       }, INTERACTION_FETCH_DEBOUNCE_MS);
     }
