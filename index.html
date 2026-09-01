@@ -6159,7 +6159,17 @@
                 continue;
               }
               blockedByRetryableError = true;
-              if (!options.silent) setStatus('Server is busy/offline. Saved on this device and will retry automatically.', true);
+              // A 5xx carries the server's own explanation (a missing ADMIN_PIN, a
+              // Blob failure, a write it could not verify). Replacing that with the
+              // generic "busy/offline" line hid the only sentence that says what to
+              // fix, and a write that keeps failing looks identical to one that is
+              // merely waiting for the network. Only a genuine transport failure
+              // (no status at all) is really "offline".
+              if (!options.silent) {
+                setStatus(error.status
+                  ? `Server error ${error.status}: ${error.message} Saved on this device and will retry.`
+                  : 'Server is busy/offline. Saved on this device and will retry automatically.', true);
+              }
               break;
             }
           }
