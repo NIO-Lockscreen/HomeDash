@@ -6148,7 +6148,10 @@
                 removeQueuedWrite(op.opId);
                 if (op.event?.id) forgetLocalEvent(op.event.id);
                 refreshEventsFromServerEvents();
-                if (!options.silent) setStatus(error.message, true);
+                // A non-retryable failure means the save is permanently rejected and
+                // about to vanish from this device with no other trace (the local
+                // mirror is gone too), so it must never be hidden behind `silent`.
+                setStatus(error.message, true);
                 if (options.throwNonRetryable && (!options.targetOpId || options.targetOpId === op.opId)) {
                   fatalError = error;
                   break;
