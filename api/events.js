@@ -5,6 +5,7 @@ import { syncReminderSchedulesForEvents } from './_reminders.js';
 const EVENTS_PATH = 'home-organizer/events.json';
 const EVENTS_CACHE_MS = 60 * 1000;
 const MAX_WRITE_ATTEMPTS = 3;
+const VERIFY_RETRY_DELAY_MS = 250;
 let eventsCache = null;
 let eventsCacheAt = 0;
 // Serializes mutations that land on the same warm instance so they cannot
@@ -22,6 +23,10 @@ function httpError(status, message) {
   const error = new Error(message);
   error.statusCode = status;
   return error;
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function readBody(req) {
@@ -182,7 +187,11 @@ function markCreatedRecipients(event, recipients) {
   };
 }
 
-function cleanEvent(input, existing = {}) {
+// `updatedAt` must be supplied by the caller and stay identical across every
+// retry of one request. It doubles as the write's verification token, so a
+// fresh stamp per attempt would move the target the read-back is checked
+// against and make a lagging read impossible to ever match.
+function cleanEvent(input, existing = {}, updatedAt = new Date().toISOString()) {
   const id = existing.id || input.id || crypto.randomUUID();
   const title = String(input.title || '').trim().slice(0, 80);
   if (!title) throw httpError(400, 'Title is required.');
@@ -228,7 +237,7 @@ function cleanEvent(input, existing = {}) {
     imageNaturalHeight,
     featured: Boolean(input.featured ?? existing.featured),
     emailReminder,
-    updatedAt: new Date().toISOString(),
+    updatedAt,
     createdAt: existing.createdAt || new Date().toISOString()
   };
 }
@@ -316,7 +325,12 @@ async function mutateEvents(apply) {
         // concurrent change from another device too.
         return { events: rememberEventsCache(saved), verified: true };
       }
-      console.warn(`events.json was overwritten by a concurrent write; retrying (attempt ${attempt}/${MAX_WRITE_ATTEMPTS}).`);
+      console.warn(`events.json read back without this change; retrying (attempt ${attempt}/${MAX_WRITE_ATTEMPTS}).`);
+      // A read-back can also lag the write it is checking, in which case the
+      // put was fine and only the confirmation was early. Give the store a
+      // moment before the next attempt rather than immediately rewriting.
+      // This costs nothing on the happy path, which returns above.
+      if (attempt < MAX_WRITE_ATTEMPTS) await sleep(VERIFY_RETRY_DELAY_MS * attempt);
     }
     return outcome || { events: [], verified: false };
   };
@@ -443,6 +457,10 @@ export default async function handler(req, res) {
       let previousEvent = null;
       let event = null;
       let created = false;
+      // One stamp for the whole request, not one per attempt: every retry then
+      // writes a byte-identical event, so a read-back that is one generation
+      // behind still confirms the change instead of reporting it as lost.
+      const writeStamp = new Date().toISOString();
 
       const outcome = await mutateEvents(async currentEvents => {
         const index = payload.id ? currentEvents.findIndex(item => item.id === payload.id) : -1;
@@ -450,7 +468,7 @@ export default async function handler(req, res) {
         previousEvent = index === -1 ? null : currentEvents[index];
         created = index === -1;
         const imageUrl = await resolveImageUrl(payload.imageUrl, previousEvent?.imageUrl);
-        event = cleanEvent({ ...payload, imageUrl }, previousEvent || {});
+        event = cleanEvent({ ...payload, imageUrl }, previousEvent || {}, writeStamp);
         const nextEvents = [...currentEvents];
         if (index === -1) nextEvents.push(event);
         else nextEvents[index] = event;
