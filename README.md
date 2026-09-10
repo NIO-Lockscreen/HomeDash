@@ -81,9 +81,8 @@ The browser expands those into temporary occurrences for display only. The serve
 
 ## New in cleanup/refresh version
 
-- Deleting a task now also deletes its stored event image from Vercel Blob when no remaining task uses that image.
-- Replacing an image on a task cleans up the old Blob image when it is no longer used.
-- Deleting all tasks also tries to remove all Home Organizer images under the event image paths.
+- Event images are **no longer deleted the moment** a task is deleted or its picture replaced. The reminder cron (`/api/reminders-cron`, twice a day) sweeps images that no task has referenced for **7 days**, tracked in `home-organizer/image-sweep.json`. A picture lost to a bad save therefore stays in the Blob store for a week: find it under `home-organizer/images/` in the Vercel Blob dashboard and paste its URL into the task's image field. The sweep never deletes anything when `events.json` cannot be read, and never deletes an image uploaded less than 7 days ago.
+- A device holding an older copy of a task (it marks it done, moves its date, adds a reminder) can no longer swap that task's image for the old one it remembers, or clear it. It may still set a genuinely newer upload, so a resync from that device works as before.
 - Display mode loads cached tasks instantly, then performs one fresh server refresh on page boot, at midnight, and after user interaction.
 - Desktop admin mode shows a large **Back to normal view** button so you can return to the Surface display after editing.
 - If admin and display are open in two tabs on the same device, the display tab is notified immediately after a successful save. Across different devices there is no polling; page boot, midnight, and user interaction trigger refreshes.

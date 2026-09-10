@@ -1,4 +1,5 @@
 import { loadEventsForReminderCron, syncReminderSchedulesForEvents, syncReminderDigests } from './_reminders.js';
+import { sweepUnreferencedImages } from './_images.js';
 
 function send(res, status, payload) {
   res.statusCode = status;
@@ -40,11 +41,21 @@ export default async function handler(req, res) {
     const result = await syncReminderSchedulesForEvents(events, { all: true });
     const digestResult = await syncReminderDigests(events);
 
+    // Image cleanup rides on this cron. It reads events.json itself, strictly,
+    // and a failure here must never stop reminders from going out.
+    let images;
+    try {
+      images = await sweepUnreferencedImages();
+    } catch (error) {
+      images = { ok: false, error: error.message || 'Image sweep failed.' };
+    }
+
     send(res, result.ok ? 200 : 207, {
       ok: result.ok,
       checkedEvents: events.length,
       ...result,
       digests: digestResult,
+      images,
     });
   } catch (error) {
     send(res, 500, { ok: false, error: error.message || 'Reminder cron failed.' });

@@ -7965,6 +7965,10 @@ Cancel = choose whether to delete the whole series.`);
           const imageUrl = await uploadImageIfNeeded();
           const payload = {
             id: els.eventId.value || undefined,
+            // Tells the server whether this copy is behind another device's
+            // edit, so a stale editor cannot swap the image for an older one.
+            // The server never stores the value it is sent.
+            updatedAt: els.eventId.value ? getSourceEvent(els.eventId.value)?.updatedAt : undefined,
             title: els.titleInput.value,
             start: fromLocalInputValue(els.startInput.value),
             end: fromLocalInputValue(els.endInput.value),

@@ -1,6 +1,14 @@
-import { head, put, del } from '@vercel/blob';
+import { head, put } from '@vercel/blob';
 import crypto from 'crypto';
 import { syncReminderSchedulesForEvents } from './_reminders.js';
+import { organizerImageMeta } from './_images.js';
+import {
+  IMAGE_GRACE_DAYS,
+  isOrganizerBlobImage,
+  isBlobNotFoundError,
+  isStaleClientCopy,
+  chooseImageForStaleClient
+} from './_image-rules.js';
 
 const EVENTS_PATH = 'home-organizer/events.json';
 const EVENTS_CACHE_MS = 60 * 1000;
@@ -350,86 +358,40 @@ function sendUnverified(res) {
   send(res, 503, { error: 'Another device saved at the same time and the change could not be confirmed. It stays queued on this device and will retry.' });
 }
 
-function isOrganizerBlobImage(value) {
-  const text = String(value || '').trim();
-  if (!text) return false;
-  if (text.startsWith('home-organizer/images/')) return true;
-  try {
-    const url = new URL(text);
-    return url.pathname.includes('/home-organizer/images/');
-  } catch {
-    return text.includes('home-organizer/images/');
-  }
-}
-
-function isBlobNotFoundError(error) {
-  return String(error?.name || '') === 'BlobNotFoundError'
-    || /does not exist|not.?found/i.test(String(error?.message || ''));
-}
-
-async function organizerImageExists(url) {
-  try {
-    await head(url);
-    return true;
-  } catch (error) {
-    if (isBlobNotFoundError(error)) return false;
-    // Transient blob/network error: assume the image is still there rather
-    // than dropping a live reference.
-    return true;
-  }
-}
-
-// Two devices can edit the same event: device A replaces the image (the old
-// blob gets deleted below), then device B re-sends the event with the old,
-// now-deleted URL from its stale local copy. Without this check that stale
-// write would point the event at a dead blob AND trigger deletion of the
-// image device A just uploaded. Never accept an organizer blob URL that no
-// longer exists: keep the currently stored image, or fall back to none.
-async function resolveImageUrl(inputUrl, existingUrl) {
+// Two devices can edit the same event. Device A replaces the image; device B,
+// still holding the old copy, then re-sends the whole task (marks it done,
+// moves its date, adds a reminder) with the old URL. Two guards keep that from
+// undoing A's change:
+//
+//  1. A copy older than what the server holds may not swap the image for an
+//     older one, or clear it. It may still bring a genuinely newer upload,
+//     which is how a resync from a stale device keeps working.
+//  2. An organizer URL that no longer exists in Blob is never accepted: keep
+//     the stored image, or fall back to none.
+async function resolveImageUrl(inputUrl, existingUrl, options = {}) {
   const requested = String(inputUrl || '').trim();
-  if (!isOrganizerBlobImage(requested)) return requested;
-  if (await organizerImageExists(requested)) return requested;
   const current = String(existingUrl || '').trim();
-  if (current && current !== requested && (!isOrganizerBlobImage(current) || await organizerImageExists(current))) {
+
+  if (options.stale && current && requested !== current && isOrganizerBlobImage(current)) {
+    const currentMeta = await organizerImageMeta(current);
+    const requestedMeta = isOrganizerBlobImage(requested) ? await organizerImageMeta(requested) : null;
+    const kept = chooseImageForStaleClient({ requested, current, requestedMeta, currentMeta });
+    if (kept !== null) return kept;
+  }
+
+  if (!isOrganizerBlobImage(requested)) return requested;
+  if ((await organizerImageMeta(requested)).exists) return requested;
+  if (current && current !== requested && (!isOrganizerBlobImage(current) || (await organizerImageMeta(current)).exists)) {
     return current;
   }
   return '';
 }
 
-function imageUrlsFromEvents(events) {
-  return [...new Set((Array.isArray(events) ? events : [])
-    .map(event => event && event.imageUrl)
-    .filter(isOrganizerBlobImage))];
-}
-
-function imageUrlsNoLongerUsed(beforeEvents, afterEvents) {
-  const after = new Set(imageUrlsFromEvents(afterEvents));
-  return imageUrlsFromEvents(beforeEvents).filter(url => !after.has(url));
-}
-
-async function deleteUnusedImages(urls) {
-  const uniqueUrls = [...new Set((urls || []).filter(isOrganizerBlobImage))];
-  if (!uniqueUrls.length) return { attempted: 0, deleted: 0, failed: 0 };
-
-  try {
-    await del(uniqueUrls);
-    return { attempted: uniqueUrls.length, deleted: uniqueUrls.length, failed: 0 };
-  } catch (error) {
-    console.warn('Bulk blob cleanup failed, retrying one by one:', error);
-    let deleted = 0;
-    let failed = 0;
-    for (const url of uniqueUrls) {
-      try {
-        await del(url);
-        deleted += 1;
-      } catch (singleError) {
-        failed += 1;
-        console.warn('Could not delete old event image:', url, singleError);
-      }
-    }
-    return { attempted: uniqueUrls.length, deleted, failed };
-  }
-}
+// Old images are no longer deleted on the write path. The cron sweeps images
+// that no task has referenced for IMAGE_GRACE_DAYS, so a picture lost to a bad
+// save stays recoverable from the Blob store for that long. This also takes
+// the slowest, least reversible step out of the 10-second write budget.
+const IMAGE_CLEANUP = Object.freeze({ deferred: true, gracePeriodDays: IMAGE_GRACE_DAYS });
 
 export default async function handler(req, res) {
   try {
@@ -467,7 +429,9 @@ export default async function handler(req, res) {
         if (isPut && index === -1) throw httpError(404, 'Event not found.');
         previousEvent = index === -1 ? null : currentEvents[index];
         created = index === -1;
-        const imageUrl = await resolveImageUrl(payload.imageUrl, previousEvent?.imageUrl);
+        const imageUrl = await resolveImageUrl(payload.imageUrl, previousEvent?.imageUrl, {
+          stale: isStaleClientCopy(payload, previousEvent)
+        });
         event = cleanEvent({ ...payload, imageUrl }, previousEvent || {}, writeStamp);
         const nextEvents = [...currentEvents];
         if (index === -1) nextEvents.push(event);
@@ -504,14 +468,12 @@ export default async function handler(req, res) {
         if (stamped.verified) next = stamped.events;
       }
 
-      const imageCleanup = previousEvent
-        ? await deleteUnusedImages(imageUrlsNoLongerUsed([previousEvent], next))
-        : { attempted: 0, deleted: 0, failed: 0 };
-      // resolveImageUrl can quietly refuse an image URL that no longer exists in
-      // Blob storage and keep the previous one instead. Say so in the reply, or
-      // the phone believes it just fixed a picture that is still broken.
+      // resolveImageUrl can quietly refuse an image URL (gone from Blob, or an
+      // older picture sent by a stale device) and keep the stored one instead.
+      // Say so in the reply, or the phone believes it just changed a picture
+      // that it did not.
       const imageUrlAccepted = String(event.imageUrl || '') === requestedImageUrl;
-      send(res, created ? 201 : 200, { event, events: next, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, requestedImageUrl, imageCleanup, reminderSync });
+      send(res, created ? 201 : 200, { event, events: next, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, requestedImageUrl, imageCleanup: IMAGE_CLEANUP, reminderSync });
       return;
     }
 
@@ -519,18 +481,13 @@ export default async function handler(req, res) {
       const url = new URL(req.url, `https://${req.headers.host}`);
 
       if (url.searchParams.get('all') === '1') {
-        let imagesToDelete = [];
-        const outcome = await mutateEvents(async currentEvents => {
-          imagesToDelete = [...new Set([...imagesToDelete, ...imageUrlsFromEvents(currentEvents)])];
-          return { events: [], verify: saved => saved.length === 0 };
-        });
+        const outcome = await mutateEvents(async () => ({ events: [], verify: saved => saved.length === 0 }));
         if (!outcome.verified) {
           sendUnverified(res);
           return;
         }
         const reminderSync = await safeSyncReminders([], { all: true });
-        const imageCleanup = await deleteUnusedImages(imagesToDelete);
-        send(res, 200, { events: [], localDeleted: true, synced: true, imageCleanup, reminderSync });
+        send(res, 200, { events: [], localDeleted: true, synced: true, imageCleanup: IMAGE_CLEANUP, reminderSync });
         return;
       }
 
@@ -553,8 +510,7 @@ export default async function handler(req, res) {
       }
       const next = outcome.events;
       const reminderSync = await safeSyncReminders(next, { eventIds: [id] });
-      const imageCleanup = await deleteUnusedImages(imageUrlsNoLongerUsed(removedEvents, next));
-      send(res, 200, { events: next, localDeleted: true, synced: true, imageCleanup, reminderSync });
+      send(res, 200, { events: next, localDeleted: true, synced: true, imageCleanup: IMAGE_CLEANUP, reminderSync });
       return;
     }
 
