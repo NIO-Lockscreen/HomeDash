@@ -3916,6 +3916,11 @@
 
   <script>
     const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
+    // Shown in the hidden config menu. /api/events reports the server's own
+    // build the same way, so a device running stale cached JavaScript, or a
+    // deploy that never landed, can be told apart from a real sync fault
+    // instead of being guessed at.
+    const APP_BUILD = '2026-09-10-c';
     // Blob-efficient sync: no polling loop. Load fresh events on page boot,
     // once per hour during daytime, on deliberate interaction, or when needed for a write/retry.
     const INTERACTION_FETCH_DEBOUNCE_MS = 800;
@@ -4002,6 +4007,7 @@
       imageFocusToken: 0,
       imagePreviewObjectUrl: null,
       lastReminderSync: null,
+      lastWriteError: null,
       reminderMenuExpanded: localStorage.getItem('homeOrganizerReminderMenuExpanded') === '1'
     };
 
@@ -6051,6 +6057,31 @@
       return !error.status || error.status === 408 || error.status === 409 || error.status === 425 || error.status === 429 || error.status >= 500;
     }
 
+    // The reason a save failed used to reach only the admin editor's status
+    // line, which is hidden behind the config overlay and absent altogether in
+    // display mode — so the one sentence explaining a stuck queue was written
+    // where nobody could read it. Keep the last failure here instead, and show
+    // it wherever the queue itself is shown.
+    function rememberWriteError(error, op) {
+      state.lastWriteError = {
+        status: Number(error?.status) || 0,
+        message: String(error?.message || 'Unknown error.'),
+        title: String(op?.event?.title || ''),
+        at: new Date().toISOString()
+      };
+    }
+
+    function describeWriteError() {
+      const failure = state.lastWriteError;
+      if (!failure) return '';
+      const when = new Date(failure.at);
+      const clock = Number.isNaN(when.getTime()) ? '' : ` at ${formatTime(when, false)}`;
+      const what = failure.title ? ` while saving “${failure.title}”` : '';
+      return failure.status
+        ? `Last failure${clock}${what}: server answered ${failure.status} — ${failure.message}`
+        : `Last failure${clock}${what}: could not reach the server — ${failure.message}`;
+    }
+
     function upsertLocalVisibleEvent(events, event, extra = {}) {
       if (!event?.id) return events;
       const visibleEvent = { ...event, ...extra };
@@ -6137,6 +6168,7 @@
           for (const op of queue) {
             try {
               const data = await performServerWrite(op);
+              state.lastWriteError = null;
               if (data.reminderSync) state.lastReminderSync = data.reminderSync;
               if (op.event && data.event && String(data.event.id) === String(op.event.id)) {
                 rememberLocalEvent(data.event, op.opId, op.method, { serverAccepted: true });
@@ -6151,6 +6183,7 @@
                 signalOtherOpenViewsToRefresh();
               }
             } catch (error) {
+              rememberWriteError(error, op);
               if (!isRetryableError(error)) {
                 removeQueuedWrite(op.opId);
                 if (op.event?.id) forgetLocalEvent(op.event.id);
@@ -6890,6 +6923,9 @@
       } else if (!count) {
         parts.push('Everything on this device has been sent.');
       }
+      const failure = describeWriteError();
+      if (failure) parts.push(failure);
+      parts.push(`App version ${APP_BUILD}.`);
       els.localQueueStatus.textContent = parts.join(' ');
     }
 
@@ -7045,7 +7081,13 @@
         setConfigStatus('Retrying pending saves…');
         await processPendingWrites({ silent: false });
         updateLocalQueueStatus();
-        setConfigStatus(getPendingWrites().length ? 'Some saves are still pending. I will keep retrying.' : 'No pending saves.');
+        if (!getPendingWrites().length) {
+          setConfigStatus('No pending saves.');
+          return;
+        }
+        // Say WHY it is still pending. The generic line used to overwrite the
+        // real reason the retry had just produced.
+        setConfigStatus(describeWriteError() || 'Some saves are still pending. I will keep retrying.', true);
       });
 
       const startHold = event => {

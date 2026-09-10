@@ -11,6 +11,9 @@ import {
 } from './_image-rules.js';
 
 const EVENTS_PATH = 'home-organizer/events.json';
+// Reported on every GET so the live server build can be read straight from
+// /api/events, rather than inferred from whether a save worked.
+const API_BUILD = '2026-09-10-c';
 const EVENTS_CACHE_MS = 60 * 1000;
 const MAX_WRITE_ATTEMPTS = 3;
 const VERIFY_RETRY_DELAY_MS = 250;
@@ -406,7 +409,7 @@ export default async function handler(req, res) {
           ? 'no-store, max-age=0'
           : 'public, max-age=30, s-maxage=30, stale-while-revalidate=60'
       );
-      send(res, 200, { events: await loadEvents({ force: fresh }) });
+      send(res, 200, { build: API_BUILD, events: await loadEvents({ force: fresh }) });
       return;
     }
 
