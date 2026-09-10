@@ -1487,12 +1487,18 @@
 
 
 
+    /* object-position only moves an image along the axis where it overflows
+       the frame. A portrait photo in a wide card fills the width exactly, so
+       the X focus did nothing and only up/down panned. Scaling about the focus
+       point instead of the centre makes zoom enlarge around the chosen spot,
+       which is what lets both sliders pan once the image is zoomed at all. */
     .event-hero img,
     .selected-event-image,
     .mini-event img,
     .admin-event-simple img,
     .task-action-head img {
       object-position: var(--image-focus-x, 50%) var(--image-focus-y, 38%);
+      transform-origin: var(--image-focus-x, 50%) var(--image-focus-y, 38%);
       transform: scale(var(--image-scale, 1.01));
     }
 
@@ -1548,6 +1554,7 @@
       height: 100%;
       object-fit: cover;
       object-position: var(--image-focus-x, 50%) var(--image-focus-y, 38%);
+      transform-origin: var(--image-focus-x, 50%) var(--image-focus-y, 38%);
       transform: scale(var(--image-scale, 1.01));
       display: block;
     }
