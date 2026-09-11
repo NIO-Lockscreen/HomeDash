@@ -108,3 +108,98 @@ export function classifyImages({ blobs, referenced, unreferencedSince = {}, now 
 
   return { referenced: referencedCount, protected: protectedPaths, deleteNow, nextSince };
 }
+
+// The physio and the doctor come round again and again, and nobody picks a
+// photo for the twentieth one. So a task whose title names one of these and
+// that arrives without a picture borrows one at random from an older task of
+// the same kind. A task that brings its own image is never touched by any of
+// this: it only ever fills an empty slot.
+export const AUTO_IMAGE_KEYWORDS = Object.freeze(['fysio', 'lege']);
+
+// Words that merely end in one of the keywords without meaning it. Compound
+// matching is what makes "tannlege" and "fysioterapi" work, and these are the
+// words it would otherwise catch by accident.
+const AUTO_IMAGE_FALSE_FRIENDS = new Set(['college', 'colleges', 'privilege', 'privileges', 'allege', 'sacrilege']);
+
+// The picture and its framing travel together. A borrowed image cropped with
+// the new task's defaults would show a different part of the photo than the
+// task it was borrowed from, which is exactly the part somebody once chose.
+const AUTO_IMAGE_FIELDS = Object.freeze([
+  'imageUrl',
+  'imageFocusX',
+  'imageFocusY',
+  'imageFocusSource',
+  'imageZoom',
+  'imageFocusBox',
+  'imageNaturalWidth',
+  'imageNaturalHeight'
+]);
+
+function normalizeTitleWords(title) {
+  return String(title || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/[^a-z0-9æøå]+/)
+    .filter(Boolean);
+}
+
+// 'fysio' | 'lege' | '' - which kind of task this title names. Compounds count
+// at either end ("tannlege", "legetime", "fysioterapeut"), because that is how
+// these are actually written down.
+export function autoImageKeyword(title) {
+  for (const word of normalizeTitleWords(title)) {
+    if (AUTO_IMAGE_FALSE_FRIENDS.has(word)) continue;
+    const keyword = AUTO_IMAGE_KEYWORDS.find(item => word.startsWith(item) || word.endsWith(item));
+    if (keyword) return keyword;
+  }
+  return '';
+}
+
+function borrowableImageFields(event) {
+  const fields = {};
+  for (const key of AUTO_IMAGE_FIELDS) {
+    if (event?.[key] !== undefined && event?.[key] !== null) fields[key] = event[key];
+  }
+  return fields;
+}
+
+// Picks the image a fysio/lege task should borrow, or null when the title is
+// not one of ours, the task already has a picture, or no older task of either
+// kind has one to lend. `random` is injectable so the choice can be tested, and
+// `skipUrls` lets a caller that has just found a picture missing from the store
+// ask again without being handed the same dead link.
+//
+// Returns { keyword, from, image } - `from` is the donor's id, which is stored
+// on the task so a borrowed picture can be told apart from a chosen one.
+export function pickAutoImage({ title, events, excludeId = '', skipUrls = [], random = Math.random } = {}) {
+  const keyword = autoImageKeyword(title);
+  if (!keyword) return null;
+
+  const skip = skipUrls instanceof Set ? skipUrls : new Set(skipUrls);
+  const lenders = (Array.isArray(events) ? events : []).filter(event =>
+    String(event?.id || '') !== String(excludeId || '')
+    && String(event?.imageUrl || '').trim()
+    && !skip.has(String(event?.imageUrl || '').trim())
+    && autoImageKeyword(event?.title)
+  );
+  const sameKind = lenders.filter(event => autoImageKeyword(event.title) === keyword);
+  const chosenBySomebody = event => !String(event?.imageInheritedFrom || '').trim();
+
+  // A photo somebody actually picked for this kind of task first; then any
+  // photo of this kind; then the other kind, so the very first fysio task
+  // still gets a real picture if a lege task has one. Preferring originals
+  // keeps one borrowed picture from spreading across every card.
+  const pool = [
+    sameKind.filter(chosenBySomebody),
+    sameKind,
+    lenders.filter(chosenBySomebody),
+    lenders
+  ].find(list => list.length);
+  if (!pool) return null;
+
+  const roll = Number(random());
+  const index = Number.isFinite(roll) ? Math.min(pool.length - 1, Math.max(0, Math.floor(roll * pool.length))) : 0;
+  const donor = pool[index];
+  return { keyword, from: String(donor.id || ''), image: borrowableImageFields(donor) };
+}

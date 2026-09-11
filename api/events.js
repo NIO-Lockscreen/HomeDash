@@ -7,13 +7,14 @@ import {
   isOrganizerBlobImage,
   isBlobNotFoundError,
   isStaleClientCopy,
-  chooseImageForStaleClient
+  chooseImageForStaleClient,
+  pickAutoImage
 } from './_image-rules.js';
 
 const EVENTS_PATH = 'home-organizer/events.json';
 // Reported on every GET so the live server build can be read straight from
 // /api/events, rather than inferred from whether a save worked.
-const API_BUILD = '2026-09-10-c';
+const API_BUILD = '2026-09-11-a';
 const EVENTS_CACHE_MS = 60 * 1000;
 const MAX_WRITE_ATTEMPTS = 3;
 const VERIFY_RETRY_DELAY_MS = 250;
@@ -212,6 +213,15 @@ function cleanEvent(input, existing = {}, updatedAt = new Date().toISOString()) 
 
   const end = String(input.end || '').trim();
   const imageUrl = String(input.imageUrl || '').trim();
+  // A borrowed fysio/lege picture carries the id of the task it came from, so
+  // a later borrow can prefer a photo somebody actually chose over one that is
+  // already making the rounds. The mark lives and dies with the image it
+  // describes: a task that gets a picture of its own loses it.
+  const imageInheritedFrom = !imageUrl
+    ? ''
+    : imageUrl === String(existing.imageUrl || '')
+      ? String(existing.imageInheritedFrom || input.imageInheritedFrom || '').trim().slice(0, 80)
+      : String(input.imageInheritedFrom || '').trim().slice(0, 80);
   const imageFocusX = cleanPercent(input.imageFocusX, existing.imageFocusX, 50);
   const imageFocusY = cleanPercent(input.imageFocusY, existing.imageFocusY, 38);
   const imageFocusSource = String(input.imageFocusSource || existing.imageFocusSource || 'manual').trim().slice(0, 40);
@@ -239,6 +249,7 @@ function cleanEvent(input, existing = {}, updatedAt = new Date().toISOString()) 
     location: String(input.location || '').trim().slice(0, 90),
     note: String(input.note || '').trim().slice(0, 300),
     imageUrl,
+    imageInheritedFrom,
     imageFocusX,
     imageFocusY,
     imageFocusSource,
@@ -390,6 +401,22 @@ async function resolveImageUrl(inputUrl, existingUrl, options = {}) {
   return '';
 }
 
+// Picks a picture for a fysio/lege task that arrived without one, and only ever
+// returns a link the store really still answers for. Handing a dead link to a
+// new task is precisely how a placeholder spreads from one card to the next.
+// The lookups only happen on the borrow path, which is rare and short.
+async function borrowImageForTitle({ title, events, excludeId }) {
+  const skipUrls = new Set();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const candidate = pickAutoImage({ title, events, excludeId, skipUrls });
+    if (!candidate) return null;
+    const url = String(candidate.image?.imageUrl || '');
+    if (!isOrganizerBlobImage(url) || (await organizerImageMeta(url)).exists) return candidate;
+    skipUrls.add(url);
+  }
+  return null;
+}
+
 // Old images are no longer deleted on the write path. The cron sweeps images
 // that no task has referenced for IMAGE_GRACE_DAYS, so a picture lost to a bad
 // save stays recoverable from the Blob store for that long. This also takes
@@ -422,6 +449,9 @@ export default async function handler(req, res) {
       let previousEvent = null;
       let event = null;
       let created = false;
+      // Picked once, not once per write attempt, so a retry stores the same
+      // picture the first attempt chose instead of rolling the dice again.
+      let autoImage = null;
       // One stamp for the whole request, not one per attempt: every retry then
       // writes a byte-identical event, so a read-back that is one generation
       // behind still confirms the change instead of reporting it as lost.
@@ -435,7 +465,19 @@ export default async function handler(req, res) {
         const imageUrl = await resolveImageUrl(payload.imageUrl, previousEvent?.imageUrl, {
           stale: isStaleClientCopy(payload, previousEvent)
         });
-        event = cleanEvent({ ...payload, imageUrl }, previousEvent || {}, writeStamp);
+        // A fysio or lege task that ends up with no picture borrows one at
+        // random from an older task of the same kind, framing included. This
+        // only ever fills an empty slot: an image the device sent, or one the
+        // task already had, has been decided above and is never overruled here.
+        if (!imageUrl && !autoImage) {
+          autoImage = await borrowImageForTitle({ title: payload.title, events: currentEvents, excludeId: payload.id });
+        }
+        const borrowed = imageUrl ? null : autoImage;
+        event = cleanEvent(
+          { ...payload, imageUrl, ...(borrowed ? { ...borrowed.image, imageInheritedFrom: borrowed.from } : {}) },
+          previousEvent || {},
+          writeStamp
+        );
         const nextEvents = [...currentEvents];
         if (index === -1) nextEvents.push(event);
         else nextEvents[index] = event;
@@ -475,8 +517,11 @@ export default async function handler(req, res) {
       // older picture sent by a stale device) and keep the stored one instead.
       // Say so in the reply, or the phone believes it just changed a picture
       // that it did not.
-      const imageUrlAccepted = String(event.imageUrl || '') === requestedImageUrl;
-      send(res, created ? 201 : 200, { event, events: next, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, requestedImageUrl, imageCleanup: IMAGE_CLEANUP, reminderSync });
+      // A borrowed fysio/lege picture is not a refusal: the device asked for no
+      // image at all, so nothing it sent was overruled.
+      const imageAutoFilled = Boolean(event.imageInheritedFrom) && !requestedImageUrl;
+      const imageUrlAccepted = String(event.imageUrl || '') === requestedImageUrl || imageAutoFilled;
+      send(res, created ? 201 : 200, { event, events: next, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, imageAutoFilled, requestedImageUrl, imageCleanup: IMAGE_CLEANUP, reminderSync });
       return;
     }
 

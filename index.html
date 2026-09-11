@@ -7141,7 +7141,7 @@
       renderEmailContacts([]);
       setEmailReminderOptionsVisible();
       els.saveEventBtn.textContent = 'Save event';
-      els.imageStatus.textContent = 'No image selected. A calm placeholder will be used.';
+      els.imageStatus.textContent = noImageStatusText('');
       setImageResyncVisible(false);
       setStatus('');
       const start = new Date(Date.now() + 60 * 60 * 1000);
@@ -7277,6 +7277,79 @@
         ? `Image optimized to ${formatBytes(uploadFile.size)} and uploaded.`
         : 'Image uploaded.';
       return url;
+    }
+
+    // Mirrors AUTO_IMAGE_KEYWORDS / pickAutoImage in api/_image-rules.js, which
+    // is the rule that actually decides: the server applies it to whatever it
+    // is sent. This copy exists so a fysio or lege task saved on the phone
+    // draws its borrowed picture straight away instead of a placeholder that
+    // swaps out a second later, and so a task saved with no signal still gets
+    // one. Keep the two in step.
+    const AUTO_IMAGE_KEYWORDS = ['fysio', 'lege'];
+    const AUTO_IMAGE_FALSE_FRIENDS = new Set(['college', 'colleges', 'privilege', 'privileges', 'allege', 'sacrilege']);
+
+    function autoImageKeyword(title) {
+      const words = String(title || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .split(/[^a-z0-9æøå]+/)
+        .filter(Boolean);
+      for (const word of words) {
+        if (AUTO_IMAGE_FALSE_FRIENDS.has(word)) continue;
+        const keyword = AUTO_IMAGE_KEYWORDS.find(item => word.startsWith(item) || word.endsWith(item));
+        if (keyword) return keyword;
+      }
+      return '';
+    }
+
+    // The picture a fysio/lege task should borrow, framing included, or null
+    // when the title is not one of ours or no older task of either kind has an
+    // image to lend. A photo somebody actually chose is preferred over one that
+    // was itself borrowed, so a single picture cannot take over every card.
+    function pickAutoImage(title, excludeId = '') {
+      const keyword = autoImageKeyword(title);
+      if (!keyword) return null;
+
+      const lenders = (state.events || []).filter(event =>
+        String(event.id || '') !== String(excludeId || '')
+        && String(event.imageUrl || '').trim()
+        && autoImageKeyword(event.title)
+      );
+      const sameKind = lenders.filter(event => autoImageKeyword(event.title) === keyword);
+      const chosenBySomebody = event => !String(event.imageInheritedFrom || '').trim();
+      const pool = [
+        sameKind.filter(chosenBySomebody),
+        sameKind,
+        lenders.filter(chosenBySomebody),
+        lenders
+      ].find(list => list.length);
+      if (!pool) return null;
+
+      const donor = pool[Math.floor(Math.random() * pool.length)];
+      return {
+        keyword,
+        from: String(donor.id || ''),
+        image: {
+          imageUrl: String(donor.imageUrl || ''),
+          imageFocusX: clampPercent(donor.imageFocusX, 50),
+          imageFocusY: clampPercent(donor.imageFocusY, 38),
+          imageFocusSource: donor.imageFocusSource || 'manual',
+          imageZoom: clampZoom(donor.imageZoom, 1.01),
+          ...focusPayloadExtras(donor)
+        }
+      };
+    }
+
+    // What to say under the image field while no picture is picked. A fysio or
+    // lege task will be handed an old photo on save, so it must not promise a
+    // placeholder.
+    function noImageStatusText(title) {
+      const keyword = autoImageKeyword(title);
+      if (keyword && pickAutoImage(title, els.eventId?.value || '')) {
+        return `No image selected. A photo from an older ${keyword} task will be used automatically.`;
+      }
+      return 'No image selected. A calm placeholder will be used.';
     }
 
     function setImageResyncVisible(visible) {
@@ -7676,7 +7749,11 @@ Cancel = choose whether to delete the whole series.`);
       state.imageFocusToken += 1;
       setManualImageControls(state.pendingImageFocus);
       setManualImagePreviewSource(event.imageUrl || '');
-      els.imageStatus.textContent = event.imageUrl ? 'Current image will be kept unless you upload a new one. Adjust pan/zoom below if needed.' : 'No image selected. A calm placeholder will be used.';
+      els.imageStatus.textContent = event.imageUrl
+        ? event.imageInheritedFrom
+          ? 'Borrowed from an older task with the same kind of title. It is kept unless you upload a photo. Adjust pan/zoom below if needed.'
+          : 'Current image will be kept unless you upload a new one. Adjust pan/zoom below if needed.'
+        : noImageStatusText(event.title);
       setImageResyncVisible(true);
       els.saveEventBtn.textContent = 'Update event';
       if (els.eventEditorTitle) els.eventEditorTitle.textContent = 'Edit task/event';
@@ -7957,7 +8034,7 @@ Cancel = choose whether to delete the whole series.`);
             els.imageStatus.textContent = 'Current image kept. Manual pan/zoom controls are open below.';
           } else {
             clearManualImagePreview();
-            els.imageStatus.textContent = 'No image selected. A calm placeholder will be used.';
+            els.imageStatus.textContent = noImageStatusText(els.titleInput?.value);
           }
           return;
         }
@@ -7968,7 +8045,12 @@ Cancel = choose whether to delete the whole series.`);
       [els.imageFocusXInput, els.imageFocusYInput, els.imageZoomInput].forEach(input => {
         input?.addEventListener('input', renderManualImagePreview);
       });
-      els.titleInput?.addEventListener('input', renderManualImagePreview);
+      els.titleInput?.addEventListener('input', () => {
+        renderManualImagePreview();
+        if (!els.imageInput.files?.[0] && !els.imageUrlInput.value) {
+          els.imageStatus.textContent = noImageStatusText(els.titleInput.value);
+        }
+      });
       els.imageCenterBtn?.addEventListener('click', () => {
         setManualImageControls({ imageFocusX: 50, imageFocusY: 50, imageZoom: 1.01 });
       });
@@ -8005,6 +8087,11 @@ Cancel = choose whether to delete the whole series.`);
             localStorage.setItem('homeOrganizerAdminPin', els.pinInput.value.trim());
           }
           const imageUrl = await uploadImageIfNeeded();
+          // A fysio or lege task saved without a picture borrows one from an
+          // older task of the same kind. The server decides this too, for
+          // whatever any device sends it; picking here as well means this
+          // device never draws the card with a placeholder first.
+          const borrowed = imageUrl ? null : pickAutoImage(els.titleInput.value, els.eventId.value);
           const payload = {
             id: els.eventId.value || undefined,
             // Tells the server whether this copy is behind another device's
@@ -8020,11 +8107,17 @@ Cancel = choose whether to delete the whole series.`);
             imageUrl,
             emailReminder: collectEmailReminderPayload(),
             ...currentImageFocusPayload(),
+            // The borrowed picture brings the framing it was cropped with, so
+            // it lands last: the pan/zoom defaults above are about an image
+            // this task does not have.
+            ...(borrowed ? { ...borrowed.image, imageInheritedFrom: borrowed.from } : {}),
             featured: els.featuredInput.checked
           };
           const saved = await saveEvent(payload);
           resetForm();
-          setStatus('Saved instantly on this device. Syncing to the server in the background.');
+          setStatus(borrowed
+            ? `Saved instantly on this device, with a photo from an older ${borrowed.keyword} task. Syncing to the server in the background.`
+            : 'Saved instantly on this device. Syncing to the server in the background.');
           closeEventEditor({ reset: false });
           closeAdminTaskActions();
           renderAdminEvents();

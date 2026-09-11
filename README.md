@@ -118,6 +118,40 @@ If the stored image cannot be downloaded at all — it was deleted from Blob
 storage — the button says so. Pick the photo again in the file field and resync;
 that path does not depend on the dead link.
 
+## Fysio and lege tasks borrow an old photo
+
+The physio and the doctor come round again and again, and nobody wants to pick a
+photo for the twentieth one. So a task whose title names one of these and that is
+saved **without** an image is given a random picture from an older task of the
+same kind, instead of the calm placeholder.
+
+- **Which titles count:** any title containing `fysio` or `lege`, case and accent
+  insensitive. Compounds count at either end, because that is how these are
+  written down: `Fysioterapi`, `Fysioterapeut`, `Tannlege`, `Legetime`,
+  `Legevakt`. A word that only happens to end in the keyword (`college`,
+  `privilege`) does not.
+- **A picture you pick always wins.** The borrow only ever fills an empty slot;
+  nothing decided by the upload, by the task's stored image, or by the
+  stale-device rules is overruled by it.
+- **Which photo:** a random one from the same kind, preferring a photo somebody
+  actually chose over one that was itself borrowed, so a single picture cannot
+  take over every card. If that kind has none, it borrows from the other kind, so
+  the first ever fysio task can still use a lege photo.
+- **The framing travels with it.** Pan, zoom and the focus box come from the task
+  the photo was borrowed from, which is the framing somebody once chose for that
+  picture.
+- **Only live links.** The picture is checked against Blob storage before it is
+  handed on, so a task never inherits a dead link.
+- The borrowed picture is stored on the task like any other image, so it stays
+  put on later saves. Upload a photo for the task and the borrowed one is
+  replaced. The editor says which is which under the image field.
+
+The rule lives in `api/_image-rules.js` (`autoImageKeyword`, `pickAutoImage`) and
+is applied by `api/events.js` to whatever any device sends. The admin page holds a
+copy of the same rule so a task saved on the phone draws its borrowed picture
+straight away rather than a placeholder that swaps out a second later, and so a
+task saved with no signal still gets one. Keep the two in step.
+
 ## Face-aware image cropping
 
 When you upload a task image, the admin page tries to detect faces in the browser and saves a simple focus point with the event. The dashboard then uses that focus point for daily, selected, upcoming, and admin thumbnails so faces are less likely to be cropped out.
