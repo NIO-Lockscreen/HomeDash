@@ -39,7 +39,7 @@ https://your-project.vercel.app/?admin=1
 
 When you create, edit, complete, or delete a task from the phone, the app first stores the change on the phone in a pending queue. It then sends the change to Vercel. If Vercel is busy or the network fails, the task stays in the local queue and the app retries automatically every 15 seconds and whenever the phone comes back online.
 
-Open the hidden config menu by holding anywhere on the dashboard/admin screen. It shows the number of pending saves and has a retry button. It also reports tasks that are drawn on this device but that the server has not confirmed yet, so a task can no longer look saved while it is missing everywhere else.
+Open the hidden config menu by holding anywhere on the dashboard/admin screen. It shows the number of pending saves and has a retry button. It also reports tasks that are drawn on this device but that the server has not confirmed yet, so a task can no longer look saved while it is missing everywhere else. It names the app version this page is running and, when they differ, the version the server answered with — a page can sit open on the wall for days after a deploy, and "it is not doing the new thing" is usually just an old page. Reload it. If the server refused a new picture, that is reported there too, with the task it belongs to.
 
 ## How concurrent saves are kept safe
 
@@ -47,18 +47,39 @@ All tasks live in one shared `events.json` in Vercel Blob, so every save is a
 read-modify-write of the whole file. Three things keep two devices saving at
 once from erasing each other:
 
-- **Reads are cache-busted.** The Blob URL is CDN-backed and the path is reused
-  on every overwrite, so the edge can replay an older copy of `events.json`.
-  `cache: 'no-store'` does not reach that layer, so every read appends a unique
-  query string. Without this, a save that landed seconds earlier could be read
-  back as missing and then written away.
-- **Writes are verified.** After each write the file is read back. If the change
-  did not survive, it is re-applied on top of whatever is there now, up to three
-  times. A write that still cannot be confirmed answers `503`, which keeps the
-  change in the phone's queue instead of dropping it.
+- **Reads are cache-busted, and then checked.** The Blob URL is CDN-backed and
+  the path is reused on every overwrite, so the edge can replay an older copy of
+  `events.json` — a unique query string per read usually defeats that, but not
+  always. So every read is also compared against `head()`, which answers from
+  the Blob API rather than the CDN and carries the authoritative byte length. A
+  body whose length does not match is a replay, and the read is taken again.
+- **A write is never built on a replayed copy.** If a read cannot be confirmed
+  as current, the save answers `503` instead of rewriting the whole file from an
+  old snapshot. That one rule prevents the worst failure this app can have:
+  rewriting `events.json` without the tasks and pictures added since the copy
+  was made — and it also stops a `404 Event not found` for a task that plainly
+  exists, which the phone would treat as permanent and drop the edit.
+- **Writes are confirmed against the store, not against a cached read.** After
+  each write, `head()` is asked whether the stored file is the exact byte length
+  just written. If it is, the write is done — no CDN read involved. Otherwise the
+  document is read back, and the answer is one of three, each handled
+  differently:
+  - the change is there → done;
+  - a **newer** document is stored without the change → another device really did
+    overwrite it, so the change is re-applied on top of the winner, up to three
+    times;
+  - every read still answers with a copy **older** than the write → nothing has
+    replaced it and only the reading side is behind. The write stands. This used
+    to answer `503 "another device saved at the same time"` for a change the
+    server had in fact stored, which left it queued on the phone forever, and
+    every later change stuck in the queue behind it.
 - **A failed read never becomes a write.** Blob trouble answers `5xx` rather
   than overwriting the file with a guess, and only genuine validation problems
   (missing title or start) answer `4xx`.
+- **One stuck change does not hold up the others.** When the server refuses a
+  change, the phone keeps it queued and moves on to the other tasks in the
+  queue; only further saves of that same task wait for it. A genuine network
+  failure still stops the pass, since nothing else would get through either.
 
 If a task still goes missing from the server shortly after it was accepted, the
 device that created it notices on its next fresh read and sends it once more.

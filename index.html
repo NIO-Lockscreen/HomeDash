@@ -3920,7 +3920,7 @@
     // build the same way, so a device running stale cached JavaScript, or a
     // deploy that never landed, can be told apart from a real sync fault
     // instead of being guessed at.
-    const APP_BUILD = '2026-09-10-c';
+    const APP_BUILD = '2026-09-12-a';
     // Blob-efficient sync: no polling loop. Load fresh events on page boot,
     // once per hour during daytime, on deliberate interaction, or when needed for a write/retry.
     const INTERACTION_FETCH_DEBOUNCE_MS = 800;
@@ -4008,6 +4008,8 @@
       imagePreviewObjectUrl: null,
       lastReminderSync: null,
       lastWriteError: null,
+      lastImageRefusal: null,
+      serverBuild: '',
       reminderMenuExpanded: localStorage.getItem('homeOrganizerReminderMenuExpanded') === '1'
     };
 
@@ -5946,8 +5948,17 @@
           changed = true;
           return;
         }
-        // Present but different: another device edited it and the server wins.
-        if (serverEvent) return;
+        // Present but different: another device edited it, or the server
+        // changed something this device sent (an image link it refused, a
+        // picture it filled in). The server wins — and the entry has to go with
+        // it, or applyPendingOps keeps drawing this device's copy on top of the
+        // server's for a whole day. That is how one screen ends up showing a
+        // picture that no other screen has.
+        if (serverEvent) {
+          delete mirror[id];
+          changed = true;
+          return;
+        }
 
         const resendCount = Number(value.resendCount || 0);
         if (now - acceptedAtMs <= LOCAL_EVENT_MIRROR_RESEND_WINDOW_MS && resendCount < LOCAL_EVENT_MIRROR_MAX_RESENDS) {
@@ -6071,6 +6082,40 @@
       };
     }
 
+    // Which build actually answered. A page can sit open on the wall for days
+    // after a deploy, so "it is not doing the new thing" is often just an old
+    // page talking to a new server. Say so instead of leaving it to be guessed.
+    function rememberServerBuild(build) {
+      const text = String(build || '').trim();
+      if (text) state.serverBuild = text;
+    }
+
+    // The server can refuse an image link: the picture is gone from Blob
+    // storage, or a newer one from another device wins. It says so in the
+    // reply, and that used to go nowhere — this device kept drawing the
+    // picture it had just sent while every other screen showed something else.
+    function noteImageRefusal(data, op) {
+      if (data?.imageUrlAccepted !== false) {
+        state.lastImageRefusal = null;
+        return;
+      }
+      if (!String(op?.event?.imageUrl || '').trim()) return;
+      state.lastImageRefusal = {
+        title: String(op?.event?.title || ''),
+        at: new Date().toISOString()
+      };
+      setStatus(`The server did not keep the new image for “${state.lastImageRefusal.title}”. It kept the picture it already had — open the task and use Resync image.`, true);
+    }
+
+    function describeImageRefusal() {
+      const refusal = state.lastImageRefusal;
+      if (!refusal) return '';
+      const when = new Date(refusal.at);
+      const clock = Number.isNaN(when.getTime()) ? '' : ` at ${formatTime(when, false)}`;
+      const what = refusal.title ? ` for “${refusal.title}”` : '';
+      return `The server refused the new image${what}${clock} and kept the one it already had. Open the task and use Resync image.`;
+    }
+
     function describeWriteError() {
       const failure = state.lastWriteError;
       if (!failure) return '';
@@ -6165,10 +6210,20 @@
           blockedByRetryableError = false;
           const queueBefore = queue.length;
 
+          // One change the server keeps refusing must not hold every later
+          // change hostage: an image swapped on another task would sit in the
+          // queue behind it and never reach the wall display. Only the task
+          // the failure belongs to waits, so its own saves stay in order.
+          const blockedEventIds = new Set();
+
           for (const op of queue) {
+            const opEventId = String(op.event?.id || op.id || '');
+            if (opEventId && blockedEventIds.has(opEventId)) continue;
             try {
               const data = await performServerWrite(op);
               state.lastWriteError = null;
+              rememberServerBuild(data.build);
+              noteImageRefusal(data, op);
               if (data.reminderSync) state.lastReminderSync = data.reminderSync;
               if (op.event && data.event && String(data.event.id) === String(op.event.id)) {
                 rememberLocalEvent(data.event, op.opId, op.method, { serverAccepted: true });
@@ -6210,7 +6265,15 @@
                   ? `Server error ${error.status}: ${error.message} Saved on this device and will retry.`
                   : 'Server is busy/offline. Saved on this device and will retry automatically.', true);
               }
-              break;
+              // No status at all means the network is down, so every other op
+              // would fail the same way: stop the pass. A server that answered
+              // refused this one change, so keep going with the other tasks and
+              // let this one retry on the next pass.
+              if (!error.status) break;
+              if (options.targetOpId && options.targetOpId === op.opId) break;
+              if (opEventId) blockedEventIds.add(opEventId);
+              else break;
+              continue;
             }
           }
 
@@ -6245,6 +6308,7 @@
         const response = await fetch(url, { cache: options.force ? 'no-store' : 'default' });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Could not load events.');
+        rememberServerBuild(data.build);
         state.serverEvents = Array.isArray(data.events) ? data.events : [];
         state.serverEventsFresh = true;
         rememberCachedEvents(state.serverEvents);
@@ -6925,7 +6989,11 @@
       }
       const failure = describeWriteError();
       if (failure) parts.push(failure);
-      parts.push(`App version ${APP_BUILD}.`);
+      const refusal = describeImageRefusal();
+      if (refusal) parts.push(refusal);
+      parts.push(state.serverBuild && state.serverBuild !== APP_BUILD
+        ? `App version ${APP_BUILD}, server ${state.serverBuild} — this page is out of date, reload it.`
+        : `App version ${APP_BUILD}.`);
       els.localQueueStatus.textContent = parts.join(' ');
     }
 

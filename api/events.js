@@ -14,10 +14,16 @@ import {
 const EVENTS_PATH = 'home-organizer/events.json';
 // Reported on every GET so the live server build can be read straight from
 // /api/events, rather than inferred from whether a save worked.
-const API_BUILD = '2026-09-11-a';
+const API_BUILD = '2026-09-12-a';
 const EVENTS_CACHE_MS = 60 * 1000;
 const MAX_WRITE_ATTEMPTS = 3;
+const MAX_READ_ATTEMPTS = 3;
+const MAX_VERIFY_READS = 3;
 const VERIFY_RETRY_DELAY_MS = 250;
+// The function itself is cut off at 10 seconds (vercel.json), and a reply that
+// never arrives is worse than one that says the store has not caught up: stop
+// confirming in time to answer.
+const WRITE_BUDGET_MS = 7000;
 let eventsCache = null;
 let eventsCacheAt = 0;
 // Serializes mutations that land on the same warm instance so they cannot
@@ -275,19 +281,66 @@ function sortEvents(events) {
 // edge can still replay a previous version of events.json. `cache: 'no-store'`
 // only governs this process's own fetch cache, not that CDN, so every read has
 // to bust it with a unique query string (same trick as _reminders.js).
-async function readEventsFromBlob() {
+// Reads the document and says whether it is really the current version. head()
+// comes from the Blob API and carries the authoritative byte length; the
+// contents come from the CDN, which can still hand back the copy from before
+// the last write even with a unique query string on the URL. When the two
+// disagree the CDN is replaying an older version, and `fresh` says so.
+//
+// This matters most on the write path. A save that builds on a replayed copy
+// does not merely miss a task: it writes the whole document back without the
+// tasks that were added since, and answers 404 for a task that plainly exists.
+async function readEventsDocument() {
   let meta;
-  try {
-    meta = await head(EVENTS_PATH);
-  } catch (error) {
-    if (isBlobNotFoundError(error)) return [];
-    throw error;
+  let text = '';
+  let fresh = false;
+
+  for (let attempt = 1; attempt <= MAX_READ_ATTEMPTS; attempt += 1) {
+    try {
+      meta = await head(EVENTS_PATH);
+    } catch (error) {
+      if (isBlobNotFoundError(error)) return { updatedAt: '', events: [], fresh: true };
+      throw error;
+    }
+    const bust = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
+    const response = await fetch(`${meta.url}?v=${bust}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Could not read events.json from Blob (${response.status}).`);
+    text = await response.text();
+    fresh = Buffer.byteLength(text, 'utf8') === Number(meta.size);
+    if (fresh) break;
+    console.warn(`events.json came back as an older copy than the store holds; re-reading (attempt ${attempt}/${MAX_READ_ATTEMPTS}).`);
+    if (attempt < MAX_READ_ATTEMPTS) await sleep(VERIFY_RETRY_DELAY_MS * attempt);
   }
-  const bust = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
-  const response = await fetch(`${meta.url}?v=${bust}`, { cache: 'no-store' });
-  if (!response.ok) throw new Error(`Could not read events.json from Blob (${response.status}).`);
-  const parsed = await response.json();
-  return Array.isArray(parsed?.events) ? parsed.events : [];
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error('events.json from Blob could not be read as JSON.');
+  }
+  // The document's own stamp is what tells a read that has not caught up yet
+  // (an older copy) apart from another device's newer write.
+  return {
+    updatedAt: String(parsed?.updatedAt || ''),
+    events: Array.isArray(parsed?.events) ? parsed.events : [],
+    fresh
+  };
+}
+
+// The base a mutation is built on must be the current document. Rewriting the
+// whole file from a replayed copy is how tasks and pictures disappear, so a
+// read that cannot be confirmed stops the write instead. 503 keeps the change
+// queued on the device, which then retries it.
+async function readEventsForWrite() {
+  const document = await readEventsDocument();
+  if (!document.fresh) {
+    throw httpError(503, 'The store is still answering with an older copy of the task list, so this change was not applied. It stays queued on this device and will retry.');
+  }
+  return document.events;
+}
+
+async function readEventsFromBlob() {
+  return (await readEventsDocument()).events;
 }
 
 async function loadEvents(options = {}) {
@@ -298,7 +351,10 @@ async function loadEvents(options = {}) {
   }
 
   try {
-    return rememberEventsCache(await readEventsFromBlob());
+    const document = await readEventsDocument();
+    // A copy the store could not confirm as current is still worth answering
+    // with, but it must not become this instance's truth for the next minute.
+    return document.fresh ? rememberEventsCache(document.events) : sortEvents(document.events);
   } catch (error) {
     console.warn('Serving cached events after a Blob read failure:', error);
     return Array.isArray(eventsCache) ? eventsCache : [];
@@ -311,22 +367,76 @@ function rememberEventsCache(events) {
   return eventsCache;
 }
 
+// Returns what was written - the document stamp and its exact byte length -
+// so the write can be confirmed against the store's own metadata afterwards.
 async function saveEvents(events) {
   const sorted = sortEvents(events);
-  await put(EVENTS_PATH, JSON.stringify({ updatedAt: new Date().toISOString(), events: sorted }, null, 2), {
+  const stamp = new Date().toISOString();
+  const body = JSON.stringify({ updatedAt: stamp, events: sorted }, null, 2);
+  await put(EVENTS_PATH, body, {
     access: 'public',
     allowOverwrite: true,
     contentType: 'application/json; charset=utf-8',
     cacheControlMaxAge: 0
   });
   rememberEventsCache(sorted);
+  return { stamp, bytes: Buffer.byteLength(body, 'utf8'), events: sorted };
+}
+
+// Does the store hold the bytes we just wrote? head() answers from the Blob
+// API, not from the CDN that serves the file's contents, so unlike a read of
+// the document itself it can never be a cached replay of an older version. A
+// byte length equal to what we wrote means our document is the one in the
+// store - or a byte-identical one from another device, which says the same
+// thing about our change.
+async function writtenDocumentIsStored(written) {
+  try {
+    const meta = await head(EVENTS_PATH);
+    return Number(meta?.size) === written.bytes;
+  } catch (error) {
+    // Metadata we could not read proves nothing either way; the content
+    // read-back below decides.
+    if (!isBlobNotFoundError(error)) console.warn('Could not read events.json metadata after writing:', error);
+    return false;
+  }
+}
+
+// Was the write kept? Three answers, and they need opposite handling:
+//
+//   'stored'  - the store holds our document, or a document carrying our
+//               change. Done.
+//   'lagging' - the put succeeded and every read still answers with a copy
+//               OLDER than the one we just wrote. Nothing has replaced our
+//               write; a read is simply behind. Writing again cannot fix a
+//               read, and this is what used to be reported to the phone as
+//               "another device saved at the same time", leaving a change
+//               queued forever that the server had in fact stored.
+//   'lost'    - a document NEWER than ours is stored and it does not carry
+//               our change. Another device really did overwrite us, and the
+//               change has to be re-applied onto the winner's snapshot.
+async function confirmWrite(written, verify, deadline) {
+  for (let attempt = 1; attempt <= MAX_VERIFY_READS; attempt += 1) {
+    if (await writtenDocumentIsStored(written)) return { status: 'stored', events: written.events };
+
+    const saved = await readEventsDocument();
+    if (typeof verify !== 'function' || verify(saved.events)) {
+      // Return what the store holds so the reply carries any concurrent change
+      // from another device too.
+      return { status: 'stored', events: saved.events };
+    }
+    if (saved.updatedAt && saved.updatedAt >= written.stamp) return { status: 'lost', events: saved.events };
+    if (Date.now() >= deadline) break;
+    if (attempt < MAX_VERIFY_READS) await sleep(VERIFY_RETRY_DELAY_MS * attempt);
+  }
+  // Only ever saw copies older than our own write, so nothing has replaced it.
+  return { status: 'lagging', events: written.events };
 }
 
 // Every write is a read-modify-write over one shared document, so two devices
 // saving at once race: the slower one bases its copy on a snapshot taken before
 // the faster one landed and puts it back, silently erasing the other device's
-// task. Guard that by reading the file back after each put and re-applying the
-// change onto the winner's snapshot when ours did not survive.
+// task. Guard that by confirming each put and re-applying the change onto the
+// winner's snapshot when ours did not survive.
 //
 // `apply` receives the freshest snapshot and returns { events, verify }, where
 // verify(savedEvents) reports whether this change is present in what the store
@@ -334,24 +444,27 @@ async function saveEvents(events) {
 async function mutateEvents(apply) {
   const run = async () => {
     let outcome = null;
+    const deadline = Date.now() + WRITE_BUDGET_MS;
     for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
-      const current = await readEventsFromBlob();
+      const current = await readEventsForWrite();
       const { events, verify } = await apply(current, attempt);
-      const next = sortEvents(events);
-      await saveEvents(next);
-      outcome = { events: next, verified: false };
+      const written = await saveEvents(events);
+      outcome = { events: written.events, verified: false };
 
-      const saved = await readEventsFromBlob();
-      if (typeof verify !== 'function' || verify(saved)) {
-        // Return what the store actually holds so the reply carries any
-        // concurrent change from another device too.
-        return { events: rememberEventsCache(saved), verified: true };
+      const confirmation = await confirmWrite(written, verify, deadline);
+      if (confirmation.status === 'stored') {
+        return { events: rememberEventsCache(confirmation.events), verified: true };
       }
-      console.warn(`events.json read back without this change; retrying (attempt ${attempt}/${MAX_WRITE_ATTEMPTS}).`);
-      // A read-back can also lag the write it is checking, in which case the
-      // put was fine and only the confirmation was early. Give the store a
-      // moment before the next attempt rather than immediately rewriting.
-      // This costs nothing on the happy path, which returns above.
+      if (confirmation.status === 'lagging') {
+        // The put succeeded, nothing newer has replaced it, and only the
+        // reading side is behind. Rewriting would put the same bytes back and
+        // ask the same question again; telling the device to retry would have
+        // it do that every 15 seconds forever. Report it as written.
+        console.warn('events.json was written but the read-back is still behind; accepting the write.');
+        return { events: rememberEventsCache(written.events), verified: true, lagging: true };
+      }
+      console.warn(`events.json was overwritten by another write; re-applying (attempt ${attempt}/${MAX_WRITE_ATTEMPTS}).`);
+      if (Date.now() >= deadline) break;
       if (attempt < MAX_WRITE_ATTEMPTS) await sleep(VERIFY_RETRY_DELAY_MS * attempt);
     }
     return outcome || { events: [], verified: false };
@@ -362,8 +475,22 @@ async function mutateEvents(apply) {
   return queued;
 }
 
+// Is this change present in what the store kept? Two tabs of the same phone can
+// send the same queued change twice; each request stamps it with its own
+// `updatedAt`, so the copy that is stored can be the same change under a
+// different stamp. Re-writing over that only starts the race again, so compare
+// the content too.
+function sameEventContent(a, b) {
+  const withoutStamp = event => {
+    const { updatedAt, ...rest } = event || {};
+    return JSON.stringify(rest);
+  };
+  return withoutStamp(a) === withoutStamp(b);
+}
+
 function eventSurvived(savedEvents, event) {
-  return (savedEvents || []).some(item => String(item.id) === String(event.id) && item.updatedAt === event.updatedAt);
+  return (savedEvents || []).some(item => String(item.id) === String(event.id)
+    && (item.updatedAt === event.updatedAt || sameEventContent(item, event)));
 }
 
 // 503 keeps the change in the phone's pending queue so it retries, instead of
@@ -521,7 +648,7 @@ export default async function handler(req, res) {
       // image at all, so nothing it sent was overruled.
       const imageAutoFilled = Boolean(event.imageInheritedFrom) && !requestedImageUrl;
       const imageUrlAccepted = String(event.imageUrl || '') === requestedImageUrl || imageAutoFilled;
-      send(res, created ? 201 : 200, { event, events: next, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, imageAutoFilled, requestedImageUrl, imageCleanup: IMAGE_CLEANUP, reminderSync });
+      send(res, created ? 201 : 200, { build: API_BUILD, event, events: next, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, imageAutoFilled, requestedImageUrl, imageCleanup: IMAGE_CLEANUP, reminderSync });
       return;
     }
 
