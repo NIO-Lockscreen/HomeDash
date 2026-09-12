@@ -14,7 +14,7 @@ import {
 const EVENTS_PATH = 'home-organizer/events.json';
 // Reported on every GET so the live server build can be read straight from
 // /api/events, rather than inferred from whether a save worked.
-const API_BUILD = '2026-09-12-a';
+const API_BUILD = '2026-09-12-b';
 const EVENTS_CACHE_MS = 60 * 1000;
 const MAX_WRITE_ATTEMPTS = 3;
 const MAX_READ_ATTEMPTS = 3;
@@ -495,8 +495,16 @@ function eventSurvived(savedEvents, event) {
 
 // 503 keeps the change in the phone's pending queue so it retries, instead of
 // the client dropping it as a permanent failure.
+//
+// It says what the server saw, not what it guesses that means. All it really
+// knows is that the stored task list kept coming back carrying somebody else's
+// newer write instead of this one; whether that was another device, another tab
+// of the same one, or the store itself is not something it can tell. It used to
+// state flatly that another device had saved at the same time, which was
+// routinely untrue and sent the one person looking for the fault to look for a
+// second device that was never there.
 function sendUnverified(res) {
-  send(res, 503, { error: 'Another device saved at the same time and the change could not be confirmed. It stays queued on this device and will retry.' });
+  send(res, 503, { error: 'The task list kept coming back with a newer write than this one, so the change could not be confirmed. It stays queued on this device and will retry.' });
 }
 
 // Two devices can edit the same event. Device A replaces the image; device B,
