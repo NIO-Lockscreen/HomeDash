@@ -154,10 +154,22 @@ same kind, instead of the calm placeholder.
 - **A picture you pick always wins.** The borrow only ever fills an empty slot;
   nothing decided by the upload, by the task's stored image, or by the
   stale-device rules is overruled by it.
-- **Which photo:** a random one from the same kind, preferring a photo somebody
-  actually chose over one that was itself borrowed, so a single picture cannot
-  take over every card. If that kind has none, it borrows from the other kind, so
-  the first ever fysio task can still use a lege photo.
+- **Which photo:** a random one **of the same kind, and only that kind** — fysio
+  borrows fysio photos, lege borrows lege photos. A kind with no photo of its own
+  yet shows the placeholder and waits, rather than showing the other kind's. A
+  photo somebody actually chose is preferred over one that was itself borrowed,
+  so a single picture cannot take over every card.
+- **A picture's kind is its own, not its holder's.** What counts is the kind the
+  photo was chosen for, recorded on the task as `imageInheritedKind` when it is
+  borrowed. A fysio task holding a lege photo therefore cannot lend it on as a
+  fysio photo, and saving such a task hands the photo back: the slot is filled
+  again with one of the right kind, or with the placeholder. Only a photo that
+  can be *shown* to be of the other kind goes — one nobody chose, whose origin is
+  still on record. A photo you picked yourself is never touched.
+- Pictures borrowed before this rule existed carry no recorded kind, so their
+  origin is traced through `imageInheritedFrom` instead. Once the task a photo
+  came from is deleted, such a photo can no longer be proved to be of either
+  kind: it stays on the task holding it, but is not lent on again.
 - **The framing travels with it.** Pan, zoom and the focus box come from the task
   the photo was borrowed from, which is the framing somebody once chose for that
   picture.
@@ -167,7 +179,8 @@ same kind, instead of the calm placeholder.
   put on later saves. Upload a photo for the task and the borrowed one is
   replaced. The editor says which is which under the image field.
 
-The rule lives in `api/_image-rules.js` (`autoImageKeyword`, `pickAutoImage`) and
+The rule lives in `api/_image-rules.js` (`autoImageKeyword`, `heldImageKeyword`,
+`isBorrowedFromOtherKind`, `pickAutoImage`) and
 is applied by `api/events.js` to whatever any device sends. The admin page holds a
 copy of the same rule so a task saved on the phone draws its borrowed picture
 straight away rather than a placeholder that swaps out a second later, and so a

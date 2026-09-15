@@ -164,11 +164,75 @@ function borrowableImageFields(event) {
   return fields;
 }
 
+// The kind of picture a task is holding, which is not always the kind its own
+// title names: a borrowed picture keeps the kind of the task it was chosen
+// for. Following `imageInheritedFrom` home is what stops a lege photo that
+// once landed on a fysio card from being lent on again as a fysio photo.
+//
+// '' means the provenance cannot be established: an old borrow, from before
+// the kind was recorded, whose donor is gone or has moved on to another
+// picture. Unknown is not the same as wrong - such a picture is never lent on,
+// but it is never taken off the task that holds it either.
+export function heldImageKeyword(event, eventsById) {
+  const byId = eventsById instanceof Map ? eventsById : indexEventsById(eventsById);
+  const seen = new Set();
+  let current = event;
+  while (current) {
+    const from = String(current.imageInheritedFrom || '').trim();
+    if (!from) return autoImageKeyword(current.title);
+    // Every borrow writes down the kind it is carrying, so the answer survives
+    // the task it came from being deleted.
+    const recorded = cleanAutoImageKeyword(current.imageInheritedKind);
+    if (recorded) return recorded;
+    // Borrowed before the kind was written down: walk it home instead. The
+    // donor must still be holding the very same picture, or the trail says
+    // nothing about the one in hand.
+    const id = String(current.id || '');
+    if (seen.has(id)) return '';
+    seen.add(id);
+    const donor = byId.get(from);
+    if (!donor || String(donor.imageUrl || '').trim() !== String(current.imageUrl || '').trim()) return '';
+    current = donor;
+  }
+  return '';
+}
+
+// 'fysio' | 'lege' | '' - for the kind stored on a task alongside a borrowed
+// picture, which arrives from a device like any other field.
+export function cleanAutoImageKeyword(value) {
+  const text = String(value || '').trim().toLowerCase();
+  return AUTO_IMAGE_KEYWORDS.includes(text) ? text : '';
+}
+
+export function indexEventsById(events) {
+  const byId = new Map();
+  for (const event of Array.isArray(events) ? events : []) {
+    const id = String(event?.id || '');
+    if (id) byId.set(id, event);
+  }
+  return byId;
+}
+
+// A picture borrowed under the older rule, which let a lege photo land on a
+// fysio card when that kind had none of its own. Nobody chose it, so it is not
+// this task's picture in any meaningful sense: the slot counts as empty again
+// and the ordinary borrow fills it with the right kind. Only a borrow that can
+// be shown to be of the other kind is dropped - a picture whose origin can no
+// longer be traced stays put.
+export function isBorrowedFromOtherKind(event, events) {
+  if (!String(event?.imageUrl || '').trim()) return false;
+  if (!String(event?.imageInheritedFrom || '').trim()) return false;
+  const keyword = autoImageKeyword(event?.title);
+  if (!keyword) return false;
+  const held = heldImageKeyword(event, events);
+  return Boolean(held) && held !== keyword;
+}
+
 // Picks the image a fysio/lege task should borrow, or null when the title is
-// not one of ours, the task already has a picture, or no older task of either
-// kind has one to lend. `random` is injectable so the choice can be tested, and
-// `skipUrls` lets a caller that has just found a picture missing from the store
-// ask again without being handed the same dead link.
+// not one of ours, the task already has a picture, or no older task of the
+// same kind has one to lend. `random` is injectable so the choice can be
+// tested, and `skipUrls` lets a caller that has just found a picture missing
+// from the store ask again without being handed the same dead link.
 //
 // Returns { keyword, from, image } - `from` is the donor's id, which is stored
 // on the task so a borrowed picture can be told apart from a chosen one.
@@ -177,25 +241,23 @@ export function pickAutoImage({ title, events, excludeId = '', skipUrls = [], ra
   if (!keyword) return null;
 
   const skip = skipUrls instanceof Set ? skipUrls : new Set(skipUrls);
+  const byId = indexEventsById(events);
+  // Only pictures of this very kind: a fysio task borrows from fysio, a lege
+  // task from lege, and a kind with no picture of its own waits for one rather
+  // than showing the other kind's. What decides is the picture's own kind, not
+  // the title of whoever happens to be holding it.
   const lenders = (Array.isArray(events) ? events : []).filter(event =>
     String(event?.id || '') !== String(excludeId || '')
     && String(event?.imageUrl || '').trim()
     && !skip.has(String(event?.imageUrl || '').trim())
-    && autoImageKeyword(event?.title)
+    && heldImageKeyword(event, byId) === keyword
   );
-  const sameKind = lenders.filter(event => autoImageKeyword(event.title) === keyword);
   const chosenBySomebody = event => !String(event?.imageInheritedFrom || '').trim();
 
-  // A photo somebody actually picked for this kind of task first; then any
-  // photo of this kind; then the other kind, so the very first fysio task
-  // still gets a real picture if a lege task has one. Preferring originals
-  // keeps one borrowed picture from spreading across every card.
-  const pool = [
-    sameKind.filter(chosenBySomebody),
-    sameKind,
-    lenders.filter(chosenBySomebody),
-    lenders
-  ].find(list => list.length);
+  // A photo somebody actually picked for this kind of task first, then one
+  // that was itself borrowed. Preferring originals keeps a single borrowed
+  // picture from spreading across every card.
+  const pool = [lenders.filter(chosenBySomebody), lenders].find(list => list.length);
   if (!pool) return null;
 
   const roll = Number(random());

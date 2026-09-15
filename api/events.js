@@ -8,13 +8,15 @@ import {
   isBlobNotFoundError,
   isStaleClientCopy,
   chooseImageForStaleClient,
-  pickAutoImage
+  pickAutoImage,
+  isBorrowedFromOtherKind,
+  cleanAutoImageKeyword
 } from './_image-rules.js';
 
 const EVENTS_PATH = 'home-organizer/events.json';
 // Reported on every GET so the live server build can be read straight from
 // /api/events, rather than inferred from whether a save worked.
-const API_BUILD = '2026-09-12-b';
+const API_BUILD = '2026-09-15-a';
 const EVENTS_CACHE_MS = 60 * 1000;
 const MAX_WRITE_ATTEMPTS = 3;
 const MAX_READ_ATTEMPTS = 3;
@@ -228,6 +230,15 @@ function cleanEvent(input, existing = {}, updatedAt = new Date().toISOString()) 
     : imageUrl === String(existing.imageUrl || '')
       ? String(existing.imageInheritedFrom || input.imageInheritedFrom || '').trim().slice(0, 80)
       : String(input.imageInheritedFrom || '').trim().slice(0, 80);
+  // Which kind of picture that is. Written down at the borrow rather than
+  // worked out later, so a fysio photo is still known to be one after the task
+  // it was borrowed from has been deleted. It says nothing on its own and is
+  // dropped together with the mark above.
+  const imageInheritedKind = !imageInheritedFrom
+    ? ''
+    : imageUrl === String(existing.imageUrl || '')
+      ? cleanAutoImageKeyword(existing.imageInheritedKind || input.imageInheritedKind)
+      : cleanAutoImageKeyword(input.imageInheritedKind);
   const imageFocusX = cleanPercent(input.imageFocusX, existing.imageFocusX, 50);
   const imageFocusY = cleanPercent(input.imageFocusY, existing.imageFocusY, 38);
   const imageFocusSource = String(input.imageFocusSource || existing.imageFocusSource || 'manual').trim().slice(0, 40);
@@ -256,6 +267,7 @@ function cleanEvent(input, existing = {}, updatedAt = new Date().toISOString()) 
     note: String(input.note || '').trim().slice(0, 300),
     imageUrl,
     imageInheritedFrom,
+    imageInheritedKind,
     imageFocusX,
     imageFocusY,
     imageFocusSource,
@@ -587,6 +599,11 @@ export default async function handler(req, res) {
       // Picked once, not once per write attempt, so a retry stores the same
       // picture the first attempt chose instead of rolling the dice again.
       let autoImage = null;
+      // Set when a picture borrowed under the older rule, which let the kinds
+      // lend to each other, was handed back so a picture of the right kind
+      // could take its place. The device sent that link with the rest of the
+      // task, so without this the reply would read as a refused image.
+      let droppedForeignImage = false;
       // One stamp for the whole request, not one per attempt: every retry then
       // writes a byte-identical event, so a read-back that is one generation
       // behind still confirms the change instead of reporting it as lost.
@@ -597,9 +614,19 @@ export default async function handler(req, res) {
         if (isPut && index === -1) throw httpError(404, 'Event not found.');
         previousEvent = index === -1 ? null : currentEvents[index];
         created = index === -1;
-        const imageUrl = await resolveImageUrl(payload.imageUrl, previousEvent?.imageUrl, {
+        let imageUrl = await resolveImageUrl(payload.imageUrl, previousEvent?.imageUrl, {
           stale: isStaleClientCopy(payload, previousEvent)
         });
+        // A fysio card carrying a lege photo, or the other way round, is a
+        // leftover from when a kind with no picture of its own borrowed from
+        // the other. Nobody chose that picture, so the slot is emptied and
+        // filled again below with one of the right kind - or with the
+        // placeholder, if this kind has nothing to lend yet.
+        if (imageUrl && imageUrl === String(previousEvent?.imageUrl || '')
+          && isBorrowedFromOtherKind({ ...previousEvent, title: payload.title }, currentEvents)) {
+          imageUrl = '';
+          droppedForeignImage = true;
+        }
         // A fysio or lege task that ends up with no picture borrows one at
         // random from an older task of the same kind, framing included. This
         // only ever fills an empty slot: an image the device sent, or one the
@@ -609,7 +636,11 @@ export default async function handler(req, res) {
         }
         const borrowed = imageUrl ? null : autoImage;
         event = cleanEvent(
-          { ...payload, imageUrl, ...(borrowed ? { ...borrowed.image, imageInheritedFrom: borrowed.from } : {}) },
+          {
+            ...payload,
+            imageUrl,
+            ...(borrowed ? { ...borrowed.image, imageInheritedFrom: borrowed.from, imageInheritedKind: borrowed.keyword } : {})
+          },
           previousEvent || {},
           writeStamp
         );
@@ -653,8 +684,9 @@ export default async function handler(req, res) {
       // Say so in the reply, or the phone believes it just changed a picture
       // that it did not.
       // A borrowed fysio/lege picture is not a refusal: the device asked for no
-      // image at all, so nothing it sent was overruled.
-      const imageAutoFilled = Boolean(event.imageInheritedFrom) && !requestedImageUrl;
+      // image at all, or sent back a borrowed picture of the wrong kind that
+      // nobody had chosen in the first place.
+      const imageAutoFilled = Boolean(event.imageInheritedFrom) && (!requestedImageUrl || droppedForeignImage);
       const imageUrlAccepted = String(event.imageUrl || '') === requestedImageUrl || imageAutoFilled;
       send(res, created ? 201 : 200, { build: API_BUILD, event, events: next, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, imageAutoFilled, requestedImageUrl, imageCleanup: IMAGE_CLEANUP, reminderSync });
       return;

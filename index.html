@@ -3920,7 +3920,7 @@
     // build the same way, so a device running stale cached JavaScript, or a
     // deploy that never landed, can be told apart from a real sync fault
     // instead of being guessed at.
-    const APP_BUILD = '2026-09-12-b';
+    const APP_BUILD = '2026-09-15-a';
     // Blob-efficient sync: no polling loop. Load fresh events on page boot,
     // once per hour during daytime, on deliberate interaction, or when needed for a write/retry.
     const INTERACTION_FETCH_DEBOUNCE_MS = 800;
@@ -7371,10 +7371,51 @@
       return '';
     }
 
+    // The kind of picture a task is holding, which is not always the kind its
+    // own title names: a borrowed picture keeps the kind of the task it was
+    // chosen for. '' when that cannot be traced any more - the task it came
+    // from is gone, or has moved on to another picture - which is not the same
+    // as wrong: it is never lent on, and never taken off the task holding it.
+    function heldImageKeyword(event) {
+      const seen = new Set();
+      let current = event;
+      while (current) {
+        const from = String(current.imageInheritedFrom || '').trim();
+        if (!from) return autoImageKeyword(current.title);
+        // Every borrow writes down the kind it carries, so the answer outlives
+        // the task it came from. Older borrows are walked home instead.
+        const recorded = String(current.imageInheritedKind || '').trim().toLowerCase();
+        if (AUTO_IMAGE_KEYWORDS.includes(recorded)) return recorded;
+        const id = String(current.id || '');
+        if (seen.has(id)) return '';
+        seen.add(id);
+        const donor = (state.events || []).find(item => String(item.id || '') === from);
+        if (!donor || String(donor.imageUrl || '').trim() !== String(current.imageUrl || '').trim()) return '';
+        current = donor;
+      }
+      return '';
+    }
+
+    // A picture borrowed under the older rule, which let a lege photo land on a
+    // fysio card when that kind had none of its own. Nobody chose it, so it is
+    // handed back on the next save and a picture of the right kind takes its
+    // place. Only a borrow that can be shown to be of the other kind goes.
+    function isBorrowedFromOtherKind(event) {
+      if (!String(event?.imageUrl || '').trim()) return false;
+      if (!String(event?.imageInheritedFrom || '').trim()) return false;
+      const keyword = autoImageKeyword(event.title);
+      if (!keyword) return false;
+      const held = heldImageKeyword(event);
+      return Boolean(held) && held !== keyword;
+    }
+
     // The picture a fysio/lege task should borrow, framing included, or null
-    // when the title is not one of ours or no older task of either kind has an
-    // image to lend. A photo somebody actually chose is preferred over one that
-    // was itself borrowed, so a single picture cannot take over every card.
+    // when the title is not one of ours or no older task of that same kind has
+    // an image to lend. Fysio borrows from fysio and lege from lege, by the
+    // picture's own kind rather than the title of whoever is holding it; a kind
+    // with nothing to lend yet waits rather than showing the other kind's
+    // photo. A picture somebody actually chose is preferred over one that was
+    // itself borrowed, so a single picture cannot take over every card.
     function pickAutoImage(title, excludeId = '') {
       const keyword = autoImageKeyword(title);
       if (!keyword) return null;
@@ -7382,16 +7423,10 @@
       const lenders = (state.events || []).filter(event =>
         String(event.id || '') !== String(excludeId || '')
         && String(event.imageUrl || '').trim()
-        && autoImageKeyword(event.title)
+        && heldImageKeyword(event) === keyword
       );
-      const sameKind = lenders.filter(event => autoImageKeyword(event.title) === keyword);
       const chosenBySomebody = event => !String(event.imageInheritedFrom || '').trim();
-      const pool = [
-        sameKind.filter(chosenBySomebody),
-        sameKind,
-        lenders.filter(chosenBySomebody),
-        lenders
-      ].find(list => list.length);
+      const pool = [lenders.filter(chosenBySomebody), lenders].find(list => list.length);
       if (!pool) return null;
 
       const donor = pool[Math.floor(Math.random() * pool.length)];
@@ -7818,9 +7853,11 @@ Cancel = choose whether to delete the whole series.`);
       setManualImageControls(state.pendingImageFocus);
       setManualImagePreviewSource(event.imageUrl || '');
       els.imageStatus.textContent = event.imageUrl
-        ? event.imageInheritedFrom
-          ? 'Borrowed from an older task with the same kind of title. It is kept unless you upload a photo. Adjust pan/zoom below if needed.'
-          : 'Current image will be kept unless you upload a new one. Adjust pan/zoom below if needed.'
+        ? isBorrowedFromOtherKind(event)
+          ? 'Borrowed from a task of the other kind, back when that was allowed. Saving replaces it with a photo of this kind, or with the placeholder. Upload a photo to decide it yourself.'
+          : event.imageInheritedFrom
+            ? 'Borrowed from an older task with the same kind of title. It is kept unless you upload a photo. Adjust pan/zoom below if needed.'
+            : 'Current image will be kept unless you upload a new one. Adjust pan/zoom below if needed.'
         : noImageStatusText(event.title);
       setImageResyncVisible(true);
       els.saveEventBtn.textContent = 'Update event';
@@ -8154,7 +8191,16 @@ Cancel = choose whether to delete the whole series.`);
           if (els.pinInput.value.trim() && els.pinInput.value.trim() !== getPin()) {
             localStorage.setItem('homeOrganizerAdminPin', els.pinInput.value.trim());
           }
-          const imageUrl = await uploadImageIfNeeded();
+          let imageUrl = await uploadImageIfNeeded();
+          // A picture this task borrowed back when the two kinds lent to each
+          // other is not kept: the slot counts as empty and is filled below
+          // with one of the right kind. The image field is pre-filled from the
+          // task, so without this the old photo would simply be sent back.
+          const stored = els.eventId.value ? getSourceEvent(els.eventId.value) : null;
+          if (imageUrl && imageUrl === String(stored?.imageUrl || '')
+            && isBorrowedFromOtherKind({ ...stored, title: els.titleInput.value })) {
+            imageUrl = '';
+          }
           // A fysio or lege task saved without a picture borrows one from an
           // older task of the same kind. The server decides this too, for
           // whatever any device sends it; picking here as well means this
@@ -8178,7 +8224,7 @@ Cancel = choose whether to delete the whole series.`);
             // The borrowed picture brings the framing it was cropped with, so
             // it lands last: the pan/zoom defaults above are about an image
             // this task does not have.
-            ...(borrowed ? { ...borrowed.image, imageInheritedFrom: borrowed.from } : {}),
+            ...(borrowed ? { ...borrowed.image, imageInheritedFrom: borrowed.from, imageInheritedKind: borrowed.keyword } : {}),
             featured: els.featuredInput.checked
           };
           const saved = await saveEvent(payload);
