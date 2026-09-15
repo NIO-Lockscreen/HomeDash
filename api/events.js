@@ -16,7 +16,7 @@ import {
 const EVENTS_PATH = 'home-organizer/events.json';
 // Reported on every GET so the live server build can be read straight from
 // /api/events, rather than inferred from whether a save worked.
-const API_BUILD = '2026-09-15-a';
+const API_BUILD = '2026-09-15-b';
 const EVENTS_CACHE_MS = 60 * 1000;
 const MAX_WRITE_ATTEMPTS = 3;
 const MAX_READ_ATTEMPTS = 3;

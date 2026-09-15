@@ -279,6 +279,34 @@ This version is tuned to use far fewer Vercel Blob operations:
 
 Tapping the clock opens the day selector in the left card. Picking a day there shows that day's task in the big hero panel on the right, and the selector **stays up** with the picked day outlined, so the next day is one tap away. The task is deliberately not repeated in the left card. If a day holds several tasks the selector shows the count and the hero cycles through them; flipping the hero gives complete / edit / delete for whichever one is showing. Tapping the clock again returns to today and brings the weather back.
 
+## Where the weather comes from
+
+`fetchWeather()` calls **Open-Meteo** (`https://api.open-meteo.com/v1/forecast`)
+straight from the browser — no API key and no server-side proxy. The place is
+`WEATHER_CONFIG` near the top of the script: Trondheim, 63.4305 / 10.3951,
+`Europe/Oslo`, Celsius, wind in m/s, ten forecast days.
+
+- **The card never invents weather.** It used to fall back to a hardcoded sample
+  forecast — a flat 20° and a week in the low twenties — whenever the fetch
+  failed, which from across the room looks exactly like real weather. That is
+  gone. With no reading to show, the card shows `—°`, "Weather unavailable", no
+  colour wash and no forecast row.
+- **The last real reading is kept** in `localStorage`, so a display that reboots
+  while the network is down still shows the weather from an hour ago rather than
+  nothing. Anything older than 45 minutes is labelled with the time it was taken
+  (`Cloudy · Trondheim · from 14:20`), and past 6 hours it is dropped: a reading
+  that old says nothing about the weather outside.
+- **A reply that carries no temperature counts as a failure** and does not
+  replace the reading already on screen. Individual days and hours missing their
+  numbers are left out instead of filled in with the current temperature.
+- **Refresh:** every 30 minutes when it works. A failure retries after 1 minute,
+  then 2, 4, 8, up to 10 — and immediately when the browser reports it is back
+  online, rather than waiting out the rest of the back-off.
+
+Open-Meteo's default `best_match` model is not the one Yr/met.no uses, so small
+differences from a Norwegian phone app are expected. Adding `models=metno_seamless`
+to the query is the way to line the two up.
+
 ## Weather effects
 
 The whole dashboard lives in `index.html` — the `<style>` and `<script>` blocks inside it are what the browser runs. There is no separate bundle to edit. (Two exported copies, `script.js` and `inline.js`, used to sit next to it; nothing loaded them, and two bug fixes were accidentally applied only to those copies and never reached the app. They have been deleted — put dashboard changes in `index.html`.)

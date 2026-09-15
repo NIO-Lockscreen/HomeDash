@@ -3916,11 +3916,25 @@
 
   <script>
     const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
+    const WEATHER_CACHE_KEY = 'homeOrganizerWeatherCacheV1';
+    const WEATHER_REFRESH_MS = 30 * 60 * 1000;
+    // A failed refresh comes back in a minute, then two, four, up to ten,
+    // instead of waiting out the full half hour. A wall display that loses the
+    // network for two minutes should not sit there with nothing for a half
+    // hour afterwards.
+    const WEATHER_RETRY_MS = 60 * 1000;
+    const WEATHER_RETRY_MAX_MS = 10 * 60 * 1000;
+    // Older than one refresh cycle: still shown, but with the time it was
+    // taken, so nobody reads a two-hour-old number as the weather right now.
+    const WEATHER_STALE_MS = 45 * 60 * 1000;
+    // Past this a reading says nothing about the weather outside any more, and
+    // the card says so instead of showing it.
+    const WEATHER_MAX_AGE_MS = 6 * 60 * 60 * 1000;
     // Shown in the hidden config menu. /api/events reports the server's own
     // build the same way, so a device running stale cached JavaScript, or a
     // deploy that never landed, can be told apart from a real sync fault
     // instead of being guessed at.
-    const APP_BUILD = '2026-09-15-a';
+    const APP_BUILD = '2026-09-15-b';
     // Blob-efficient sync: no polling loop. Load fresh events on page boot,
     // once per hour during daytime, on deliberate interaction, or when needed for a write/retry.
     const INTERACTION_FETCH_DEBOUNCE_MS = 800;
@@ -4000,6 +4014,11 @@
       daughterPeriodOverrides: {},
       weatherFocusDate: null,
       weatherEffectKey: null,
+      // When the reading on screen was taken, and the back-off for the next
+      // attempt. Both are about the last successful fetch, not the last try.
+      weatherFetchedAt: 0,
+      weatherRetryMs: 0,
+      weatherTimer: null,
       dangerHoldTimer: null,
       dangerHoldOpened: false,
       showFrequentRepeatingTasks: localStorage.getItem('homeOrganizerShowFrequentRepeatingTasks') === '1',
@@ -6517,7 +6536,39 @@
       }).join('');
     }
 
+    // The last reading that actually arrived, kept across reloads so a display
+    // that reboots while the network is down shows the real weather from an
+    // hour ago - labelled with its time - rather than nothing at all.
+    function readCachedWeather() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(WEATHER_CACHE_KEY) || 'null');
+        const fetchedAt = Number(parsed?.fetchedAt || 0);
+        if (!fetchedAt || !Number.isFinite(Number(parsed?.weather?.current?.temperature_2m))) return null;
+        if (Date.now() - fetchedAt > WEATHER_MAX_AGE_MS) return null;
+        return { weather: parsed.weather, fetchedAt };
+      } catch {
+        return null;
+      }
+    }
+
+    function rememberCachedWeather(weather, fetchedAt) {
+      try {
+        localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify({ fetchedAt, weather }));
+      } catch {}
+    }
+
+    function hydrateWeatherFromLocalCache() {
+      const cached = readCachedWeather();
+      if (!cached) return false;
+      state.weather = cached.weather;
+      state.weatherFetchedAt = cached.fetchedAt;
+      renderWeather();
+      return true;
+    }
+
     async function fetchWeather() {
+      clearTimeout(state.weatherTimer);
+      let fetched = false;
       try {
         const url = new URL('https://api.open-meteo.com/v1/forecast');
         url.search = new URLSearchParams({
@@ -6532,11 +6583,27 @@
         }).toString();
 
         const response = await fetch(url);
-        if (!response.ok) throw new Error('Weather fetch failed');
-        state.weather = await response.json();
+        if (!response.ok) throw new Error(`Weather fetch failed with ${response.status}`);
+        const data = await response.json();
+        // A reply that parses but carries no temperature is a failed refresh
+        // like any other: it must not replace the last real reading.
+        if (!Number.isFinite(Number(data?.current?.temperature_2m))) {
+          throw new Error('Weather reply carried no temperature');
+        }
+        state.weather = data;
+        state.weatherFetchedAt = Date.now();
+        rememberCachedWeather(data, state.weatherFetchedAt);
+        fetched = true;
       } catch (error) {
-        state.weather = null;
+        // The reading already on screen is kept and starts showing its age.
+        // Nothing here invents a number to put in its place.
+        console.warn('Weather refresh failed:', error);
       }
+
+      state.weatherRetryMs = fetched
+        ? 0
+        : Math.min(state.weatherRetryMs ? state.weatherRetryMs * 2 : WEATHER_RETRY_MS, WEATHER_RETRY_MAX_MS);
+      state.weatherTimer = setTimeout(fetchWeather, fetched ? WEATHER_REFRESH_MS : state.weatherRetryMs);
       renderWeather();
     }
 
@@ -6665,6 +6732,16 @@
       els.weatherEffect.innerHTML = weatherParticleHtml(effect, { night, windy, density, scale });
     }
 
+    // Drops the card back to its plain state: no colour wash, no particles, no
+    // night styling. Used when there is no reading to illustrate.
+    function clearWeatherEffect() {
+      if (!els.weatherEffect) return;
+      state.weatherEffectKey = 'none';
+      els.weatherEffect.className = 'weather-effect';
+      els.weatherEffect.innerHTML = '';
+      els.weatherCard?.classList.remove('wx-dark');
+    }
+
     function weatherEffectRank(code) {
       const effect = weatherCodeToEffect(code);
       return { thunder: 6, rain: 5, snow: 5, drizzle: 4, fog: 3, clouds: 2, partly: 1, clear: 0 }[effect] ?? 0;
@@ -6695,7 +6772,7 @@
 
     function renderHourlyWeather(weather, focusDate = new Date()) {
       if (!els.hourlyWeather) return;
-      const hourly = weather.hourly;
+      const hourly = weather?.hourly;
       if (!hourly?.time?.length) {
         els.hourlyWeather.innerHTML = '';
         return;
@@ -6709,12 +6786,14 @@
         const date = new Date(time);
         return {
           date,
-          code: hourly.weather_code?.[index] ?? 2,
-          temp: Math.round(hourly.temperature_2m?.[index] ?? weather.current?.temperature_2m ?? 0),
+          code: hourly.weather_code?.[index],
+          // An hour without a temperature is dropped below rather than shown
+          // as the current one, which reads as a real forecast for that hour.
+          temp: Number(hourly.temperature_2m?.[index]),
           rain: hourly.precipitation_probability?.[index],
           isDay: hourly.is_day?.[index] !== 0
         };
-      }).filter(item => !Number.isNaN(item.date) && dateKey(item.date) === focusKey && (!isToday || item.date >= new Date(now.getTime() - 30 * 60 * 1000)));
+      }).filter(item => !Number.isNaN(item.date) && Number.isFinite(item.temp) && dateKey(item.date) === focusKey && (!isToday || item.date >= new Date(now.getTime() - 30 * 60 * 1000)));
 
       const compact = els.displayView && !els.displayView.classList.contains('no-daily');
       const rows = items.slice(0, compact ? 5 : 8);
@@ -6736,7 +6815,7 @@
             <div class="hourly-row">
               <div>${new Intl.DateTimeFormat(undefined, { hour: '2-digit', hour12: false }).format(item.date)}</div>
               <div class="hourly-icon" title="${htmlEscape(weatherCodeToText(item.code))}">${weatherCodeToIcon(item.code, item.isDay)}</div>
-              <div class="hourly-temp">${item.temp}°</div>
+              <div class="hourly-temp">${Math.round(item.temp)}°</div>
               <div class="hourly-rain">${Number.isFinite(item.rain) ? `${Math.round(item.rain)}%` : '—'}</div>
             </div>
           `).join('')}
@@ -6744,50 +6823,68 @@
       `;
     }
 
-    function renderWeather() {
-      const fallback = {
-        current: { temperature_2m: 20, weather_code: 2 },
-        hourly: {
-          time: Array.from({ length: 12 }, (_, i) => new Date(Date.now() + i * 3600000).toISOString()),
-          weather_code: [2, 2, 61, 61, 3, 3, 2, 2, 1, 1, 2, 3],
-          temperature_2m: [20, 20, 19, 18, 18, 17, 17, 16, 16, 15, 15, 14],
-          precipitation_probability: [10, 12, 68, 74, 32, 22, 12, 8, 5, 4, 8, 15]
-        },
-        daily: {
-          time: [0,1,2,3,4].map(i => new Date(Date.now() + i * 86400000).toISOString().slice(0,10)),
-          weather_code: [2, 3, 61, 2, 1],
-          temperature_2m_max: [22, 20, 19, 21, 23],
-          temperature_2m_min: [12, 11, 10, 12, 13]
-        }
-      };
+    // No weather rather than invented weather. This card used to fall back to a
+    // hardcoded sample forecast - a flat 20° and a week in the low twenties -
+    // whenever the fetch failed, which looks exactly like real weather from
+    // across the room and is how the wall ended up claiming 20° in Trondheim
+    // in September.
+    function renderWeatherUnavailable() {
+      els.weatherIcon.textContent = '';
+      els.weatherTemp.textContent = '—°';
+      els.weatherDesc.textContent = `Weather unavailable · ${WEATHER_CONFIG.name}`;
+      clearWeatherEffect();
+      els.forecastRow.innerHTML = '';
+      if (els.hourlyWeather) {
+        els.hourlyWeather.innerHTML = '<div class="hourly-title">No weather data — trying again shortly</div>';
+      }
+    }
 
-      const weather = state.weather || fallback;
-      const code = weather.current?.weather_code ?? 2;
-      const temp = Math.round(weather.current?.temperature_2m ?? 20);
-      const wind = Number(weather.current?.wind_speed_10m ?? 0);
+    // How old the reading on screen is, as something to put after the place
+    // name: '' while it is current, 'from 14:20' once it is not.
+    function weatherAgeNote() {
+      const fetchedAt = Number(state.weatherFetchedAt || 0);
+      if (!fetchedAt || Date.now() - fetchedAt <= WEATHER_STALE_MS) return '';
+      return `from ${formatTime(new Date(fetchedAt))}`;
+    }
+
+    function renderWeather() {
+      const weather = state.weather;
+      const temp = Number(weather?.current?.temperature_2m);
+      const fetchedAt = Number(state.weatherFetchedAt || 0);
+      const expired = fetchedAt > 0 && Date.now() - fetchedAt > WEATHER_MAX_AGE_MS;
+      if (!weather || !Number.isFinite(temp) || expired) {
+        renderWeatherUnavailable();
+        return;
+      }
+
+      const code = weather.current?.weather_code;
+      const wind = Number(weather.current?.wind_speed_10m) || 0;
       els.weatherIcon.textContent = weatherCodeToIcon(code, isDaylightNow(weather));
-      els.weatherTemp.textContent = `${temp}°`;
+      els.weatherTemp.textContent = `${Math.round(temp)}°`;
       els.weatherDesc.textContent = [
         weatherCodeToText(code),
         wind >= WEATHER_WINDY_MS ? `windy ${Math.round(wind)} m/s` : '',
-        WEATHER_CONFIG.name
+        WEATHER_CONFIG.name,
+        weatherAgeNote()
       ].filter(Boolean).join(' · ');
       renderWeatherEffect(chooseWeatherEffectCode(weather, code), {
         isDay: isDaylightNow(weather),
         wind
       });
 
+      // A day with no numbers of its own is left out rather than filled in
+      // with a guess.
       const rows = (weather.daily?.time || []).slice(1, 5).map((day, index) => {
         const dayDate = new Date(`${day}T12:00:00`);
-        const dailyCode = weather.daily.weather_code[index + 1] ?? 2;
-        const high = Math.round(weather.daily.temperature_2m_max[index + 1] ?? 20);
-        const low = Math.round(weather.daily.temperature_2m_min[index + 1] ?? 10);
+        const high = Number(weather.daily.temperature_2m_max?.[index + 1]);
+        const low = Number(weather.daily.temperature_2m_min?.[index + 1]);
+        if (Number.isNaN(dayDate.getTime()) || !Number.isFinite(high) || !Number.isFinite(low)) return '';
         return `
           <div class="forecast-day">
             <span>${new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(dayDate)}</span>
-            <span class="small-icon">${weatherCodeToIcon(dailyCode)}</span>
-            <strong>${high}°</strong>
-            <span>${low}°</span>
+            <span class="small-icon">${weatherCodeToIcon(weather.daily.weather_code?.[index + 1])}</span>
+            <strong>${Math.round(high)}°</strong>
+            <span>${Math.round(low)}°</span>
           </div>
         `;
       }).join('');
@@ -6802,7 +6899,7 @@
       const weather = state.weather;
       const daily = weather?.daily;
       if (!daily?.time?.length) {
-        els.weatherWeeklyList.innerHTML = '<div class="empty-upcoming">No weekly forecast loaded yet.</div>';
+        els.weatherWeeklyList.innerHTML = '<div class="empty-upcoming">Weather unavailable — the forecast could not be loaded.</div>';
         return;
       }
 
@@ -8823,15 +8920,23 @@ Cancel = choose whether to delete the whole series.`);
       updateClock();
       setInterval(updateClock, 1000);
       if (!adminMode) setInterval(renderDisplay, 60 * 1000);
+      // Last known reading first so the card is not blank while the request is
+      // in flight; fetchWeather then replaces it and schedules the next run,
+      // sooner than usual if this one fails.
+      hydrateWeatherFromLocalCache();
       fetchWeather();
-      setInterval(fetchWeather, 30 * 60 * 1000);
       hydrateEventsFromLocalCache();
       // Page boot should always spend one fresh read so the dashboard starts with newest data.
       // Local cache still renders instantly first, then this refresh replaces it when loaded.
       fetchEvents({ force: true, reason: 'page-boot' });
       bindInteractionRefresh();
       scheduleNextHourlyEventRefresh();
-      window.addEventListener('online', () => processPendingWrites({ silent: true }));
+      window.addEventListener('online', () => {
+        processPendingWrites({ silent: true });
+        // The network is back, so do not sit out the rest of the back-off.
+        state.weatherRetryMs = 0;
+        fetchWeather();
+      });
       window.addEventListener('storage', event => {
         if (event.key === LAST_WRITE_SIGNAL_KEY) {
           renderFromLocalState();
