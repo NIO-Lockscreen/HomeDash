@@ -139,25 +139,32 @@ If the stored image cannot be downloaded at all — it was deleted from Blob
 storage — the button says so. Pick the photo again in the file field and resync;
 that path does not depend on the dead link.
 
-## Fysio and lege tasks borrow an old photo
+## Fysio, lege and MR tasks borrow an old photo
 
-The physio and the doctor come round again and again, and nobody wants to pick a
-photo for the twentieth one. So a task whose title names one of these and that is
-saved **without** an image is given a random picture from an older task of the
-same kind, instead of the calm placeholder.
+The physio, the doctor and the MR scanner come round again and again, and nobody
+wants to pick a photo for the twentieth one. So a task whose title names one of
+these and that is saved **without** an image is given a random picture from an
+older task of the **same kind**, instead of the calm placeholder.
 
-- **Which titles count:** any title containing `fysio` or `lege`, case and accent
-  insensitive. Compounds count at either end, because that is how these are
-  written down: `Fysioterapi`, `Fysioterapeut`, `Tannlege`, `Legetime`,
-  `Legevakt`. A word that only happens to end in the keyword (`college`,
-  `privilege`) does not.
+- **Which titles count:** `fysio`, `lege` and `mr`, case and accent insensitive.
+  `fysio` and `lege` count inside a longer word at either end, because that is
+  how they are written down: `Fysioterapi`, `Fysioterapeut`, `Tannlege`,
+  `Legetime`, `Legevakt`. A word that only happens to end in one of them
+  (`college`, `privilege`) does not. `mr` is two letters, so it only ever counts
+  as a word of its own — `MR`, `MR-time`, `MR undersøkelse`, and `MRI` — never
+  the inside of some unrelated word, so `Mrs` and `Mormor` are left alone.
+- **Kinds never lend to each other.** A fysio task is only ever given a fysio
+  photo, an MR task an MR photo. If that kind has no photo yet, the task gets the
+  placeholder: that is the better wrong answer. Kinds used to lend to each other
+  so the first ever fysio task could show a lege photo — and that one borrowed
+  photo then sat on a fysio card, was read back as a fysio photo, and was handed
+  to every fysio task after it.
 - **A picture you pick always wins.** The borrow only ever fills an empty slot;
   nothing decided by the upload, by the task's stored image, or by the
   stale-device rules is overruled by it.
 - **Which photo:** a random one from the same kind, preferring a photo somebody
   actually chose over one that was itself borrowed, so a single picture cannot
-  take over every card. If that kind has none, it borrows from the other kind, so
-  the first ever fysio task can still use a lege photo.
+  take over every card.
 - **The framing travels with it.** Pan, zoom and the focus box come from the task
   the photo was borrowed from, which is the framing somebody once chose for that
   picture.
@@ -167,11 +174,32 @@ same kind, instead of the calm placeholder.
   put on later saves. Upload a photo for the task and the borrowed one is
   replaced. The editor says which is which under the image field.
 
-The rule lives in `api/_image-rules.js` (`autoImageKeyword`, `pickAutoImage`) and
-is applied by `api/events.js` to whatever any device sends. The admin page holds a
-copy of the same rule so a task saved on the phone draws its borrowed picture
-straight away rather than a placeholder that swaps out a second later, and so a
-task saved with no signal still gets one. Keep the two in step.
+### What a borrowed picture remembers
+
+`imageInheritedFrom` records the task the picture came from, and
+`imageInheritedKeyword` which kind it is. The kind matters because a borrowed
+photo keeps the kind of the task it came from, whatever the task carrying it is
+called: a fysio card showing a lege photo is holding a **lege** photo, and
+lending that on as a fysio photo is exactly how one stray picture reached every
+fysio card. Both marks live and die with the image they describe — a task that
+gets a picture of its own loses them.
+
+Pictures borrowed before the kind was written down are traced back through
+`imageInheritedFrom` instead. An origin that can no longer be established — the
+task it came from was deleted — is treated as unknown: the picture stays where it
+is, but it is never lent on.
+
+A borrowed picture of the wrong kind is let go on the task's next save, and the
+slot is filled with a photo of the right kind, or left to the placeholder. Only
+ever a borrowed one: a photo somebody chose is never taken away. Until that save
+the card keeps showing it, and the editor says so under the image field.
+
+The rule lives in `api/_image-rules.js` (`autoImageKeyword`, `autoImageKindOf`,
+`isMismatchedBorrowedImage`, `pickAutoImage`) and is applied by `api/events.js` to
+whatever any device sends. The admin page holds a copy of the same rule so a task
+saved on the phone draws its borrowed picture straight away rather than a
+placeholder that swaps out a second later, and so a task saved with no signal
+still gets one. Keep the two in step.
 
 ## Face-aware image cropping
 

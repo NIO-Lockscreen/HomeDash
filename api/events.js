@@ -8,13 +8,17 @@ import {
   isBlobNotFoundError,
   isStaleClientCopy,
   chooseImageForStaleClient,
-  pickAutoImage
+  pickAutoImage,
+  AUTO_IMAGE_KEYWORDS,
+  autoImageIndex,
+  autoImageKindOf,
+  isMismatchedBorrowedImage
 } from './_image-rules.js';
 
 const EVENTS_PATH = 'home-organizer/events.json';
 // Reported on every GET so the live server build can be read straight from
 // /api/events, rather than inferred from whether a save worked.
-const API_BUILD = '2026-09-12-b';
+const API_BUILD = '2026-09-17-a';
 const EVENTS_CACHE_MS = 60 * 1000;
 const MAX_WRITE_ATTEMPTS = 3;
 const MAX_READ_ATTEMPTS = 3;
@@ -228,6 +232,16 @@ function cleanEvent(input, existing = {}, updatedAt = new Date().toISOString()) 
     : imageUrl === String(existing.imageUrl || '')
       ? String(existing.imageInheritedFrom || input.imageInheritedFrom || '').trim().slice(0, 80)
       : String(input.imageInheritedFrom || '').trim().slice(0, 80);
+  // Which kind of picture it is - 'fysio', 'lege', 'mr' - which is the kind of
+  // the task it was borrowed from, not this task's own. Without it a lege photo
+  // sitting on a fysio card reads as a fysio photo and is handed to every fysio
+  // task after it. Travels with the borrow mark and dies with it.
+  const inheritedKeyword = imageUrl === String(existing.imageUrl || '')
+    ? String(existing.imageInheritedKeyword || input.imageInheritedKeyword || '')
+    : String(input.imageInheritedKeyword || '');
+  const imageInheritedKeyword = imageInheritedFrom && AUTO_IMAGE_KEYWORDS.includes(inheritedKeyword.trim().toLowerCase())
+    ? inheritedKeyword.trim().toLowerCase()
+    : '';
   const imageFocusX = cleanPercent(input.imageFocusX, existing.imageFocusX, 50);
   const imageFocusY = cleanPercent(input.imageFocusY, existing.imageFocusY, 38);
   const imageFocusSource = String(input.imageFocusSource || existing.imageFocusSource || 'manual').trim().slice(0, 40);
@@ -256,6 +270,7 @@ function cleanEvent(input, existing = {}, updatedAt = new Date().toISOString()) 
     note: String(input.note || '').trim().slice(0, 300),
     imageUrl,
     imageInheritedFrom,
+    imageInheritedKeyword,
     imageFocusX,
     imageFocusY,
     imageFocusSource,
@@ -587,6 +602,10 @@ export default async function handler(req, res) {
       // Picked once, not once per write attempt, so a retry stores the same
       // picture the first attempt chose instead of rolling the dice again.
       let autoImage = null;
+      // Set when the task's stored picture was a borrow from another kind and
+      // was let go. The device is not being refused anything then: it sent back
+      // a picture nobody had chosen.
+      let imageReleased = false;
       // One stamp for the whole request, not one per attempt: every retry then
       // writes a byte-identical event, so a read-back that is one generation
       // behind still confirms the change instead of reporting it as lost.
@@ -597,10 +616,32 @@ export default async function handler(req, res) {
         if (isPut && index === -1) throw httpError(404, 'Event not found.');
         previousEvent = index === -1 ? null : currentEvents[index];
         created = index === -1;
-        const imageUrl = await resolveImageUrl(payload.imageUrl, previousEvent?.imageUrl, {
+        const resolvedImageUrl = await resolveImageUrl(payload.imageUrl, previousEvent?.imageUrl, {
           stale: isStaleClientCopy(payload, previousEvent)
         });
-        // A fysio or lege task that ends up with no picture borrows one at
+        // A picture the task borrowed from another kind - a lege photo on a
+        // fysio card, from back when kinds lent to each other - is nobody's
+        // choice and is let go, so the borrow below can fill the slot with the
+        // right kind or leave the placeholder. Only ever a borrowed picture,
+        // and only one whose origin is known to be another kind.
+        const byId = autoImageIndex(currentEvents);
+        const keepsStoredImage = Boolean(previousEvent) && resolvedImageUrl === String(previousEvent.imageUrl || '');
+        const releasesWrongKind = keepsStoredImage
+          && isMismatchedBorrowedImage({ ...previousEvent, title: payload.title }, byId);
+        if (releasesWrongKind) imageReleased = true;
+        const imageUrl = releasesWrongKind ? '' : resolvedImageUrl;
+        // A picture borrowed before the kind was written down keeps it now,
+        // while the task it came from is still there to ask. Tracing the borrow
+        // back is a fallback for old data, not a standing arrangement: once the
+        // donor is deleted the origin can no longer be established at all.
+        const stampsKeptKind = keepsStoredImage
+          && !releasesWrongKind
+          && Boolean(imageUrl)
+          && Boolean(String(previousEvent.imageInheritedFrom || '').trim())
+          && !String(previousEvent.imageInheritedKeyword || '').trim()
+          ? autoImageKindOf(previousEvent, byId)
+          : '';
+        // A fysio, lege or MR task that ends up with no picture borrows one at
         // random from an older task of the same kind, framing included. This
         // only ever fills an empty slot: an image the device sent, or one the
         // task already had, has been decided above and is never overruled here.
@@ -609,7 +650,15 @@ export default async function handler(req, res) {
         }
         const borrowed = imageUrl ? null : autoImage;
         event = cleanEvent(
-          { ...payload, imageUrl, ...(borrowed ? { ...borrowed.image, imageInheritedFrom: borrowed.from } : {}) },
+          {
+            ...payload,
+            imageUrl,
+            ...(borrowed
+              ? { ...borrowed.image, imageInheritedFrom: borrowed.from, imageInheritedKeyword: borrowed.keyword }
+              : stampsKeptKind
+                ? { imageInheritedKeyword: stampsKeptKind }
+                : {})
+          },
           previousEvent || {},
           writeStamp
         );
@@ -652,11 +701,13 @@ export default async function handler(req, res) {
       // older picture sent by a stale device) and keep the stored one instead.
       // Say so in the reply, or the phone believes it just changed a picture
       // that it did not.
-      // A borrowed fysio/lege picture is not a refusal: the device asked for no
-      // image at all, so nothing it sent was overruled.
-      const imageAutoFilled = Boolean(event.imageInheritedFrom) && !requestedImageUrl;
-      const imageUrlAccepted = String(event.imageUrl || '') === requestedImageUrl || imageAutoFilled;
-      send(res, created ? 201 : 200, { build: API_BUILD, event, events: next, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, imageAutoFilled, requestedImageUrl, imageCleanup: IMAGE_CLEANUP, reminderSync });
+      // A borrowed fysio/lege/MR picture is not a refusal: the device asked for
+      // no image at all, so nothing it sent was overruled. Neither is letting go
+      // of a picture borrowed from another kind: the device only echoed back
+      // what the task was already holding.
+      const imageAutoFilled = Boolean(event.imageInheritedFrom) && (!requestedImageUrl || imageReleased);
+      const imageUrlAccepted = String(event.imageUrl || '') === requestedImageUrl || imageAutoFilled || imageReleased;
+      send(res, created ? 201 : 200, { build: API_BUILD, event, events: next, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, imageAutoFilled, imageReleased, requestedImageUrl, imageCleanup: IMAGE_CLEANUP, reminderSync });
       return;
     }
 
