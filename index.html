@@ -4229,14 +4229,14 @@
       initialEditOpened: false,
       clockDateKey: null,
       selectedDayKey: null,
-      selectedDayTimer: null,
       selectedDayCycleTimer: null,
       selectedDayCycleIndex: 0,
       todayCycleTimer: null,
       todayCycleDateKey: null,
       dailyCalendarMode: false,
-      dailyHomeTimer: null,
       upcomingPage: 0,
+      lastInteractionAt: Date.now(),
+      idleResetTimer: null,
       hiddenRepeatingTasksVisibleUntil: 0,
       hiddenRepeatingTasksTimer: null,
       selectedEventFlipped: false,
@@ -6114,7 +6114,7 @@
                 <button class="tiny-btn danger" type="button" data-display-delete-instance="${htmlEscape(first._instanceId)}">Delete</button>
                 <button class="tiny-btn" type="button" data-selected-close>Flip back</button>
               </div>
-              <div class="selected-event-return">Returns to today automatically after 5 minutes.</div>
+              <div class="selected-event-return">Returns to today automatically after 5 idle minutes.</div>
             </div>
           </div>
         </div>
@@ -6127,26 +6127,6 @@
       state.selectedDayCycleIndex = 0;
     }
 
-    function stopDailyHomeTimer() {
-      if (state.dailyHomeTimer) clearTimeout(state.dailyHomeTimer);
-      state.dailyHomeTimer = null;
-    }
-
-    function startDailyHomeTimer() {
-      stopDailyHomeTimer();
-      state.dailyHomeTimer = setTimeout(() => {
-        state.selectedDayKey = null;
-        state.upcomingPage = 0;
-        state.selectedEventFlipped = false;
-        state.heroEventFlipped = false;
-        state.selectedInstanceId = null;
-        state.dailyCalendarMode = false;
-        stopSelectedDayCycle();
-        updateClock();
-        renderDisplay();
-      }, 5 * 60 * 1000);
-    }
-
     function clearSelectedDayPreview() {
       state.selectedDayKey = null;
       state.upcomingPage = 0;
@@ -6154,17 +6134,88 @@
       state.heroEventFlipped = false;
       state.selectedInstanceId = null;
       state.dailyCalendarMode = false;
-      if (state.selectedDayTimer) clearTimeout(state.selectedDayTimer);
-      state.selectedDayTimer = null;
-      stopDailyHomeTimer();
       stopSelectedDayCycle();
       updateClock();
       renderDisplay();
     }
 
-    function startSelectionReturnTimer() {
-      if (state.selectedDayTimer) clearTimeout(state.selectedDayTimer);
-      state.selectedDayTimer = setTimeout(clearSelectedDayPreview, 5 * 60 * 1000);
+    // Idle reset. After IDLE_RESET_MS without a touch, tap or key the wall
+    // display drops whatever it was showing and goes back to the today view.
+    //
+    // This used to be two one-shot timers armed at the moment a day or task
+    // was picked, which is not an idle timeout: browsing for five minutes
+    // bounced you home mid-read, while anything reached another way (the
+    // weather overlay, a paged upcoming list, the month view, the config or
+    // danger overlay) never came home at all. One watchdog measured from the
+    // last real interaction covers every one of those.
+    const IDLE_RESET_MS = 5 * 60 * 1000;
+    const IDLE_CHECK_MS = 15 * 1000;
+    const INTERACTION_EVENTS = ['pointerdown', 'pointerup', 'click', 'keydown', 'wheel', 'touchstart', 'touchmove'];
+
+    function noteInteraction() {
+      state.lastInteractionAt = Date.now();
+    }
+
+    function isOverlayOpen(element) {
+      return Boolean(element) && !element.classList.contains('hidden');
+    }
+
+    function anyDisplayOverlayOpen() {
+      return isOverlayOpen(els.weatherOverlay)
+        || isOverlayOpen(els.monthOverlay)
+        || isOverlayOpen(els.configOverlay)
+        || isOverlayOpen(els.dangerOverlay);
+    }
+
+    // The today view rotates through today's tasks on its own, so
+    // selectedInstanceId alone does not mean somebody navigated away.
+    function isHomeView() {
+      if (state.selectedDayKey) return false;
+      if (state.dailyCalendarMode) return false;
+      if (state.upcomingPage) return false;
+      if (state.selectedEventFlipped || state.heroEventFlipped) return false;
+      if (hiddenRepeatingTasksVisible()) return false;
+      if (anyDisplayOverlayOpen()) return false;
+      return true;
+    }
+
+    function resetToHomeView() {
+      closeWeatherOverlay();
+      if (isOverlayOpen(els.monthOverlay)) closeMonthView();
+      if (isOverlayOpen(els.configOverlay)) closeConfigMenu();
+      if (isOverlayOpen(els.dangerOverlay)) closeDangerMenu();
+      state.hiddenRepeatingTasksVisibleUntil = 0;
+      clearTaskCardFlipBackTimer();
+      clearSelectedDayPreview();
+    }
+
+    function checkIdleReset() {
+      if (adminMode) return;
+      if (Date.now() - state.lastInteractionAt < IDLE_RESET_MS) return;
+      // Already home: restart the window instead of re-rendering every check.
+      if (isHomeView()) {
+        noteInteraction();
+        return;
+      }
+      resetToHomeView();
+      noteInteraction();
+    }
+
+    function startIdleResetWatchdog() {
+      if (state.idleResetTimer) clearInterval(state.idleResetTimer);
+      noteInteraction();
+      // A short repeating wall-clock check rather than one long setTimeout:
+      // a kiosk browser throttles or suspends background timers, so a single
+      // five minute timeout can fire minutes late or never at all.
+      state.idleResetTimer = setInterval(checkIdleReset, IDLE_CHECK_MS);
+      INTERACTION_EVENTS.forEach(name => {
+        window.addEventListener(name, noteInteraction, { capture: true, passive: true });
+      });
+      // Catch up as soon as the screen comes back, in case the timer above
+      // was frozen while the display slept.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') checkIdleReset();
+      });
     }
 
     function startSelectedDayCycle(dayKey) {
@@ -6252,13 +6303,12 @@
       // Keep the day selector on screen so the next day is one tap away, and
       // so the weather card does not pop back over the day being previewed.
       state.dailyCalendarMode = true;
-      stopDailyHomeTimer();
       state.upcomingPage = 0;
       state.selectedEventFlipped = false;
       state.heroEventFlipped = false;
       state.selectedInstanceId = firstEvent?._instanceId || null;
       state.selectedDayCycleIndex = 0;
-      startSelectionReturnTimer();
+      noteInteraction();
       startSelectedDayCycle(dayKey);
       updateClock();
       renderDisplay();
@@ -6272,11 +6322,10 @@
       state.selectedInstanceId = instanceId;
       state.selectedDayKey = dayKey;
       state.dailyCalendarMode = false;
-      stopDailyHomeTimer();
       state.upcomingPage = 0;
       state.selectedEventFlipped = false;
       state.heroEventFlipped = false;
-      startSelectionReturnTimer();
+      noteInteraction();
       startSelectedDayCycle(dayKey);
       updateClock();
       renderDisplay();
@@ -8698,7 +8747,7 @@ Cancel = choose whether to delete the whole series.`);
         state.upcomingPage = 0;
         state.selectedEventFlipped = false;
         state.heroEventFlipped = false;
-        startDailyHomeTimer();
+        noteInteraction();
         updateClock();
         renderDisplay();
       };
@@ -9328,6 +9377,7 @@ Cancel = choose whether to delete the whole series.`);
       bindWeatherOverlay();
       bindDangerMenu();
       bindFullscreenShortcut();
+      startIdleResetWatchdog();
       bindScreenControls();
       bindMotionDimmer();
       els.returnToDisplayBtn?.addEventListener('click', goToDisplayMode);
