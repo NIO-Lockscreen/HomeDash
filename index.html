@@ -1749,17 +1749,6 @@
       font-size: 13px;
     }
 
-    /* Android date/time pickers only show the numeric date, so we print the
-       weekday next to the input there. Hidden on every other platform. */
-    .weekday-hint {
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: normal;
-      line-height: 1.3;
-      text-transform: capitalize;
-    }
-
     input,
     textarea {
       width: 100%;
@@ -2533,6 +2522,262 @@
       .task-action-buttons .wide { grid-column: auto; }
     }
 
+
+    /* Android date and time picker.
+       Chrome on Android gives no way to style or extend its native date
+       dialog, so on Android the real input is kept as a hidden value holder
+       and both the field below and the sheet it opens are drawn here, in the
+       dashboard's own style, with the weekday spelled out everywhere. */
+    .hd-date-trigger {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      min-height: 58px;
+      padding: 10px 15px;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      background: rgba(255,255,255,0.86);
+      color: var(--ink);
+      text-align: left;
+      cursor: pointer;
+      transition: transform .16s ease, border-color .16s ease;
+    }
+
+    .hd-date-trigger:active { transform: scale(.99); }
+    .hd-date-trigger:focus-visible { border-color: rgba(47,43,39,.32); box-shadow: 0 0 0 4px rgba(47,43,39,.06); }
+
+    .hd-trigger-weekday {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 950;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .hd-trigger-date {
+      display: block;
+      margin-top: 2px;
+      font-size: 17px;
+      font-weight: 900;
+      letter-spacing: -.015em;
+      line-height: 1.15;
+    }
+
+    .hd-trigger-empty {
+      display: block;
+      color: var(--muted);
+      font-size: 15px;
+      font-weight: 850;
+    }
+
+    .hd-trigger-time {
+      font-family: var(--serif);
+      font-size: 26px;
+      line-height: 1;
+      letter-spacing: -.03em;
+      white-space: nowrap;
+    }
+
+    .hd-picker-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 120;
+      display: grid;
+      align-items: end;
+      justify-items: center;
+      background: rgba(29, 25, 21, 0.42);
+      backdrop-filter: blur(12px);
+    }
+
+    .hd-picker-sheet {
+      width: min(520px, 100%);
+      max-height: calc(100svh - 18px);
+      overflow: auto;
+      display: grid;
+      gap: 14px;
+      padding: 18px 16px max(18px, env(safe-area-inset-bottom, 0px));
+      background: rgba(255, 252, 247, 0.98);
+      border: 1px solid rgba(255,255,255,0.78);
+      border-radius: 30px 30px 0 0;
+      box-shadow: 0 -22px 70px rgba(47,43,39,0.3);
+      animation: sheetUp .22s ease both;
+    }
+
+    .hd-picker-eyebrow {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 950;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .hd-picker-headline {
+      margin: 4px 0 0;
+      font-family: var(--serif);
+      font-size: clamp(26px, 7vw, 34px);
+      line-height: 1.02;
+      letter-spacing: -.04em;
+    }
+
+    .hd-picker-subline {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .hd-picker-nav {
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr) 44px;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .hd-picker-nav-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.82);
+      color: var(--ink);
+      font-size: 24px;
+      font-weight: 950;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .hd-picker-nav-btn:active { transform: scale(.96); }
+
+    .hd-picker-month {
+      text-align: center;
+      font-size: 17px;
+      font-weight: 950;
+      letter-spacing: -.01em;
+    }
+
+    .hd-picker-weekdays,
+    .hd-picker-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 5px;
+    }
+
+    .hd-picker-weekday {
+      text-align: center;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .hd-picker-day {
+      aspect-ratio: 1 / 1;
+      display: grid;
+      place-items: center;
+      border: 1px solid transparent;
+      border-radius: 15px;
+      background: rgba(255,255,255,.6);
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform .14s ease, background .14s ease;
+    }
+
+    .hd-picker-day:active { transform: scale(.94); }
+    .hd-picker-day.outside-month { opacity: .34; }
+    .hd-picker-day.today { border-color: rgba(47,43,39,.3); }
+    .hd-picker-day.selected {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fdfaf5;
+    }
+
+    .hd-picker-time {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .hd-time-col {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .hd-time-label {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .hd-time-list {
+      position: relative; /* keeps option.offsetTop measured against the list */
+      max-height: 152px;
+      overflow-y: auto;
+      display: grid;
+      gap: 5px;
+      padding: 5px;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      background: rgba(255,255,255,.6);
+      scrollbar-width: thin;
+      overscroll-behavior: contain;
+    }
+
+    .hd-time-option {
+      padding: 9px 0;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+      color: var(--ink);
+      font-size: 16px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      cursor: pointer;
+    }
+
+    .hd-time-option.selected {
+      background: var(--ink);
+      color: #fdfaf5;
+    }
+
+    .hd-picker-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .hd-chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 14px;
+      background: rgba(255,255,255,.72);
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .hd-chip:active { transform: scale(.97); }
+
+    .hd-picker-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    @media (max-height: 620px) {
+      .hd-picker-headline { font-size: 24px; }
+      .hd-time-list { max-height: 108px; }
+      .hd-picker-day { border-radius: 13px; }
+    }
 
     .month-overlay {
       position: fixed;
@@ -4223,54 +4468,379 @@
       return new Date(now.getFullYear(), now.getMonth(), now.getDate());
     }
 
-    // Android shows a bare numeric date in its native date/time pickers, so the
-    // day name is printed under every date input when the device is an Android.
+    // Android date and time picker.
+    // Chrome on Android draws its own date dialog and gives the page no way to
+    // style it or to spell the weekday out in it. On Android only, the real
+    // input is therefore turned into a plain value holder and replaced by the
+    // field and sheet below, which are ours to design. Every other platform
+    // keeps its native picker untouched.
     const isAndroidDevice = /android/i.test(navigator.userAgent || '');
+    const PICKER_WEEKDAYS = (() => {
+      const firstMonday = new Date(2024, 0, 1);
+      const formatter = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
+      return Array.from({ length: 7 }, (unused, index) => formatter.format(addLocalDays(firstMonday, index)));
+    })();
 
-    function weekdayNameForInput(input) {
-      if (!input.value) return '';
-      const date = input.type === 'date' ? dateFromKey(input.value) : new Date(input.value);
-      if (!date || Number.isNaN(date.getTime())) return '';
+    const picker = {
+      overlay: null,
+      input: null,
+      selected: null,
+      viewDate: null,
+      hour: 0,
+      minute: 0,
+      historyPushed: false,
+      els: {}
+    };
+
+    function pickerHasTime(input) {
+      return input?.dateFieldMode === 'datetime';
+    }
+
+    function readDateInput(input) {
+      if (!input?.value) return null;
+      const date = input.dateFieldMode === 'date' ? dateFromKey(input.value) : new Date(input.value);
+      if (!date || Number.isNaN(date.getTime())) return null;
+      return date;
+    }
+
+    function writeDateInput(input, date) {
+      const next = date ? (pickerHasTime(input) ? toLocalInputValue(date) : dateKey(date)) : '';
+      if (input.value === next) return;
+      input.value = next;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function formatPickerWeekday(date) {
       return new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(date);
     }
 
-    function refreshWeekdayHint(input) {
-      const hint = input.weekdayHintEl;
-      if (!hint) return;
-      const name = weekdayNameForInput(input);
-      hint.textContent = name;
-      hint.classList.toggle('hidden', !name);
+    function formatPickerDate(date) {
+      return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long', year: 'numeric' }).format(date);
     }
 
-    function attachWeekdayHint(input) {
-      if (input.weekdayHintEl) {
-        refreshWeekdayHint(input);
+    function formatPickerTime(date) {
+      return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+    function refreshDateTrigger(input) {
+      const trigger = input.dateFieldTrigger;
+      if (!trigger) return;
+      const date = readDateInput(input);
+      const { weekday, dateText, empty, time } = trigger.parts;
+      if (!date) {
+        weekday.classList.add('hidden');
+        dateText.classList.add('hidden');
+        time.classList.add('hidden');
+        weekday.textContent = '';
+        dateText.textContent = '';
+        time.textContent = '';
+        empty.classList.remove('hidden');
+        empty.textContent = pickerHasTime(input) ? 'Choose date and time' : 'Choose a date';
+        trigger.setAttribute('aria-label', `${input.dateFieldLabel || 'Date'}: nothing chosen yet`);
         return;
       }
-      const hint = document.createElement('div');
-      hint.className = 'weekday-hint hidden';
-      input.insertAdjacentElement('afterend', hint);
-      input.weekdayHintEl = hint;
-      input.addEventListener('input', () => refreshWeekdayHint(input));
-      input.addEventListener('change', () => refreshWeekdayHint(input));
-      // Dates are also filled in from code, and form.reset() wipes them, and
-      // neither of those fires an event, so mirror both on top of the listeners.
+      empty.classList.add('hidden');
+      empty.textContent = '';
+      weekday.classList.remove('hidden');
+      dateText.classList.remove('hidden');
+      weekday.textContent = formatPickerWeekday(date);
+      dateText.textContent = formatPickerDate(date);
+      time.classList.toggle('hidden', !pickerHasTime(input));
+      time.textContent = pickerHasTime(input) ? formatPickerTime(date) : '';
+      trigger.setAttribute('aria-label', `${input.dateFieldLabel || 'Date'}: ${formatPickerWeekday(date)} ${formatPickerDate(date)}${pickerHasTime(input) ? `, ${formatPickerTime(date)}` : ''}`);
+    }
+
+    function convertDateInput(input) {
+      if (input.dateFieldTrigger) {
+        refreshDateTrigger(input);
+        return;
+      }
+      input.dateFieldMode = input.type === 'date' ? 'date' : 'datetime';
+      input.dateFieldRequired = input.required;
+      input.dateFieldLabel = (input.closest('label')?.childNodes[0]?.textContent || input.getAttribute('aria-label') || '').trim();
+      // Hidden keeps the value, the id and every existing reader of this field
+      // working, and takes the native dialog out of reach for good.
+      input.type = 'hidden';
+
+      const trigger = document.createElement('button');
+      trigger.type = 'button';
+      trigger.className = 'hd-date-trigger';
+      const text = document.createElement('span');
+      const weekday = document.createElement('span');
+      weekday.className = 'hd-trigger-weekday';
+      const dateText = document.createElement('span');
+      dateText.className = 'hd-trigger-date';
+      const empty = document.createElement('span');
+      empty.className = 'hd-trigger-empty';
+      const time = document.createElement('span');
+      time.className = 'hd-trigger-time';
+      text.append(weekday, dateText, empty);
+      trigger.append(text, time);
+      trigger.parts = { weekday, dateText, empty, time };
+      trigger.addEventListener('click', () => openDatePicker(input));
+      input.insertAdjacentElement('afterend', trigger);
+      input.dateFieldTrigger = trigger;
+
+      // The value is also written from code and wiped by form.reset(), and
+      // neither fires an event, so mirror both on top of the listeners.
       const valueProp = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
       Object.defineProperty(input, 'value', {
         configurable: true,
         get() { return valueProp.get.call(this); },
         set(next) {
           valueProp.set.call(this, next);
-          refreshWeekdayHint(this);
+          refreshDateTrigger(this);
         }
       });
-      input.form?.addEventListener('reset', () => setTimeout(() => refreshWeekdayHint(input), 0));
-      refreshWeekdayHint(input);
+      input.addEventListener('change', () => refreshDateTrigger(input));
+      input.form?.addEventListener('reset', () => setTimeout(() => refreshDateTrigger(input), 0));
+      refreshDateTrigger(input);
     }
 
-    function setupWeekdayHints(root = document) {
+    function setupAndroidDatePickers(root = document) {
       if (!isAndroidDevice || !root?.querySelectorAll) return;
-      root.querySelectorAll('input[type="date"], input[type="datetime-local"]').forEach(attachWeekdayHint);
+      root.querySelectorAll('input[type="date"], input[type="datetime-local"]').forEach(convertDateInput);
+    }
+
+    function buildPickerDom() {
+      if (picker.overlay) return;
+      const overlay = document.createElement('div');
+      overlay.className = 'hd-picker-overlay hidden';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('aria-label', 'Choose a date');
+      overlay.innerHTML = `
+        <div class="hd-picker-sheet" tabindex="-1">
+          <div>
+            <div class="hd-picker-eyebrow" data-picker-eyebrow></div>
+            <h2 class="hd-picker-headline" data-picker-headline></h2>
+            <div class="hd-picker-subline" data-picker-subline></div>
+          </div>
+          <div class="hd-picker-nav">
+            <button class="hd-picker-nav-btn" type="button" data-picker-step="-1" aria-label="Previous month">&#8249;</button>
+            <div class="hd-picker-month" data-picker-month aria-live="polite"></div>
+            <button class="hd-picker-nav-btn" type="button" data-picker-step="1" aria-label="Next month">&#8250;</button>
+          </div>
+          <div class="hd-picker-weekdays" aria-hidden="true">${PICKER_WEEKDAYS.map(day => `<div class="hd-picker-weekday">${htmlEscape(day)}</div>`).join('')}</div>
+          <div class="hd-picker-grid" data-picker-grid></div>
+          <div class="hd-picker-time hidden" data-picker-time>
+            <div class="hd-time-col">
+              <div class="hd-time-label">Hour</div>
+              <div class="hd-time-list" data-picker-hours role="listbox" aria-label="Hour"></div>
+            </div>
+            <div class="hd-time-col">
+              <div class="hd-time-label">Minute</div>
+              <div class="hd-time-list" data-picker-minutes role="listbox" aria-label="Minute"></div>
+            </div>
+          </div>
+          <div class="hd-picker-chips">
+            <button class="hd-chip" type="button" data-picker-jump="0">Today</button>
+            <button class="hd-chip" type="button" data-picker-jump="1">Tomorrow</button>
+            <button class="hd-chip" type="button" data-picker-jump="7">In a week</button>
+            <button class="hd-chip hidden" type="button" data-picker-clear>Clear</button>
+          </div>
+          <div class="hd-picker-actions">
+            <button class="btn secondary" type="button" data-picker-cancel>Cancel</button>
+            <button class="btn" type="button" data-picker-done>Use this date</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      picker.overlay = overlay;
+      picker.els = {
+        sheet: overlay.querySelector('.hd-picker-sheet'),
+        eyebrow: overlay.querySelector('[data-picker-eyebrow]'),
+        headline: overlay.querySelector('[data-picker-headline]'),
+        subline: overlay.querySelector('[data-picker-subline]'),
+        month: overlay.querySelector('[data-picker-month]'),
+        grid: overlay.querySelector('[data-picker-grid]'),
+        time: overlay.querySelector('[data-picker-time]'),
+        hours: overlay.querySelector('[data-picker-hours]'),
+        minutes: overlay.querySelector('[data-picker-minutes]'),
+        clear: overlay.querySelector('[data-picker-clear]')
+      };
+
+      overlay.addEventListener('click', event => {
+        if (event.target === overlay) {
+          closeDatePicker();
+          return;
+        }
+        const step = event.target.closest('[data-picker-step]')?.dataset.pickerStep;
+        if (step) {
+          picker.viewDate = new Date(picker.viewDate.getFullYear(), picker.viewDate.getMonth() + Number(step), 1);
+          renderDatePicker();
+          return;
+        }
+        const dayKey = event.target.closest('[data-picker-day]')?.dataset.pickerDay;
+        if (dayKey) {
+          picker.selected = dateFromKey(dayKey);
+          picker.viewDate = monthStart(picker.selected);
+          renderDatePicker();
+          return;
+        }
+        const hour = event.target.closest('[data-picker-hour]')?.dataset.pickerHour;
+        if (hour) {
+          picker.hour = Number(hour);
+          renderDatePicker();
+          return;
+        }
+        const minute = event.target.closest('[data-picker-minute]')?.dataset.pickerMinute;
+        if (minute) {
+          picker.minute = Number(minute);
+          renderDatePicker();
+          return;
+        }
+        const jump = event.target.closest('[data-picker-jump]')?.dataset.pickerJump;
+        if (jump) {
+          picker.selected = addLocalDays(todayStart(), Number(jump));
+          picker.viewDate = monthStart(picker.selected);
+          renderDatePicker();
+          return;
+        }
+        if (event.target.closest('[data-picker-clear]')) {
+          commitDatePicker(null);
+          return;
+        }
+        if (event.target.closest('[data-picker-cancel]')) {
+          closeDatePicker();
+          return;
+        }
+        if (event.target.closest('[data-picker-done]')) commitDatePicker(pickedDateFromPicker());
+      });
+
+      overlay.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeDatePicker();
+        }
+      });
+
+      window.addEventListener('popstate', () => {
+        // The Android back button closes the sheet instead of leaving the page.
+        if (!picker.input) return;
+        picker.historyPushed = false;
+        closeDatePicker();
+      });
+    }
+
+    function pickedDateFromPicker() {
+      const day = picker.selected || todayStart();
+      return pickerHasTime(picker.input)
+        ? new Date(day.getFullYear(), day.getMonth(), day.getDate(), picker.hour, picker.minute)
+        : new Date(day.getFullYear(), day.getMonth(), day.getDate());
+    }
+
+    function buildTimeList(list, values, attribute, label) {
+      list.innerHTML = values
+        .map(value => `<button class="hd-time-option" type="button" ${attribute}="${value}" role="option" aria-selected="false" aria-label="${label} ${pad(value)}">${pad(value)}</button>`)
+        .join('');
+    }
+
+    function markTimeSelection(list, attribute, current) {
+      list.querySelectorAll('.hd-time-option').forEach(option => {
+        const selected = Number(option.dataset[attribute]) === current;
+        option.classList.toggle('selected', selected);
+        option.setAttribute('aria-selected', String(selected));
+      });
+    }
+
+    function centerSelectedOption(list) {
+      const option = list.querySelector('.selected');
+      if (!option) return;
+      list.scrollTop = Math.max(0, option.offsetTop - (list.clientHeight - option.clientHeight) / 2);
+    }
+
+    function renderDatePicker() {
+      if (!picker.input) return;
+      const { els: parts } = picker;
+      const withTime = pickerHasTime(picker.input);
+      const chosen = pickedDateFromPicker();
+      parts.eyebrow.textContent = picker.input.dateFieldLabel || 'Date';
+      parts.headline.textContent = `${formatPickerWeekday(chosen)} ${chosen.getDate()}`;
+      parts.subline.textContent = withTime
+        ? `${formatPickerDate(chosen)} · ${formatPickerTime(chosen)}`
+        : formatPickerDate(chosen);
+      parts.month.textContent = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(picker.viewDate);
+
+      const firstOfMonth = monthStart(picker.viewDate);
+      const leadingDays = (firstOfMonth.getDay() + 6) % 7;
+      const firstGridDay = addLocalDays(firstOfMonth, -leadingDays);
+      // Five rows are enough for most months; the sixth is only drawn when the
+      // month really reaches into it, which keeps the sheet as short as it can be.
+      const cellCount = Math.ceil((leadingDays + monthEnd(firstOfMonth).getDate()) / 7) * 7;
+      const todayKey = dateKey(new Date());
+      const selectedKey = picker.selected ? dateKey(picker.selected) : '';
+      const cells = [];
+      for (let index = 0; index < cellCount; index += 1) {
+        const day = addLocalDays(firstGridDay, index);
+        const key = dateKey(day);
+        const classes = ['hd-picker-day'];
+        if (day.getMonth() !== firstOfMonth.getMonth()) classes.push('outside-month');
+        if (key === todayKey) classes.push('today');
+        if (key === selectedKey) classes.push('selected');
+        cells.push(`<button class="${classes.join(' ')}" type="button" data-picker-day="${key}" aria-pressed="${key === selectedKey}" aria-label="${htmlEscape(`${formatPickerWeekday(day)} ${formatPickerDate(day)}`)}">${day.getDate()}</button>`);
+      }
+      parts.grid.innerHTML = cells.join('');
+
+      parts.time.classList.toggle('hidden', !withTime);
+      if (withTime) {
+        markTimeSelection(parts.hours, 'pickerHour', picker.hour);
+        markTimeSelection(parts.minutes, 'pickerMinute', picker.minute);
+      }
+    }
+
+    function openDatePicker(input) {
+      buildPickerDom();
+      picker.input = input;
+      const current = readDateInput(input);
+      const fallback = new Date(Date.now() + 60 * 60 * 1000);
+      fallback.setMinutes(0, 0, 0);
+      const base = current || fallback;
+      picker.selected = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+      picker.viewDate = monthStart(base);
+      picker.hour = base.getHours();
+      picker.minute = base.getMinutes();
+      picker.els.clear.classList.toggle('hidden', Boolean(input.dateFieldRequired));
+      picker.overlay.setAttribute('aria-label', `Choose ${input.dateFieldLabel || 'a date'}`);
+      if (pickerHasTime(input)) {
+        const minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+        if (!minutes.includes(picker.minute)) minutes.push(picker.minute);
+        minutes.sort((a, b) => a - b);
+        buildTimeList(picker.els.hours, Array.from({ length: 24 }, (unused, hour) => hour), 'data-picker-hour', 'Hour');
+        buildTimeList(picker.els.minutes, minutes, 'data-picker-minute', 'Minute');
+      }
+      renderDatePicker();
+      picker.overlay.classList.remove('hidden');
+      picker.els.sheet.focus({ preventScroll: true });
+      if (pickerHasTime(input)) {
+        // Centring needs the lists on screen, so it waits for the sheet.
+        centerSelectedOption(picker.els.hours);
+        centerSelectedOption(picker.els.minutes);
+      }
+      if (!picker.historyPushed) {
+        history.pushState({ homedashPicker: true }, '');
+        picker.historyPushed = true;
+      }
+    }
+
+    function closeDatePicker() {
+      const input = picker.input;
+      if (!input) return;
+      picker.input = null;
+      picker.overlay?.classList.add('hidden');
+      input.dateFieldTrigger?.focus({ preventScroll: true });
+      if (picker.historyPushed) {
+        picker.historyPushed = false;
+        history.back();
+      }
+    }
+
+    function commitDatePicker(date) {
+      const input = picker.input;
+      if (!input) return;
+      writeDateInput(input, date);
+      closeDatePicker();
     }
 
 
@@ -7276,6 +7846,9 @@
       const start = new Date(Date.now() + 60 * 60 * 1000);
       start.setMinutes(0, 0, 0);
       els.startInput.value = toLocalInputValue(start);
+      // The Android picker parks its value in a hidden input, and form.reset()
+      // leaves hidden inputs alone, so clear the optional end date by hand.
+      els.endInput.value = '';
     }
 
     function formatBytes(bytes) {
@@ -7803,7 +8376,7 @@ Cancel = choose whether to delete the whole series.`);
           </div>
         </div>
       `;
-      setupWeekdayHints(els.taskActionContent);
+      setupAndroidDatePickers(els.taskActionContent);
       els.taskActionOverlay.classList.remove('hidden');
       els.taskActionOverlay.setAttribute('aria-hidden', 'false');
     }
@@ -8259,6 +8832,13 @@ Cancel = choose whether to delete the whole series.`);
 
       els.eventForm.addEventListener('submit', async event => {
         event.preventDefault();
+        // The Android picker holds its value in a hidden input, which the
+        // browser leaves out of the required-field check, so ask here instead.
+        if (!els.startInput.value) {
+          setStatus('Choose when the task starts first.', true);
+          els.startInput.dateFieldTrigger?.focus();
+          return;
+        }
         els.saveEventBtn.disabled = true;
         setStatus('Saving…');
         try {
@@ -8916,7 +9496,7 @@ Cancel = choose whether to delete the whole series.`);
         });
       }
       bindEventImageFallbacks();
-      setupWeekdayHints();
+      setupAndroidDatePickers();
       updateClock();
       setInterval(updateClock, 1000);
       if (!adminMode) setInterval(renderDisplay, 60 * 1000);
