@@ -1749,6 +1749,17 @@
       font-size: 13px;
     }
 
+    /* Android date/time pickers only show the numeric date, so we print the
+       weekday next to the input there. Hidden on every other platform. */
+    .weekday-hint {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: normal;
+      line-height: 1.3;
+      text-transform: capitalize;
+    }
+
     input,
     textarea {
       width: 100%;
@@ -4210,6 +4221,56 @@
     function todayStart() {
       const now = new Date();
       return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }
+
+    // Android shows a bare numeric date in its native date/time pickers, so the
+    // day name is printed under every date input when the device is an Android.
+    const isAndroidDevice = /android/i.test(navigator.userAgent || '');
+
+    function weekdayNameForInput(input) {
+      if (!input.value) return '';
+      const date = input.type === 'date' ? dateFromKey(input.value) : new Date(input.value);
+      if (!date || Number.isNaN(date.getTime())) return '';
+      return new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(date);
+    }
+
+    function refreshWeekdayHint(input) {
+      const hint = input.weekdayHintEl;
+      if (!hint) return;
+      const name = weekdayNameForInput(input);
+      hint.textContent = name;
+      hint.classList.toggle('hidden', !name);
+    }
+
+    function attachWeekdayHint(input) {
+      if (input.weekdayHintEl) {
+        refreshWeekdayHint(input);
+        return;
+      }
+      const hint = document.createElement('div');
+      hint.className = 'weekday-hint hidden';
+      input.insertAdjacentElement('afterend', hint);
+      input.weekdayHintEl = hint;
+      input.addEventListener('input', () => refreshWeekdayHint(input));
+      input.addEventListener('change', () => refreshWeekdayHint(input));
+      // Dates are also filled in from code, and form.reset() wipes them, and
+      // neither of those fires an event, so mirror both on top of the listeners.
+      const valueProp = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+      Object.defineProperty(input, 'value', {
+        configurable: true,
+        get() { return valueProp.get.call(this); },
+        set(next) {
+          valueProp.set.call(this, next);
+          refreshWeekdayHint(this);
+        }
+      });
+      input.form?.addEventListener('reset', () => setTimeout(() => refreshWeekdayHint(input), 0));
+      refreshWeekdayHint(input);
+    }
+
+    function setupWeekdayHints(root = document) {
+      if (!isAndroidDevice || !root?.querySelectorAll) return;
+      root.querySelectorAll('input[type="date"], input[type="datetime-local"]').forEach(attachWeekdayHint);
     }
 
 
@@ -7742,6 +7803,7 @@ Cancel = choose whether to delete the whole series.`);
           </div>
         </div>
       `;
+      setupWeekdayHints(els.taskActionContent);
       els.taskActionOverlay.classList.remove('hidden');
       els.taskActionOverlay.setAttribute('aria-hidden', 'false');
     }
@@ -8854,6 +8916,7 @@ Cancel = choose whether to delete the whole series.`);
         });
       }
       bindEventImageFallbacks();
+      setupWeekdayHints();
       updateClock();
       setInterval(updateClock, 1000);
       if (!adminMode) setInterval(renderDisplay, 60 * 1000);
