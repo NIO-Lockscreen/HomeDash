@@ -6587,13 +6587,18 @@
       if (state.interactionRefreshTimer) clearTimeout(state.interactionRefreshTimer);
       state.interactionRefreshTimer = window.setTimeout(async () => {
         if (state.eventFetchActive) return;
-        // While the marker is readable a tap only has to look at it, which is
-        // free, unless the last confirmed read is old enough that a marker
-        // update that went missing would matter.
-        if (syncVersionHealthy() && Date.now() - state.lastFreshEventLoadAt < INTERACTION_FULL_REFRESH_AFTER_MS) {
+        // A tap always looks at the marker when this screen knows where it is.
+        // That is free, and it loads the task list when anything has changed.
+        // Only when the marker cannot answer, or the last confirmed read is old
+        // enough that a marker update that went missing would matter, does the
+        // tap fall back to a full read (which keeps its minimum gap).
+        if (state.syncVersionUrl) {
           await pollSyncVersion('interaction');
-          if (getPendingWrites().length) await processPendingWrites({ silent: true });
-          return;
+          if (syncVersionHealthy() && Date.now() - state.lastFreshEventLoadAt < INTERACTION_FULL_REFRESH_AFTER_MS) {
+            if (getPendingWrites().length) await processPendingWrites({ silent: true });
+            return;
+          }
+          if (state.eventFetchActive) return;
         }
         if (state.lastEventFetchAt && now - state.lastEventFetchAt < minEventFetchGapMs()) return;
         await fetchEvents({ force: true, reason: 'interaction' });
