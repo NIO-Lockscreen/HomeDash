@@ -344,9 +344,14 @@ export async function loadEventsForReminderCron() {
 
 async function loadReminderState() {
   const state = await readJsonBlob(REMINDER_STATE_PATH, { scheduled: {} });
+  const scheduled = state && typeof state.scheduled === 'object' && state.scheduled ? state.scheduled : {};
   return {
-    scheduled: state && typeof state.scheduled === 'object' && state.scheduled ? state.scheduled : {},
+    scheduled,
     updatedAt: state?.updatedAt || null,
+    // What was read, so a sync that changed nothing does not spend a Blob write
+    // (an advanced operation, of which Hobby allows 2,000 a month) putting the
+    // same state back.
+    loadedJson: JSON.stringify(scheduled),
   };
 }
 
@@ -359,6 +364,8 @@ async function saveReminderState(state) {
     if (Number.isFinite(eventAtMs) && eventAtMs < now - 90 * 24 * 60 * 60 * 1000) continue;
     scheduled[key] = value;
   }
+
+  if (state.loadedJson !== undefined && JSON.stringify(scheduled) === state.loadedJson) return;
 
   await writeJsonBlob(REMINDER_STATE_PATH, {
     updatedAt: new Date().toISOString(),

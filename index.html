@@ -4176,9 +4176,39 @@
     // build the same way, so a device running stale cached JavaScript, or a
     // deploy that never landed, can be told apart from a real sync fault
     // instead of being guessed at.
-    const APP_BUILD = '2026-09-12-b';
-    // Blob-efficient sync: no polling loop. Load fresh events on page boot,
-    // once per hour during daytime, on deliberate interaction, or when needed for a write/retry.
+    const APP_BUILD = '2026-10-22-a';
+    // Blob-efficient sync. Every save on the server also rewrites a tiny
+    // version marker in Blob storage, and screens read that marker straight
+    // off the Blob CDN every SYNC_VERSION_POLL_MS. An unchanged marker is a CDN
+    // cache HIT, which Blob does not bill as an operation, so watching it costs
+    // nothing against the Hobby limits (it only counts as a CDN request, of
+    // which Hobby includes a million a month). Only when the marker changes
+    // does a screen spend a real read on /api/events. Page boot, midnight,
+    // taps and a few-hourly safety net still read on their own.
+    const SYNC_VERSION_POLL_MS = 30 * 1000;
+    const SYNC_VERSION_MIN_GAP_MS = 5 * 1000;
+    const SYNC_VERSION_TIMEOUT_MS = 10 * 1000;
+    // A missing marker is not cached by the CDN, so each look at it would be a
+    // billed miss. Back right off and ask the server to create it instead.
+    const SYNC_VERSION_MISSING_BACKOFF_MS = 30 * 60 * 1000;
+    const SYNC_VERSION_URL_KEY = 'homeOrganizerSyncVersionUrl';
+    // While the marker is being read, the timed read only has to catch a marker
+    // that failed to update, and a tap only has to look at the marker.
+    const SAFETY_NET_REFRESH_MS = 3 * 60 * 60 * 1000;
+    const INTERACTION_FULL_REFRESH_AFTER_MS = 15 * 60 * 1000;
+    // The server says when it could only get the CDN's older copy of the task
+    // list; that copy is replaced within about a minute, so ask again.
+    const STALE_READ_RETRY_DELAYS_MS = [15 * 1000, 30 * 1000, 60 * 1000];
+    // A save the server could not take yet is retried on its own, backing off.
+    // The schedule ends: every attempt costs Blob reads, so a save that stays
+    // stuck waits for the next refresh, tap or reconnect after that.
+    const PENDING_WRITE_RETRY_DELAYS_MS = [15 * 1000, 30 * 1000, 60 * 1000, 2 * 60 * 1000, 5 * 60 * 1000];
+    // A request that never answers used to leave its in-flight flag set for
+    // good, and from then on every refresh returned early until a reload.
+    const EVENT_FETCH_TIMEOUT_MS = 15 * 1000;
+    const SERVER_WRITE_TIMEOUT_MS = 25 * 1000;
+    const DEPLOY_RELOAD_KEY = 'homeOrganizerDeployReloadAt';
+    const DEPLOY_RELOAD_MIN_GAP_MS = 10 * 60 * 1000;
     const INTERACTION_FETCH_DEBOUNCE_MS = 800;
     const AUTOMATIC_EVENT_REFRESH_START_HOUR = 6;
     const AUTOMATIC_EVENT_REFRESH_END_HOUR = 21;
@@ -4204,7 +4234,13 @@
     const LOCAL_EVENT_MIRROR_MAX_RESENDS = 2;
     const LOCAL_EVENT_ID_PREFIX = 'local-';
     const LAST_WRITE_SIGNAL_KEY = 'homeOrganizerLastWrite';
+    // Daughter periods used to be kept only here, per device. They are shared
+    // through the server now; this key is only read once to bring a device's
+    // old edits across.
     const DAUGHTER_PERIOD_OVERRIDES_KEY = 'homeOrganizerDaughterPeriodOverridesV1';
+    const DAUGHTER_PERIODS_CACHE_KEY = 'homeOrganizerDaughterPeriodsV2';
+    const DAUGHTER_PERIODS_MIGRATED_KEY = 'homeOrganizerDaughterPeriodsMigrated';
+    const DAUGHTER_PERIOD_IMPORT_OP_ID = 'period-import-from-this-device';
     const DAUGHTER_ANCHOR_START_KEY = '2026-05-13';
     const DAUGHTER_ANCHOR_END_KEY = '2026-05-20';
     const DAUGHTER_PERIOD_INTERVAL_DAYS = 14;
@@ -4254,6 +4290,9 @@
       selectedDaughterPeriodKey: null,
       daughterEditorMode: 'edit',
       daughterPeriodOverrides: {},
+      // The server's copy; daughterPeriodOverrides is this plus queued edits.
+      serverDaughterPeriods: { overrides: {}, extra: {} },
+      renderedDaughterPeriodsJson: '',
       weatherFocusDate: null,
       weatherEffectKey: null,
       dangerHoldTimer: null,
@@ -4266,6 +4305,20 @@
       lastWriteError: null,
       lastImageRefusal: null,
       serverBuild: '',
+      syncVersionUrl: '',
+      // The marker value this screen has already loaded the task list for.
+      syncVersionSeen: '',
+      syncVersionLastOkAt: 0,
+      syncVersionLastPollAt: 0,
+      syncVersionBackoffUntil: 0,
+      syncVersionPollActive: false,
+      lastFreshEventLoadAt: 0,
+      staleRetryTimer: null,
+      staleRetryAttempt: 0,
+      pendingWriteRetryTimer: null,
+      pendingWriteRetryAttempt: 0,
+      firstDeployment: '',
+      newDeploymentSeen: false,
       reminderMenuExpanded: localStorage.getItem('homeOrganizerReminderMenuExpanded') === '1'
     };
 
@@ -4877,20 +4930,142 @@
       }
     }
 
-    function loadDaughterPeriodOverrides() {
-      try {
-        const parsed = JSON.parse(localStorage.getItem(DAUGHTER_PERIOD_OVERRIDES_KEY) || '{}');
-        state.daughterPeriodOverrides = parsed && typeof parsed === 'object' ? parsed : {};
-      } catch {
-        state.daughterPeriodOverrides = {};
+    function normalizeDaughterPeriodsShape(value) {
+      const source = value && typeof value === 'object' ? value : {};
+      const entries = map => (map && typeof map === 'object' && !Array.isArray(map) ? { ...map } : {});
+      return { overrides: entries(source.overrides), extra: entries(source.extra) };
+    }
+
+    // Applies one queued change on top of the server's copy the way the server
+    // will, so an edit shows straight away and is not undone by a refresh that
+    // lands before the server has it.
+    function applyDaughterPeriodChangeLocally(periods, change) {
+      const next = { overrides: { ...periods.overrides }, extra: { ...periods.extra } };
+      const action = String(change?.action || '');
+      if (action === 'import') {
+        const incoming = normalizeDaughterPeriodsShape(change);
+        Object.entries(incoming.overrides).forEach(([key, entry]) => {
+          if (!(key in next.overrides)) next.overrides[key] = entry;
+        });
+        Object.entries(incoming.extra).forEach(([id, entry]) => {
+          if (!(id in next.extra)) next.extra[id] = entry;
+        });
+        return next;
       }
+      const key = String(change?.key || '');
+      if (key.startsWith('extra:')) {
+        const id = key.slice('extra:'.length);
+        if (action === 'set') next.extra[id] = { start: change.start, end: change.end };
+        else if (action === 'delete') delete next.extra[id];
+        return next;
+      }
+      if (action === 'set') next.overrides[key] = { start: change.start, end: change.end };
+      else if (action === 'delete') next.overrides[key] = { deleted: true };
+      else if (action === 'reset') delete next.overrides[key];
+      return next;
+    }
+
+    function effectiveDaughterPeriods() {
+      return getPendingWrites()
+        .filter(op => op.method === 'PERIOD')
+        .reduce((periods, op) => applyDaughterPeriodChangeLocally(periods, op.change), normalizeDaughterPeriodsShape(state.serverDaughterPeriods));
+    }
+
+    function applyServerDaughterPeriods(value) {
+      if (!value || typeof value !== 'object') return;
+      state.serverDaughterPeriods = normalizeDaughterPeriodsShape(value);
+      try { localStorage.setItem(DAUGHTER_PERIODS_CACHE_KEY, JSON.stringify(state.serverDaughterPeriods)); } catch {}
+    }
+
+    function hydrateDaughterPeriodsFromCache() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(DAUGHTER_PERIODS_CACHE_KEY) || 'null');
+        if (parsed) state.serverDaughterPeriods = normalizeDaughterPeriodsShape(parsed);
+      } catch {}
+    }
+
+    function loadDaughterPeriodOverrides() {
+      const periods = effectiveDaughterPeriods();
+      state.daughterPeriodOverrides = { ...periods.overrides, __extra: { ...periods.extra } };
       ensureDaughterStorageShape();
     }
 
-    function saveDaughterPeriodOverrides() {
-      ensureDaughterStorageShape();
-      localStorage.setItem(DAUGHTER_PERIOD_OVERRIDES_KEY, JSON.stringify(state.daughterPeriodOverrides || {}));
+    // A refresh can bring another screen's period edit. Redraw an open month
+    // view when the periods really changed, keeping whatever is being typed
+    // into the period editor.
+    function refreshDaughterPeriodsView() {
+      loadDaughterPeriodOverrides();
+      const json = JSON.stringify(state.daughterPeriodOverrides);
+      if (json === state.renderedDaughterPeriodsJson) return;
+      state.renderedDaughterPeriodsJson = json;
+      if (!els.monthOverlay || els.monthOverlay.classList.contains('hidden')) return;
+      const editing = Boolean(els.daughterPeriodEditor) && !els.daughterPeriodEditor.classList.contains('hidden');
+      const selectedKey = state.selectedDaughterPeriodKey;
+      const typedStart = els.daughterStartInput?.value || '';
+      const typedEnd = els.daughterEndInput?.value || '';
+      renderMonthView();
+      if (editing && selectedKey && selectedKey === state.selectedDaughterPeriodKey) {
+        if (els.daughterStartInput && typedStart) els.daughterStartInput.value = typedStart;
+        if (els.daughterEndInput && typedEnd) els.daughterEndInput.value = typedEnd;
+      }
     }
+
+    // Brings this device's old local-only edits across, once. The server only
+    // fills periods it has no entry for, so a device that is reloaded days late
+    // cannot overwrite edits made on another screen since.
+    function queueDaughterPeriodImport() {
+      let local = null;
+      try {
+        if (localStorage.getItem(DAUGHTER_PERIODS_MIGRATED_KEY) === '1') return;
+        local = JSON.parse(localStorage.getItem(DAUGHTER_PERIOD_OVERRIDES_KEY) || 'null');
+      } catch {
+        return;
+      }
+      const overrides = {};
+      const extra = {};
+      if (local && typeof local === 'object') {
+        Object.entries(local).forEach(([key, value]) => {
+          if (key !== '__extra' && value && typeof value === 'object') overrides[key] = value;
+        });
+        Object.entries(local.__extra && typeof local.__extra === 'object' ? local.__extra : {}).forEach(([id, value]) => {
+          if (value && typeof value === 'object') extra[id] = value;
+        });
+      }
+      if (!Object.keys(overrides).length && !Object.keys(extra).length) {
+        try { localStorage.setItem(DAUGHTER_PERIODS_MIGRATED_KEY, '1'); } catch {}
+        return;
+      }
+      // Saving needs the admin PIN. Without one, try again on a later load.
+      if (!getPin().trim()) return;
+      queueWrite({
+        opId: DAUGHTER_PERIOD_IMPORT_OP_ID,
+        method: 'PERIOD',
+        change: { action: 'import', overrides, extra },
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    function setDaughterPeriodStatus(text) {
+      if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = text;
+    }
+
+    // Period edits go through the same queue as task saves: shown at once,
+    // kept on this device until the server has them, then on every screen.
+    async function queueDaughterPeriodChange(change, report) {
+      queueWrite({
+        opId: `period-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+        method: 'PERIOD',
+        change,
+        createdAt: new Date().toISOString()
+      });
+      loadDaughterPeriodOverrides();
+      renderMonthView();
+      report('saving');
+      try { await processPendingWrites({ silent: true }); } catch {}
+      report(getPendingWrites().some(op => op.method === 'PERIOD') ? 'queued' : 'saved');
+    }
+
+    const DAUGHTER_PERIOD_QUEUED_TEXT = 'Saved on this device. The other screens get it as soon as the server answers.';
 
     function isValidDateKey(key) {
       const date = dateFromKey(key);
@@ -5046,7 +5221,7 @@
       }
       if (els.daughterPeriodHelp) {
         if (period.isNew) {
-          els.daughterPeriodHelp.textContent = 'Add a manual period. It will be saved on this device and shown with the same blue tint.';
+          els.daughterPeriodHelp.textContent = 'Add a manual period. Every screen shows it with the same blue tint.';
         } else if (period.extra) {
           els.daughterPeriodHelp.textContent = 'This is a manually added period. Save to change it, or delete it if it should not be shown.';
         } else if (period.customized) {
@@ -5064,9 +5239,9 @@
         els.daughterPeriodStatus.textContent = period.isNew
           ? 'Choose start and end dates, then add the period.'
           : period.extra
-            ? 'Manual period saved on this device.'
+            ? 'Manual period, shared with every screen.'
             : period.customized
-              ? 'Custom period saved on this device.'
+              ? 'Custom period, shared with every screen.'
               : 'Default alternating period.';
       }
     }
@@ -5141,56 +5316,48 @@
       const start = els.daughterStartInput?.value || '';
       const end = els.daughterEndInput?.value || '';
       if (!isValidDateKey(start) || !isValidDateKey(end)) {
-        if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'Choose both a valid start date and end date.';
+        setDaughterPeriodStatus('Choose both a valid start date and end date.');
         return;
       }
       if (dateFromKey(end) < dateFromKey(start)) {
-        if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'End date must be the same day or after the start date.';
+        setDaughterPeriodStatus('End date must be the same day or after the start date.');
         return;
       }
-      ensureDaughterStorageShape();
+      if (!ensureDisplayActionPin()) return;
+      let key = periodKey;
       if (state.daughterEditorMode === 'add' || periodKey === '__new') {
-        const id = `manual-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-        state.daughterPeriodOverrides.__extra[id] = { start, end };
-        state.selectedDaughterPeriodKey = `extra:${id}`;
+        key = `extra:manual-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+        state.selectedDaughterPeriodKey = key;
         state.daughterEditorMode = 'edit';
-      } else if (String(periodKey).startsWith('extra:')) {
-        const id = String(periodKey).slice('extra:'.length);
-        state.daughterPeriodOverrides.__extra[id] = { start, end };
-      } else {
-        state.daughterPeriodOverrides[periodKey] = { start, end };
       }
-      saveDaughterPeriodOverrides();
-      renderMonthView();
-      if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'Saved this period on this device.';
+      queueDaughterPeriodChange({ action: 'set', key, start, end }, stage => setDaughterPeriodStatus(
+        stage === 'saving' ? 'Saving…' : stage === 'queued' ? DAUGHTER_PERIOD_QUEUED_TEXT : 'Saved. Every screen shows it within a minute or two.'
+      ));
     }
 
     function resetSelectedDaughterPeriod() {
       const periodKey = state.selectedDaughterPeriodKey;
       if (!periodKey || String(periodKey).startsWith('extra:') || periodKey === '__new') return;
-      delete state.daughterPeriodOverrides[periodKey];
+      if (!ensureDisplayActionPin()) return;
       state.daughterEditorMode = 'edit';
-      saveDaughterPeriodOverrides();
-      renderMonthView();
-      if (els.daughterPeriodStatus) els.daughterPeriodStatus.textContent = 'Reset to the normal every-other-week pattern.';
+      queueDaughterPeriodChange({ action: 'reset', key: periodKey }, stage => setDaughterPeriodStatus(
+        stage === 'saving' ? 'Saving…' : stage === 'queued' ? DAUGHTER_PERIOD_QUEUED_TEXT : 'Reset to the normal every-other-week pattern on every screen.'
+      ));
     }
 
     function deleteSelectedDaughterPeriod() {
       const periodKey = state.selectedDaughterPeriodKey;
       if (!periodKey || periodKey === '__new') return;
-      ensureDaughterStorageShape();
-      if (String(periodKey).startsWith('extra:')) {
-        const id = String(periodKey).slice('extra:'.length);
-        delete state.daughterPeriodOverrides.__extra[id];
-      } else {
-        state.daughterPeriodOverrides[periodKey] = { deleted: true };
-      }
+      if (!ensureDisplayActionPin()) return;
       state.selectedDaughterPeriodKey = null;
       state.daughterEditorMode = 'edit';
-      saveDaughterPeriodOverrides();
       renderDaughterPeriodEditor(null);
-      renderMonthView();
-      if (els.monthSubtitle) els.monthSubtitle.textContent = 'Period deleted on this device. Use Add daughter period if you need to add a replacement.';
+      queueDaughterPeriodChange({ action: 'delete', key: periodKey }, stage => {
+        if (!els.monthSubtitle || stage === 'saving') return;
+        els.monthSubtitle.textContent = stage === 'queued'
+          ? `Period deleted. ${DAUGHTER_PERIOD_QUEUED_TEXT}`
+          : 'Period deleted on every screen. Use Add daughter period if you need to add a replacement.';
+      });
     }
 
     function showAddDaughterPeriodEditor() {
@@ -6191,6 +6358,7 @@
 
     function checkIdleReset() {
       if (adminMode) return;
+      maybeReloadForNewDeployment();
       if (Date.now() - state.lastInteractionAt < IDLE_RESET_MS) return;
       // Already home: restart the window instead of re-rendering every check.
       if (isHomeView()) {
@@ -6404,7 +6572,10 @@
     function scheduleNextHourlyEventRefresh() {
       window.setTimeout(async () => {
         if (isAutomaticEventRefreshWindow()) {
-          await fetchEvents({ force: true, reason: 'hourly-daytime' });
+          // With the version marker being read, changes arrive through it and
+          // this read is only a safety net for a marker that failed to update.
+          const coveredByMarker = syncVersionHealthy() && Date.now() - state.lastFreshEventLoadAt < SAFETY_NET_REFRESH_MS;
+          if (!coveredByMarker) await fetchEvents({ force: true, reason: 'hourly-daytime' });
           await processPendingWrites({ silent: true });
         }
         scheduleNextHourlyEventRefresh();
@@ -6416,6 +6587,14 @@
       if (state.interactionRefreshTimer) clearTimeout(state.interactionRefreshTimer);
       state.interactionRefreshTimer = window.setTimeout(async () => {
         if (state.eventFetchActive) return;
+        // While the marker is readable a tap only has to look at it, which is
+        // free, unless the last confirmed read is old enough that a marker
+        // update that went missing would matter.
+        if (syncVersionHealthy() && Date.now() - state.lastFreshEventLoadAt < INTERACTION_FULL_REFRESH_AFTER_MS) {
+          await pollSyncVersion('interaction');
+          if (getPendingWrites().length) await processPendingWrites({ silent: true });
+          return;
+        }
         if (state.lastEventFetchAt && now - state.lastEventFetchAt < minEventFetchGapMs()) return;
         await fetchEvents({ force: true, reason: 'interaction' });
         await processPendingWrites({ silent: true });
@@ -6470,6 +6649,7 @@
       refreshEventsFromServerEvents();
       renderDisplay();
       renderAdminEvents();
+      refreshDaughterPeriodsView();
     }
 
     function getPendingWrites() {
@@ -6738,6 +6918,7 @@
       const queue = getPendingWrites().filter(item => item.opId !== op.opId);
       queue.push(op);
       setPendingWrites(queue);
+      state.pendingWriteRetryAttempt = 0;
     }
 
     function removeQueuedWrite(opId) {
@@ -6757,7 +6938,7 @@
       state.lastWriteError = {
         status: Number(error?.status) || 0,
         message: String(error?.message || 'Unknown error.'),
-        title: String(op?.event?.title || ''),
+        title: String(op?.event?.title || (op?.method === 'PERIOD' ? 'Daughter period' : '')),
         at: new Date().toISOString()
       };
     }
@@ -6852,6 +7033,23 @@
       state.events = applyPendingOps(state.serverEvents);
     }
 
+    // Every sync request is bounded. One that never answered used to leave its
+    // in-flight flag set for good, and from then on every refresh on the wall
+    // display - timed, tapped or at midnight - returned early until a reload.
+    // The body is read inside the window too: a stalled body hangs just as well.
+    async function fetchJsonWithTimeout(url, options = {}, timeoutMs = EVENT_FETCH_TIMEOUT_MS) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        let data = {};
+        try { data = await response.json(); } catch {}
+        return { response, data: data && typeof data === 'object' ? data : {} };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
     async function performServerWrite(op) {
       let url = '/api/events';
       const options = { method: op.method, headers: { 'x-admin-pin': getPin() } };
@@ -6862,20 +7060,39 @@
       } else if (op.method === 'DELETE') {
         url = `/api/events?id=${encodeURIComponent(op.id)}`;
         options.method = 'DELETE';
+      } else if (op.method === 'PERIOD') {
+        options.method = 'PATCH';
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify({ daughterPeriod: op.change });
       } else {
         options.headers['Content-Type'] = 'application/json';
         options.body = JSON.stringify(op.event);
       }
 
-      const response = await fetch(url, options);
-      let data = {};
-      try { data = await response.json(); } catch {}
+      // Longer than the server's own 10 second limit, so an abort only ever
+      // means the answer is not coming. Every save is safe to send again.
+      const { response, data } = await fetchJsonWithTimeout(url, options, SERVER_WRITE_TIMEOUT_MS);
       if (!response.ok) {
         const error = new Error(data.error || 'Server is busy. The change is saved on this device and will retry.');
         error.status = response.status;
         throw error;
       }
       return data;
+    }
+
+    function schedulePendingWriteRetry() {
+      if (!getPendingWrites().length) {
+        state.pendingWriteRetryAttempt = 0;
+        return;
+      }
+      if (state.pendingWriteRetryTimer) return;
+      const delay = PENDING_WRITE_RETRY_DELAYS_MS[state.pendingWriteRetryAttempt];
+      if (delay === undefined) return;
+      state.pendingWriteRetryAttempt += 1;
+      state.pendingWriteRetryTimer = window.setTimeout(() => {
+        state.pendingWriteRetryTimer = null;
+        processPendingWrites({ silent: true }).catch(() => {});
+      }, delay);
     }
 
     async function processPendingWrites(options = {}) {
@@ -6897,12 +7114,23 @@
           const blockedEventIds = new Set();
 
           for (const op of queue) {
-            const opEventId = String(op.event?.id || op.id || '');
+            const opEventId = op.method === 'PERIOD'
+              ? `period:${op.change?.key || op.change?.action || ''}`
+              : String(op.event?.id || op.id || '');
             if (opEventId && blockedEventIds.has(opEventId)) continue;
             try {
               const data = await performServerWrite(op);
               state.lastWriteError = null;
               rememberServerBuild(data.build);
+              noteServerDeployment(data.deployment);
+              rememberSyncVersionUrl(data.versionUrl);
+              // This device already has its own change; the marker the server
+              // just moved for it is not news to this screen.
+              markSyncVersionSeen(data.version);
+              if (data.daughterPeriods) applyServerDaughterPeriods(data.daughterPeriods);
+              if (op.opId === DAUGHTER_PERIOD_IMPORT_OP_ID) {
+                try { localStorage.setItem(DAUGHTER_PERIODS_MIGRATED_KEY, '1'); } catch {}
+              }
               noteImageRefusal(data, op);
               if (data.reminderSync) state.lastReminderSync = data.reminderSync;
               if (op.event && data.event && String(data.event.id) === String(op.event.id)) {
@@ -6969,6 +7197,8 @@
         updateLocalQueueStatus();
         renderDisplay();
         renderAdminEvents();
+        refreshDaughterPeriodsView();
+        schedulePendingWriteRetry();
       }
       if (fatalError) throw fatalError;
     }
@@ -6984,14 +7214,38 @@
       state.eventFetchActive = true;
       state.lastEventFetchAt = now;
       try {
-        const url = options.force ? `/api/events?fresh=1&t=${Date.now()}` : '/api/events';
-        const response = await fetch(url, { cache: options.force ? 'no-store' : 'default' });
-        const data = await response.json();
+        const query = new URLSearchParams();
+        if (options.force) {
+          query.set('fresh', '1');
+          query.set('t', String(Date.now()));
+        }
+        if (options.ensureVersion) query.set('ensureVersion', '1');
+        const url = `/api/events${query.toString() ? `?${query}` : ''}`;
+        const { response, data } = await fetchJsonWithTimeout(url, { cache: options.force ? 'no-store' : 'default' }, EVENT_FETCH_TIMEOUT_MS);
         if (!response.ok) throw new Error(data.error || 'Could not load events.');
+        // A 200 without a task list is not an empty calendar.
+        if (!Array.isArray(data.events)) throw new Error('The server answered without a task list.');
         rememberServerBuild(data.build);
-        state.serverEvents = Array.isArray(data.events) ? data.events : [];
-        state.serverEventsFresh = true;
-        rememberCachedEvents(state.serverEvents);
+        noteServerDeployment(data.deployment);
+        rememberSyncVersionUrl(data.versionUrl);
+        // `fresh: false` is the CDN's older copy from before the latest save.
+        // It used to be taken as current, and a tap right after a change on the
+        // phone then showed the old list and blocked further reads for a
+        // minute. Keep what this screen has and ask again shortly.
+        const confirmed = data.fresh !== false;
+        if (confirmed || !state.serverEvents.length) {
+          state.serverEvents = data.events;
+          state.serverEventsFresh = confirmed;
+          rememberCachedEvents(state.serverEvents);
+          if (data.daughterPeriods) applyServerDaughterPeriods(data.daughterPeriods);
+        }
+        if (confirmed) {
+          state.lastFreshEventLoadAt = Date.now();
+          if (options.force) markSyncVersionSeen(options.expectVersion || data.updatedAt);
+          clearStaleReadRetry();
+        } else {
+          scheduleStaleReadRetry(options);
+        }
         refreshEventsFromServerEvents();
       } catch (error) {
         console.warn(error);
@@ -7002,6 +7256,7 @@
       }
       renderDisplay();
       renderAdminEvents();
+      refreshDaughterPeriodsView();
       processPendingWrites({ silent: true });
       // Wait until the task is actually loaded before opening the editor, so a
       // deep link still works if the first read did not include it yet.
@@ -7011,6 +7266,123 @@
       }
     }
 
+    function clearStaleReadRetry() {
+      if (state.staleRetryTimer) clearTimeout(state.staleRetryTimer);
+      state.staleRetryTimer = null;
+      state.staleRetryAttempt = 0;
+    }
+
+    function scheduleStaleReadRetry(options = {}) {
+      if (state.staleRetryTimer) return;
+      const delay = STALE_READ_RETRY_DELAYS_MS[state.staleRetryAttempt];
+      if (delay === undefined) {
+        // Out of retries. Stop chasing this marker value, or the next look at
+        // the marker would start the whole round again; the safety-net read
+        // picks the change up later.
+        state.staleRetryAttempt = 0;
+        markSyncVersionSeen(options.expectVersion);
+        return;
+      }
+      state.staleRetryAttempt += 1;
+      state.staleRetryTimer = window.setTimeout(() => {
+        state.staleRetryTimer = null;
+        fetchEvents({ force: true, reason: 'stale-retry', expectVersion: options.expectVersion }).catch(() => {});
+      }, delay);
+    }
+
+    function rememberSyncVersionUrl(url) {
+      const text = String(url || '').trim();
+      if (!/^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//i.test(text)) return;
+      if (text === state.syncVersionUrl) return;
+      state.syncVersionUrl = text;
+      try { localStorage.setItem(SYNC_VERSION_URL_KEY, text); } catch {}
+    }
+
+    function markSyncVersionSeen(version) {
+      const text = String(version || '').trim();
+      if (text) state.syncVersionSeen = text;
+    }
+
+    function syncVersionHealthy() {
+      return Boolean(state.syncVersionUrl)
+        && Date.now() - state.syncVersionLastOkAt < 2 * SYNC_VERSION_POLL_MS + SYNC_VERSION_TIMEOUT_MS;
+    }
+
+    // Looks at the version marker on the Blob CDN and loads the task list only
+    // when it moved. Free while nothing changes: the CDN answers from its cache
+    // (a 304 to this browser), which Blob does not bill as an operation.
+    async function pollSyncVersion(reason = 'timer') {
+      if (!state.syncVersionUrl || state.syncVersionPollActive) return;
+      const now = Date.now();
+      if (now < state.syncVersionBackoffUntil) return;
+      if (reason !== 'timer' && now - state.syncVersionLastPollAt < SYNC_VERSION_MIN_GAP_MS) return;
+      state.syncVersionPollActive = true;
+      state.syncVersionLastPollAt = now;
+      try {
+        const { response, data } = await fetchJsonWithTimeout(state.syncVersionUrl, { cache: 'no-cache' }, SYNC_VERSION_TIMEOUT_MS);
+        if (response.status === 404) {
+          // No marker yet (nothing has been saved since this was deployed).
+          // Ask the server to write one, and look again much later.
+          state.syncVersionBackoffUntil = Date.now() + SYNC_VERSION_MISSING_BACKOFF_MS;
+          fetchEvents({ force: true, reason: 'version-missing', ensureVersion: true }).catch(() => {});
+          return;
+        }
+        if (!response.ok) return;
+        state.syncVersionLastOkAt = Date.now();
+        const version = String(data.updatedAt || '').trim();
+        if (!version || version === state.syncVersionSeen) return;
+        // A read is already on its way, or waiting out an older CDN copy.
+        if (state.eventFetchActive || state.staleRetryTimer) return;
+        await fetchEvents({ force: true, reason: `version-${reason}`, expectVersion: version });
+      } catch (error) {
+        console.warn('Could not read the sync version marker:', error);
+      } finally {
+        state.syncVersionPollActive = false;
+        updateLocalQueueStatus();
+      }
+    }
+
+    function startSyncVersionPolling() {
+      try { rememberSyncVersionUrl(localStorage.getItem(SYNC_VERSION_URL_KEY)); } catch {}
+      window.setInterval(() => {
+        if (document.visibilityState !== 'hidden') pollSyncVersion('timer');
+      }, SYNC_VERSION_POLL_MS);
+      // A screen that wakes up, comes back online or is shown again looks at
+      // once instead of waiting out the interval.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') pollSyncVersion('visible');
+      });
+      window.addEventListener('online', () => pollSyncVersion('online'));
+    }
+
+    // Which deployment answered. The first one this page sees is the one it
+    // was loaded from; a different one later means a deploy has gone live.
+    function noteServerDeployment(deployment) {
+      const id = String(deployment || '').trim();
+      if (!id) return;
+      if (!state.firstDeployment) state.firstDeployment = id;
+      else if (id !== state.firstDeployment) state.newDeploymentSeen = true;
+    }
+
+    // The wall display can run one page for days, so a deploy - and every fix
+    // in it - never reached it until somebody reloaded it by hand. Reload it
+    // once it is back on the home view and nobody is using it. Not while the
+    // page is in browser fullscreen: a reload drops fullscreen, and getting
+    // back into it needs a tap. The config menu says a reload is due instead.
+    function maybeReloadForNewDeployment() {
+      if (adminMode || !state.newDeploymentSeen) return;
+      if (isFullscreenActive() || !isHomeView()) return;
+      if (Date.now() - state.lastInteractionAt < 60 * 1000) return;
+      if (state.pendingWriteActive || state.eventFetchActive) return;
+      try {
+        const last = Number(sessionStorage.getItem(DEPLOY_RELOAD_KEY) || 0);
+        if (Date.now() - last < DEPLOY_RELOAD_MIN_GAP_MS) return;
+        sessionStorage.setItem(DEPLOY_RELOAD_KEY, String(Date.now()));
+      } catch {
+        return;
+      }
+      location.reload();
+    }
 
     function getUpcomingDisplayLimit() {
       return DEFAULT_UPCOMING_LIMIT;
@@ -7671,10 +8043,28 @@
       if (failure) parts.push(failure);
       const refusal = describeImageRefusal();
       if (refusal) parts.push(refusal);
+      parts.push(describeLiveSync());
+      if (state.newDeploymentSeen) parts.push('A newer version of the app has been deployed since this page loaded — reload it.');
       parts.push(state.serverBuild && state.serverBuild !== APP_BUILD
         ? `App version ${APP_BUILD}, server ${state.serverBuild} — this page is out of date, reload it.`
         : `App version ${APP_BUILD}.`);
       els.localQueueStatus.textContent = parts.join(' ');
+    }
+
+    // Whether changes from other screens are reaching this one, and how.
+    function describeLiveSync() {
+      const lastRead = state.lastFreshEventLoadAt
+        ? ` Last full read ${Math.max(0, Math.round((Date.now() - state.lastFreshEventLoadAt) / 60000))} min ago.`
+        : '';
+      if (!state.syncVersionUrl) return `Live updates: waiting for the first answer from the server.${lastRead}`;
+      if (Date.now() < state.syncVersionBackoffUntil) {
+        return `Live updates: the server has no change marker yet; the next save creates it. Timed reads until then.${lastRead}`;
+      }
+      if (!state.syncVersionLastOkAt) return `Live updates: starting.${lastRead}`;
+      const seconds = Math.max(0, Math.round((Date.now() - state.syncVersionLastOkAt) / 1000));
+      return syncVersionHealthy()
+        ? `Live updates: on, checked ${seconds}s ago.${lastRead}`
+        : `Live updates: the change marker has not answered for ${seconds}s, so this screen is on timed reads.${lastRead}`;
     }
 
     function fillConfigForm() {
@@ -9172,6 +9562,8 @@ Cancel = choose whether to delete the whole series.`);
     async function setMotionDimmed(dimmed) {
       if (motionDimmer.dimmed === dimmed) return;
       motionDimmer.dimmed = dimmed;
+      // Somebody walked up to the screen: make sure it is showing the latest.
+      if (!dimmed) pollSyncVersion('motion');
       document.body.classList.toggle('motion-dimmed', dimmed);
       await setScreenBrightnessPercent(dimmed ? MOTION_DIM_BRIGHTNESS : MOTION_FULL_BRIGHTNESS);
     }
@@ -9552,15 +9944,19 @@ Cancel = choose whether to delete the whole series.`);
       if (!adminMode) setInterval(renderDisplay, 60 * 1000);
       fetchWeather();
       setInterval(fetchWeather, 30 * 60 * 1000);
+      hydrateDaughterPeriodsFromCache();
+      queueDaughterPeriodImport();
       hydrateEventsFromLocalCache();
       // Page boot should always spend one fresh read so the dashboard starts with newest data.
       // Local cache still renders instantly first, then this refresh replaces it when loaded.
       fetchEvents({ force: true, reason: 'page-boot' });
       bindInteractionRefresh();
       scheduleNextHourlyEventRefresh();
+      startSyncVersionPolling();
       window.addEventListener('online', () => processPendingWrites({ silent: true }));
       window.addEventListener('storage', event => {
         if (event.key === LAST_WRITE_SIGNAL_KEY) {
+          hydrateDaughterPeriodsFromCache();
           renderFromLocalState();
           // Another open tab already updated local state. Do not spend a Blob read here.
         }
@@ -9568,6 +9964,7 @@ Cancel = choose whether to delete the whole series.`);
       window.addEventListener('pageshow', () => {
         hydrateEventsFromLocalCache();
         renderFromLocalState();
+        pollSyncVersion('pageshow');
       });
       if (adminMode) {
         bindAdmin();
