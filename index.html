@@ -3741,6 +3741,246 @@
       }
     }
 
+    /* Pull-out panel by the clock (display only). A slim handle sits on the
+       left screen edge level with the clock; pulling it right slides the
+       panel out, like Android's edge panel. A plain tap only peeks, so a stray
+       touch on the edge opens nothing. */
+    .edge-panel {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      pointer-events: none;
+    }
+
+    .edge-panel-scrim {
+      position: absolute;
+      inset: 0;
+      background: rgba(29, 25, 21, 0.12);
+      opacity: 0;
+      transition: opacity .28s ease;
+    }
+
+    .edge-panel.is-open .edge-panel-scrim {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .edge-panel-dock {
+      position: absolute;
+      left: 0;
+      top: var(--edge-panel-top, 24vh);
+      transform: translateY(-50%);
+    }
+
+    .edge-panel-handle {
+      position: absolute;
+      left: 0;
+      top: 50%;
+      width: 34px;
+      height: 104px;
+      transform: translateY(-50%);
+      pointer-events: auto;
+      touch-action: none;
+      cursor: grab;
+      outline: none;
+      transition: opacity .2s ease;
+    }
+
+    .edge-panel-handle::before {
+      content: '';
+      position: absolute;
+      left: 5px;
+      top: 50%;
+      width: 6px;
+      height: 62px;
+      transform: translateY(-50%);
+      border-radius: 999px;
+      background: rgba(47, 43, 39, 0.24);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+    }
+
+    .edge-panel-handle:focus-visible::before { background: rgba(47, 43, 39, 0.5); }
+
+    .edge-panel.is-open .edge-panel-handle,
+    .edge-panel.is-dragging .edge-panel-handle {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .edge-panel-tray {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 28px;
+      background: rgba(255, 252, 247, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.78);
+      box-shadow: 0 22px 60px rgba(47, 43, 39, 0.22);
+      backdrop-filter: blur(18px);
+      transform: translateX(calc(-100% - 40px));
+      transition: transform .3s cubic-bezier(.2, .8, .2, 1);
+      pointer-events: auto;
+      touch-action: none;
+    }
+
+    .edge-panel.is-peeking .edge-panel-tray { transform: translateX(calc(-100% + 22px)); }
+    .edge-panel.is-open .edge-panel-tray { transform: translateX(14px); }
+    .edge-panel.is-dragging .edge-panel-tray { transition: none; }
+
+    .edge-app {
+      display: grid;
+      justify-items: center;
+      gap: 6px;
+      padding: 4px;
+      border: 0;
+      background: transparent;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: .02em;
+      cursor: pointer;
+    }
+
+    .edge-app-icon {
+      width: 64px;
+      height: 64px;
+      display: grid;
+      place-items: center;
+      border-radius: 18px;
+      background: #fff;
+      border: 1px solid var(--line);
+      box-shadow: 0 10px 22px rgba(70, 58, 44, 0.12);
+      transition: transform .12s ease;
+    }
+
+    .edge-app-icon svg { width: 46px; height: 46px; display: block; }
+    .edge-app:active .edge-app-icon { transform: scale(.93); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .edge-panel-tray,
+      .edge-panel-scrim { transition: none; }
+    }
+
+    /* QR code and player for a YouTube link sent from a phone. */
+    .video-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 75;
+      display: grid;
+      place-items: center;
+      padding: clamp(14px, 2vmin, 28px);
+      background: rgba(29, 25, 21, 0.28);
+      backdrop-filter: blur(18px);
+    }
+
+    .video-qr-modal {
+      width: min(480px, 100%);
+      background: rgba(255, 252, 247, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.78);
+      border-radius: 32px;
+      box-shadow: 0 28px 90px rgba(47, 43, 39, 0.22);
+      padding: clamp(18px, 3vw, 30px);
+    }
+
+    .video-qr-code {
+      width: fit-content;
+      min-width: 270px;
+      min-height: 270px;
+      margin: 0 auto 14px;
+      padding: 15px;
+      display: grid;
+      place-items: center;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      -webkit-touch-callout: none;
+      user-select: none;
+    }
+
+    .video-qr-code img,
+    .video-qr-code canvas { display: block; }
+    .video-qr-status { text-align: center; overflow-wrap: anywhere; }
+
+    .video-player-overlay { background: rgba(20, 17, 14, 0.74); }
+
+    .video-player-modal {
+      width: min(100%, calc((100svh - 120px) * 16 / 9));
+      display: grid;
+      gap: 12px;
+    }
+
+    .video-player-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .video-player-title {
+      flex: 1;
+      min-width: 0;
+      color: rgba(255, 255, 255, 0.86);
+      font-weight: 950;
+      letter-spacing: .02em;
+    }
+
+    .video-player-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border-radius: 24px;
+      background: #000;
+      box-shadow: 0 28px 90px rgba(0, 0, 0, 0.4);
+    }
+
+    .video-player-frame,
+    .video-player-frame iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+
+    .video-player-message {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      text-align: center;
+      color: #fff;
+      font-weight: 800;
+      font-size: clamp(15px, 1.4vw, 20px);
+      line-height: 1.4;
+      background: rgba(0, 0, 0, 0.62);
+    }
+
+    /* The page a phone opens from the QR code. */
+    body.video-send-page { overflow: auto; }
+
+    /* Phones drop the body padding (see phone admin mode), so the view
+       brings its own. */
+    .video-send-view {
+      width: min(460px, 100%);
+      margin: 0 auto;
+      padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px 16px;
+    }
+
+    .video-send-card {
+      display: grid;
+      gap: 14px;
+      background: rgba(255, 252, 247, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.78);
+      border-radius: 30px;
+      box-shadow: 0 28px 90px rgba(47, 43, 39, 0.16);
+      padding: clamp(18px, 5vw, 28px);
+    }
+
+    .video-send-card .edge-app-icon { width: 58px; height: 58px; }
+    .video-send-card .config-subtitle { margin-top: 0; }
+    .video-send-form { display: grid; gap: 10px; }
+    .video-send-form input { font-size: 16px; }
+
   </style>
 </head>
 <body>
@@ -4170,6 +4410,62 @@
     </section>
   </div>
 
+  <div id="edgePanel" class="edge-panel hidden">
+    <div id="edgePanelScrim" class="edge-panel-scrim"></div>
+    <div class="edge-panel-dock">
+      <div id="edgePanelTray" class="edge-panel-tray">
+        <button id="edgeYoutubeBtn" class="edge-app" type="button" tabindex="-1">
+          <span class="edge-app-icon"><svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="14" width="56" height="36" rx="11" fill="#ff0000"/><path d="M27 24.5v15l13-7.5z" fill="#fff"/></svg></span>
+          YouTube
+        </button>
+      </div>
+      <div id="edgePanelHandle" class="edge-panel-handle" role="button" tabindex="0" aria-label="Pull out the side panel" aria-expanded="false"></div>
+    </div>
+  </div>
+
+  <div id="videoPlayerOverlay" class="video-overlay video-player-overlay hidden" role="dialog" aria-modal="true" aria-label="YouTube video">
+    <section class="video-player-modal">
+      <div class="video-player-head">
+        <div class="video-player-title">YouTube</div>
+        <button id="videoPlayerNewLinkBtn" class="btn secondary" type="button">Another video</button>
+        <button id="videoPlayerCloseBtn" class="config-close" type="button" aria-label="Close video">×</button>
+      </div>
+      <div class="video-player-stage">
+        <div id="videoPlayerFrame" class="video-player-frame"></div>
+        <div id="videoPlayerMessage" class="video-player-message hidden"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- After the player on purpose: "Another video" opens this over a video
+       that keeps playing underneath. -->
+  <div id="videoQrOverlay" class="video-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="videoQrTitle">
+    <section class="video-qr-modal">
+      <div class="config-head">
+        <div>
+          <h2 id="videoQrTitle" class="config-title">Send a video</h2>
+          <div class="config-subtitle">Scan with your phone, then paste a YouTube link.</div>
+        </div>
+        <button id="videoQrCloseBtn" class="config-close" type="button" aria-label="Close">×</button>
+      </div>
+      <div id="videoQrCode" class="video-qr-code" role="img" aria-label="QR code for sending a video"></div>
+      <div id="videoQrStatus" class="status-line video-qr-status" role="status"></div>
+    </section>
+  </div>
+
+  <main id="videoSendView" class="video-send-view hidden">
+    <section class="video-send-card">
+      <span class="edge-app-icon"><svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="14" width="56" height="36" rx="11" fill="#ff0000"/><path d="M27 24.5v15l13-7.5z" fill="#fff"/></svg></span>
+      <h1 class="config-title">Send a video</h1>
+      <div class="config-subtitle">Paste a YouTube link. It starts playing on the wall screen.</div>
+      <form id="videoSendForm" class="video-send-form" novalidate>
+        <input id="videoSendInput" type="text" inputmode="url" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="https://youtu.be/…" />
+        <button id="videoSendBtn" class="btn" type="submit">Play on the wall screen</button>
+      </form>
+      <div id="videoSendStatus" class="status-line" role="status"></div>
+    </section>
+  </main>
+
   <script>
     const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
     // Shown in the hidden config menu. /api/events reports the server's own
@@ -4386,7 +4682,26 @@
       dangerConfirmInput: document.getElementById('dangerConfirmInput'),
       deleteAllEventsBtn: document.getElementById('deleteAllEventsBtn'),
       cancelDeleteAllBtn: document.getElementById('cancelDeleteAllBtn'),
-      dangerStatus: document.getElementById('dangerStatus')
+      dangerStatus: document.getElementById('dangerStatus'),
+      edgePanel: document.getElementById('edgePanel'),
+      edgePanelScrim: document.getElementById('edgePanelScrim'),
+      edgePanelTray: document.getElementById('edgePanelTray'),
+      edgePanelHandle: document.getElementById('edgePanelHandle'),
+      edgeYoutubeBtn: document.getElementById('edgeYoutubeBtn'),
+      videoQrOverlay: document.getElementById('videoQrOverlay'),
+      videoQrCode: document.getElementById('videoQrCode'),
+      videoQrStatus: document.getElementById('videoQrStatus'),
+      videoQrCloseBtn: document.getElementById('videoQrCloseBtn'),
+      videoPlayerOverlay: document.getElementById('videoPlayerOverlay'),
+      videoPlayerFrame: document.getElementById('videoPlayerFrame'),
+      videoPlayerMessage: document.getElementById('videoPlayerMessage'),
+      videoPlayerNewLinkBtn: document.getElementById('videoPlayerNewLinkBtn'),
+      videoPlayerCloseBtn: document.getElementById('videoPlayerCloseBtn'),
+      videoSendView: document.getElementById('videoSendView'),
+      videoSendForm: document.getElementById('videoSendForm'),
+      videoSendInput: document.getElementById('videoSendInput'),
+      videoSendBtn: document.getElementById('videoSendBtn'),
+      videoSendStatus: document.getElementById('videoSendStatus')
     };
 
     const params = new URLSearchParams(location.search);
@@ -6164,7 +6479,9 @@
       return isOverlayOpen(els.weatherOverlay)
         || isOverlayOpen(els.monthOverlay)
         || isOverlayOpen(els.configOverlay)
-        || isOverlayOpen(els.dangerOverlay);
+        || isOverlayOpen(els.dangerOverlay)
+        || isOverlayOpen(els.videoQrOverlay)
+        || isOverlayOpen(els.videoPlayerOverlay);
     }
 
     // The today view rotates through today's tasks on its own, so
@@ -6184,6 +6501,10 @@
       if (isOverlayOpen(els.monthOverlay)) closeMonthView();
       if (isOverlayOpen(els.configOverlay)) closeConfigMenu();
       if (isOverlayOpen(els.dangerOverlay)) closeDangerMenu();
+      if (isOverlayOpen(els.videoQrOverlay)) closeVideoQr();
+      // A playing video keeps the watchdog fed (setVideoPlaying) and is never
+      // idle; a paused or finished one is.
+      if (isOverlayOpen(els.videoPlayerOverlay) && !videoPlayer.playing) closeVideoPlayer();
       state.hiddenRepeatingTasksVisibleUntil = 0;
       clearTaskCardFlipBackTimer();
       clearSelectedDayPreview();
@@ -7839,7 +8160,7 @@
       });
 
       const startHold = event => {
-        if (event.target.closest?.('.month-modal, .config-modal, .weather-modal, .danger-modal, .task-action-sheet, input, textarea, button, select, a')) return;
+        if (event.target.closest?.('.month-modal, .config-modal, .weather-modal, .danger-modal, .task-action-sheet, .edge-panel, .video-overlay, input, textarea, button, select, a')) return;
         if (els.monthOverlay && !els.monthOverlay.classList.contains('hidden')) return;
         state.longPressOpened = false;
         clearTimeout(state.longPressTimer);
@@ -9368,6 +9689,481 @@ Cancel = choose whether to delete the whole series.`);
       showScreenControls();
     }
 
+    // ---------------------------------------------------------------------
+    // YouTube on the wall
+    //
+    // A hidden panel sits by the clock: pull the handle on the left screen
+    // edge out and it offers a YouTube button. The button shows a QR code; a
+    // phone scans it, lands on this page with ?ytsend=<session> and pastes a
+    // link, which reaches the wall through ntfy.sh, a free, no-signup,
+    // CORS-enabled pub/sub relay (the car lockscreen uses the same relay).
+    // Nothing goes through Vercel, so a video costs no Blob operations.
+    //
+    // An ntfy topic is public: whoever learns a live session id can post to
+    // it. The id is 64 random bits, the wall only listens while the QR code
+    // is up, and it only ever plays YouTube links, in YouTube's own player.
+    // ---------------------------------------------------------------------
+    const VIDEO_RELAY_TOPIC_PREFIX = 'homedash-yt-5c8e21-';
+    const VIDEO_RELAY_RETRY_MS = 5000;
+    const VIDEO_SEND_SESSION_PATTERN = /^[0-9a-f]{16}$/;
+    const QR_LIBRARY_URL = 'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js';
+    const YOUTUBE_IFRAME_API_URL = 'https://www.youtube.com/iframe_api';
+    const YOUTUBE_API_TIMEOUT_MS = 15 * 1000;
+    const VIDEO_PLAYING_HEARTBEAT_MS = 15 * 1000;
+    const EDGE_PANEL_AUTO_CLOSE_MS = 10 * 1000;
+    const EDGE_PANEL_PEEK_MS = 650;
+    const EDGE_PANEL_OPEN_X = 14;
+    const EDGE_PANEL_DRAG_SLOP_PX = 6;
+
+    const edgePanel = { autoCloseTimer: null, peekTimer: null, drag: null };
+    const videoShare = { session: null, stream: null, retryTimer: null, qrLibrary: null };
+    const videoPlayer = { player: null, token: 0, playing: false, heartbeat: null, api: null };
+
+    // Reads a pasted YouTube link: watch, youtu.be share, Shorts, live, embed
+    // and playlist links, with an optional start time. The phone uses it to
+    // refuse a bad link before sending; the wall uses it again because
+    // anything can arrive over a public relay.
+    function parseYouTubeLink(raw) {
+      let text = String(raw || '').trim();
+      if (!text) return { ok: false, error: 'Paste a YouTube link first.' };
+      if (text.length > 2000) return { ok: false, error: 'That link is too long.' };
+      if (!/^[a-z][a-z0-9+.-]*:/i.test(text)) text = `https://${text}`;
+      let url;
+      try {
+        url = new URL(text);
+      } catch {
+        return { ok: false, error: 'That does not look like a link.' };
+      }
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return { ok: false, error: 'That does not look like a link.' };
+      const host = url.hostname.toLowerCase().replace(/^(www|m|music)\./, '');
+      if (host !== 'youtu.be' && host !== 'youtube.com' && host !== 'youtube-nocookie.com') {
+        return { ok: false, error: 'That is not a YouTube link.' };
+      }
+      const parts = url.pathname.split('/').filter(Boolean);
+      let id = null;
+      if (host === 'youtu.be') id = parts[0] || null;
+      else if (parts[0] === 'watch') id = url.searchParams.get('v');
+      else if (['shorts', 'live', 'embed', 'v'].includes(parts[0])) id = parts[1] || null;
+      const list = url.searchParams.get('list');
+      const playlist = list && /^[A-Za-z0-9_-]{10,64}$/.test(list) ? list : null;
+      if (id && !/^[A-Za-z0-9_-]{11}$/.test(id)) return { ok: false, error: 'That YouTube link has an invalid video id.' };
+      if (!id && !playlist) return { ok: false, error: 'No video found in that link. Use a watch, share or Shorts link.' };
+      let start = 0;
+      const time = url.searchParams.get('t') || url.searchParams.get('start');
+      const match = time && /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/.exec(time);
+      if (match) start = (Number(match[1]) || 0) * 3600 + (Number(match[2]) || 0) * 60 + (Number(match[3]) || 0);
+      return { ok: true, id, playlist, start, url: url.href };
+    }
+
+    function videoRelayTopic(session) {
+      return `${VIDEO_RELAY_TOPIC_PREFIX}${session}`;
+    }
+
+    function newVideoSendSession() {
+      const bytes = crypto.getRandomValues(new Uint8Array(8));
+      return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+    }
+
+    function setEdgePanelOpen(open) {
+      if (!els.edgePanel) return;
+      els.edgePanel.classList.remove('is-peeking');
+      els.edgePanel.classList.toggle('is-open', open);
+      els.edgePanelHandle?.setAttribute('aria-expanded', String(open));
+      els.edgeYoutubeBtn?.setAttribute('tabindex', open ? '0' : '-1');
+      clearTimeout(edgePanel.autoCloseTimer);
+      edgePanel.autoCloseTimer = open ? setTimeout(() => setEdgePanelOpen(false), EDGE_PANEL_AUTO_CLOSE_MS) : null;
+    }
+
+    function peekEdgePanel() {
+      els.edgePanel.classList.add('is-peeking');
+      clearTimeout(edgePanel.peekTimer);
+      edgePanel.peekTimer = setTimeout(() => els.edgePanel.classList.remove('is-peeking'), EDGE_PANEL_PEEK_MS);
+    }
+
+    // Level with the middle of the clock, wherever the kiosk layout put it.
+    function placeEdgePanel() {
+      const rect = els.clockCard?.getBoundingClientRect();
+      if (rect?.height) els.edgePanel.style.setProperty('--edge-panel-top', `${Math.round(rect.top + rect.height / 2)}px`);
+    }
+
+    function edgePanelClosedX() {
+      return -(els.edgePanelTray.offsetWidth + 40);
+    }
+
+    function startEdgePanelDrag(event, fromOpen) {
+      if (event.button > 0) return;
+      // A second finger while one is already pulling. A press that never
+      // moved holds no capture and may never see its pointerup (a mouse let
+      // go outside the window), so that one is simply replaced.
+      if (edgePanel.drag?.moved) return;
+      edgePanel.drag = {
+        id: event.pointerId,
+        surface: event.currentTarget,
+        fromOpen,
+        startX: event.clientX,
+        x: fromOpen ? EDGE_PANEL_OPEN_X : edgePanelClosedX(),
+        lastX: event.clientX,
+        lastT: event.timeStamp,
+        velocity: 0,
+        moved: false
+      };
+    }
+
+    function moveEdgePanelDrag(event) {
+      const drag = edgePanel.drag;
+      if (!drag || event.pointerId !== drag.id) return;
+      const dx = event.clientX - drag.startX;
+      if (!drag.moved) {
+        if (Math.abs(dx) < EDGE_PANEL_DRAG_SLOP_PX) return;
+        drag.moved = true;
+        // Captured only once it is clearly a drag, so a tap on the YouTube
+        // button still arrives as a click on the button.
+        try {
+          drag.surface.setPointerCapture(drag.id);
+        } catch {
+          // The pointer is already gone; the window listeners still see it end.
+        }
+        els.edgePanel.classList.remove('is-peeking');
+        els.edgePanel.classList.add('is-dragging');
+        clearTimeout(edgePanel.autoCloseTimer);
+      }
+      const closedX = edgePanelClosedX();
+      drag.x = Math.max(closedX, Math.min(EDGE_PANEL_OPEN_X, (drag.fromOpen ? EDGE_PANEL_OPEN_X : closedX) + dx));
+      const dt = event.timeStamp - drag.lastT;
+      if (dt > 0) drag.velocity = 0.6 * ((event.clientX - drag.lastX) / dt) + 0.4 * drag.velocity;
+      drag.lastX = event.clientX;
+      drag.lastT = event.timeStamp;
+      els.edgePanelTray.style.transform = `translateX(${drag.x}px)`;
+    }
+
+    function endEdgePanelDrag(event) {
+      const drag = edgePanel.drag;
+      if (!drag || event.pointerId !== drag.id) return;
+      edgePanel.drag = null;
+      if (!drag.moved) {
+        // A tap on the handle does not open the panel: it peeks out to show
+        // that it wants pulling.
+        if (!drag.fromOpen && event.type === 'pointerup') peekEdgePanel();
+        return;
+      }
+      let open = drag.fromOpen;
+      if (event.type === 'pointerup') {
+        // A flick decides on its own; a finger that stopped before letting go
+        // leaves it to how far the panel came out.
+        const velocity = event.timeStamp - drag.lastT > 100 ? 0 : drag.velocity;
+        const closedX = edgePanelClosedX();
+        const progress = (drag.x - closedX) / (EDGE_PANEL_OPEN_X - closedX);
+        if (velocity > 0.3) open = true;
+        else if (velocity < -0.3) open = false;
+        else open = progress > 0.5;
+      }
+      els.edgePanel.classList.remove('is-dragging');
+      els.edgePanelTray.style.transform = '';
+      setEdgePanelOpen(open);
+    }
+
+    function bindEdgePanel() {
+      if (adminMode || !els.edgePanel) return;
+      els.edgePanel.classList.remove('hidden');
+      placeEdgePanel();
+      window.addEventListener('resize', placeEdgePanel);
+      if (window.ResizeObserver) new ResizeObserver(placeEdgePanel).observe(els.clockCard);
+
+      els.edgePanelHandle.addEventListener('pointerdown', event => startEdgePanelDrag(event, false));
+      els.edgePanelTray.addEventListener('pointerdown', event => {
+        if (els.edgePanel.classList.contains('is-open')) startEdgePanelDrag(event, true);
+      });
+      window.addEventListener('pointermove', moveEdgePanelDrag);
+      window.addEventListener('pointerup', endEdgePanelDrag);
+      window.addEventListener('pointercancel', endEdgePanelDrag);
+      els.edgePanelHandle.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        setEdgePanelOpen(true);
+        els.edgeYoutubeBtn.focus({ preventScroll: true });
+      });
+      // Closed on click rather than pointerdown, so the tap that closes the
+      // panel cannot fall through to the clock or a task underneath.
+      els.edgePanelScrim.addEventListener('click', () => setEdgePanelOpen(false));
+      els.edgeYoutubeBtn.addEventListener('click', openVideoQr);
+    }
+
+    function loadQrLibrary() {
+      if (window.QRCode) return Promise.resolve(window.QRCode);
+      if (!videoShare.qrLibrary) {
+        videoShare.qrLibrary = new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = QR_LIBRARY_URL;
+          script.onload = () => (window.QRCode ? resolve(window.QRCode) : reject(new Error('the QR library did not start')));
+          script.onerror = () => {
+            script.remove();
+            reject(new Error('the QR library could not be downloaded'));
+          };
+          document.head.appendChild(script);
+        }).catch(error => {
+          videoShare.qrLibrary = null;
+          throw error;
+        });
+      }
+      return videoShare.qrLibrary;
+    }
+
+    function setVideoQrStatus(message, isError = false) {
+      els.videoQrStatus.textContent = message;
+      els.videoQrStatus.style.color = isError ? '#8d4138' : 'var(--muted)';
+    }
+
+    async function openVideoQr() {
+      setEdgePanelOpen(false);
+      closeVideoQr();
+      const session = newVideoSendSession();
+      const sendUrl = `${location.origin}${location.pathname}?ytsend=${session}`;
+      videoShare.session = session;
+      els.videoQrCode.replaceChildren();
+      setVideoQrStatus('Loading the QR code…');
+      els.videoQrOverlay.classList.remove('hidden');
+      listenVideoRelay(session);
+      try {
+        const QRCode = await loadQrLibrary();
+        if (videoShare.session !== session) return;
+        new QRCode(els.videoQrCode, {
+          text: sendUrl,
+          width: 240,
+          height: 240,
+          colorDark: '#2f2b27',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M
+        });
+        setVideoQrStatus('Waiting for a link from your phone…');
+      } catch (error) {
+        if (videoShare.session !== session) return;
+        setVideoQrStatus(`No QR code: ${error.message}. On your phone, open ${sendUrl}`, true);
+      }
+    }
+
+    function closeVideoQr() {
+      videoShare.session = null;
+      videoShare.stream?.close();
+      videoShare.stream = null;
+      clearTimeout(videoShare.retryTimer);
+      videoShare.retryTimer = null;
+      els.videoQrOverlay?.classList.add('hidden');
+    }
+
+    // One open stream per QR code rather than polling (the car lockscreen
+    // polls). ntfy limits requests per address, and the wall and the phone
+    // usually share the home's: a poll every few seconds eats the allowance
+    // the phone needs to send its link. since=all also hands over a link
+    // posted before the stream connected.
+    function listenVideoRelay(session) {
+      const stream = new EventSource(`https://ntfy.sh/${videoRelayTopic(session)}/sse?since=all`);
+      videoShare.stream = stream;
+      // Messages arrive as unnamed events; ntfy's open and keepalive events
+      // are named, so they never reach onmessage.
+      stream.onmessage = event => {
+        let message;
+        try {
+          message = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        if (videoShare.session !== session || message.event !== 'message' || !message.message) return;
+        closeVideoQr();
+        openVideoPlayer(message.message.trim());
+      };
+      // A dropped connection reconnects by itself. A refused one (a busy relay
+      // answering 429) does not, so that one is retried here.
+      stream.onerror = () => {
+        if (stream.readyState !== EventSource.CLOSED || videoShare.session !== session) return;
+        videoShare.retryTimer = setTimeout(() => {
+          if (videoShare.session === session) listenVideoRelay(session);
+        }, VIDEO_RELAY_RETRY_MS);
+      };
+    }
+
+    // The IFrame API rather than a bare embed, because the wall has to know
+    // whether the video is playing (see setVideoPlaying).
+    function loadYouTubeApi() {
+      if (window.YT?.Player) return Promise.resolve(window.YT);
+      if (!videoPlayer.api) {
+        videoPlayer.api = new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('YouTube did not answer')), YOUTUBE_API_TIMEOUT_MS);
+          window.onYouTubeIframeAPIReady = () => {
+            clearTimeout(timer);
+            resolve(window.YT);
+          };
+          const script = document.createElement('script');
+          script.src = YOUTUBE_IFRAME_API_URL;
+          script.onerror = () => {
+            clearTimeout(timer);
+            script.remove();
+            reject(new Error('YouTube could not be reached'));
+          };
+          document.head.appendChild(script);
+        }).catch(error => {
+          videoPlayer.api = null;
+          throw error;
+        });
+      }
+      return videoPlayer.api;
+    }
+
+    function youTubeErrorText(code) {
+      if (code === 2) return 'That YouTube link has an invalid video id.';
+      if (code === 5) return 'This video cannot be played in this browser.';
+      if (code === 100) return 'That video was removed or is private.';
+      if (code === 101 || code === 150) return 'The owner of this video does not allow it to be played outside YouTube.';
+      return `YouTube could not play this video (error ${code}).`;
+    }
+
+    function showVideoPlayerMessage(message) {
+      els.videoPlayerMessage.textContent = message;
+      els.videoPlayerMessage.classList.toggle('hidden', !message);
+    }
+
+    // A video being watched is not an idle wall. Nobody touches the screen
+    // while they watch, so a playing video keeps the idle reset and the camera
+    // dimmer away; once it is paused or over, the usual five minutes run from
+    // there and the idle reset closes it.
+    function setVideoPlaying(playing) {
+      noteInteraction();
+      if (videoPlayer.playing === playing) return;
+      videoPlayer.playing = playing;
+      clearInterval(videoPlayer.heartbeat);
+      videoPlayer.heartbeat = null;
+      if (!playing) return;
+      noteUserPresence();
+      videoPlayer.heartbeat = setInterval(() => {
+        noteInteraction();
+        noteUserPresence();
+      }, VIDEO_PLAYING_HEARTBEAT_MS);
+    }
+
+    function teardownVideoPlayer() {
+      setVideoPlaying(false);
+      try {
+        videoPlayer.player?.destroy?.();
+      } catch {
+        // The player never finished starting; dropping its frame is enough.
+      }
+      videoPlayer.player = null;
+      els.videoPlayerFrame.replaceChildren();
+      showVideoPlayerMessage('');
+    }
+
+    async function openVideoPlayer(link) {
+      const token = ++videoPlayer.token;
+      const current = () => token === videoPlayer.token;
+      teardownVideoPlayer();
+      els.videoPlayerOverlay.classList.remove('hidden');
+      const source = parseYouTubeLink(link);
+      if (!source.ok) {
+        showVideoPlayerMessage(source.error);
+        return;
+      }
+      showVideoPlayerMessage('Loading YouTube…');
+      let YT;
+      try {
+        YT = await loadYouTubeApi();
+      } catch (error) {
+        if (current()) showVideoPlayerMessage(`Could not load YouTube: ${error.message}.`);
+        return;
+      }
+      // Closed, or another link came in, while the API was loading.
+      if (!current()) return;
+      const playerVars = { autoplay: 1, playsinline: 1, rel: 0 };
+      if (source.start) playerVars.start = source.start;
+      if (source.playlist) playerVars.list = source.playlist;
+      if (source.playlist && !source.id) playerVars.listType = 'playlist';
+      const options = {
+        width: '100%',
+        height: '100%',
+        playerVars,
+        events: {
+          onReady: () => {
+            if (current()) showVideoPlayerMessage('');
+          },
+          onStateChange: event => {
+            if (current()) setVideoPlaying(event.data === YT.PlayerState.PLAYING || event.data === YT.PlayerState.BUFFERING);
+          },
+          onError: event => {
+            if (!current()) return;
+            setVideoPlaying(false);
+            showVideoPlayerMessage(youTubeErrorText(event.data));
+          }
+        }
+      };
+      if (source.id) options.videoId = source.id;
+      const mount = document.createElement('div');
+      els.videoPlayerFrame.appendChild(mount);
+      videoPlayer.player = new YT.Player(mount, options);
+    }
+
+    function closeVideoPlayer() {
+      videoPlayer.token++;
+      teardownVideoPlayer();
+      els.videoPlayerOverlay?.classList.add('hidden');
+    }
+
+    function bindVideoOverlays() {
+      if (adminMode) return;
+      els.videoQrCloseBtn.addEventListener('click', closeVideoQr);
+      els.videoQrOverlay.addEventListener('click', event => {
+        if (event.target === els.videoQrOverlay) closeVideoQr();
+      });
+      // The player closes from its X only: a stray tap beside a video should
+      // not end it.
+      els.videoPlayerCloseBtn.addEventListener('click', closeVideoPlayer);
+      els.videoPlayerNewLinkBtn.addEventListener('click', openVideoQr);
+      document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        if (isOverlayOpen(els.videoQrOverlay)) closeVideoQr();
+        else if (isOverlayOpen(els.videoPlayerOverlay)) closeVideoPlayer();
+        else if (els.edgePanel.classList.contains('is-open')) setEdgePanelOpen(false);
+      });
+    }
+
+    function setVideoSendStatus(message, isError = false) {
+      els.videoSendStatus.textContent = message;
+      els.videoSendStatus.style.color = isError ? '#8d4138' : 'var(--muted)';
+    }
+
+    // The page a phone lands on from the wall's QR code. It never starts the
+    // dashboard: no event reads, no Blob traffic, only the link form.
+    function initVideoSendPage(session) {
+      document.body.classList.remove('desktop-admin', 'phone-admin');
+      document.body.classList.add('video-send-page');
+      els.displayView.classList.add('hidden');
+      els.adminView.classList.add('hidden');
+      els.videoSendView.classList.remove('hidden');
+      if (!VIDEO_SEND_SESSION_PATTERN.test(session)) {
+        els.videoSendInput.disabled = true;
+        els.videoSendBtn.disabled = true;
+        setVideoSendStatus('This QR code is not valid. Tap YouTube on the wall screen for a new one.', true);
+        return;
+      }
+      els.videoSendForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const source = parseYouTubeLink(els.videoSendInput.value);
+        if (!source.ok) {
+          setVideoSendStatus(source.error, true);
+          return;
+        }
+        els.videoSendInput.disabled = true;
+        els.videoSendBtn.disabled = true;
+        setVideoSendStatus('Sending…');
+        try {
+          const response = await fetch(`https://ntfy.sh/${videoRelayTopic(session)}`, { method: 'POST', body: source.url });
+          if (!response.ok) throw new Error(`the relay answered ${response.status}`);
+          setVideoSendStatus('Sent. It starts on the wall screen in a moment; you can close this page.');
+        } catch (error) {
+          els.videoSendInput.disabled = false;
+          els.videoSendBtn.disabled = false;
+          setVideoSendStatus(`Could not send it: ${error.message}. Try again.`, true);
+        }
+      });
+    }
+
     function init() {
       setMode();
       window.addEventListener('resize', () => { fitKioskToScreen(); if (!adminMode) renderDisplay(); });
@@ -9380,6 +10176,8 @@ Cancel = choose whether to delete the whole series.`);
       startIdleResetWatchdog();
       bindScreenControls();
       bindMotionDimmer();
+      bindEdgePanel();
+      bindVideoOverlays();
       els.returnToDisplayBtn?.addEventListener('click', goToDisplayMode);
       document.addEventListener('click', event => {
         handleHeroBackActionClick(event);
@@ -9575,7 +10373,10 @@ Cancel = choose whether to delete the whole series.`);
       }
     }
 
-    init();
+    // A phone that scanned the wall's YouTube QR code gets the send page
+    // instead of the app.
+    if (params.has('ytsend')) initVideoSendPage(params.get('ytsend'));
+    else init();
   </script>
 </body>
 </html>

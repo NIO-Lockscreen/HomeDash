@@ -294,6 +294,47 @@ This version is tuned to use far fewer Vercel Blob operations:
 
 Tapping the clock opens the day selector in the left card. Picking a day there shows that day's task in the big hero panel on the right, and the selector **stays up** with the picked day outlined, so the next day is one tap away. The task is deliberately not repeated in the left card. If a day holds several tasks the selector shows the count and the hero cycles through them; flipping the hero gives complete / edit / delete for whichever one is showing. Tapping the clock again returns to today and brings the weather back.
 
+## YouTube from your phone
+
+The wall display has a hidden panel by the clock. A slim handle sits on the left
+edge of the screen, level with the clock: pull it to the right and the panel
+slides out, like Android's edge panel. A tap on the handle only nudges the panel
+out and back to show that it wants pulling, so a stray touch on the edge opens
+nothing. Tap beside the panel, push it back left, or leave it for ten seconds and
+it slides away again.
+
+The panel has one button, **YouTube**, which shows a QR code. Scan it and the
+phone opens a small page (this same site with `?ytsend=<session>`) with a field
+for a link. Paste a YouTube link — watch, youtu.be share, Shorts, live or
+playlist, with any `t=` start time kept — and tap **Play on the wall screen**. The
+wall closes the QR code and plays the video in YouTube's own player. **Another
+video** shows a fresh QR code while the current video keeps playing underneath;
+the × closes the player.
+
+- **How the link travels.** Through [ntfy.sh](https://ntfy.sh), a free, no-signup
+  pub/sub relay — the same one the car lockscreen uses. The phone posts the link
+  to a topic named after the session, and the wall holds one open stream
+  (`/sse`) to that topic while the QR code is up. Nothing goes through Vercel, so
+  a video costs no Blob operations and needs no admin PIN.
+- **Why a stream and not polling.** ntfy limits requests per address, and at home
+  the wall and the phone share one. Polling every few seconds would spend the
+  allowance the phone needs to send its link. If ntfy refuses a send anyway
+  (`429`), the phone says so and the button can be tapped again.
+- **Who can send.** An ntfy topic is public. The session id is 64 random bits, a
+  new one for every QR code, the wall only listens while that code is up, and it
+  only plays YouTube links — it checks the link again itself rather than trusting
+  the phone. The worst a stranger who guessed a live id could do is put a YouTube
+  video on the screen.
+- **Idle.** A playing video is not an idle wall: while it plays it keeps both the
+  five-minute idle reset and the camera dimmer away, since nobody touches the
+  screen while they watch. Paused or finished, the usual five minutes apply and
+  the idle reset closes it. A QR code left up closes the same way.
+- **What it loads.** The QR library (from jsDelivr) and YouTube's IFrame API are
+  only fetched the first time they are needed. The IFrame API is used instead of
+  a bare embed because the wall has to know whether the video is playing. Some
+  owners forbid playing their videos outside YouTube; the player says so instead
+  of showing a black box.
+
 ## Weather effects
 
 The whole dashboard lives in `index.html` — the `<style>` and `<script>` blocks inside it are what the browser runs. There is no separate bundle to edit. (Two exported copies, `script.js` and `inline.js`, used to sit next to it; nothing loaded them, and two bug fixes were accidentally applied only to those copies and never reached the app. They have been deleted — put dashboard changes in `index.html`.)
