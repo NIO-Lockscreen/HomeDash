@@ -720,6 +720,9 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const url = new URL(req.url, `https://${req.headers.host}`);
       const fresh = url.searchParams.get('fresh') === '1';
+      // The task list is public to read, so other sites (the car lockscreen's
+      // calendar widget) may read it too. Writes still need the admin PIN.
+      res.setHeader('Access-Control-Allow-Origin', '*');
       // stale-while-revalidate used to run for a full day, so a client that
       // never asks for fresh=1 could be served yesterday's task list.
       res.setHeader(
