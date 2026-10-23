@@ -70,9 +70,19 @@ read-modify-write of the whole file. The code for this is in
   this design, or one whose snapshot write failed) is read from the CDN copy, and
   only used when its byte length and ETag match what `head()` reports. Such a
   version is then given a snapshot, and an `events.json` still on the old
-  one-minute cache life is moved onto the long one, once. If the CDN copy is
-  older, a save answers `503` instead of being built on it, and the reminder cron
-  and the image sweep skip their run rather than act on it.
+  one-minute cache life is moved onto the long one, once. That one-off rewrite of
+  the same bytes only happens after an exact copy is stored as
+  `home-organizer/backups/events-before-upgrade-<etag>.json`, which is kept until
+  you delete it. If the CDN copy is older, a save answers `503` instead of being
+  built on it, and the reminder cron and the image sweep skip their run rather
+  than act on it. (In a store whose ETags are not MD5s the bytes cannot be
+  compared, so such a copy is only trusted once the version is older than the
+  CDN's one-minute replay window.)
+- **"No task list" never wipes one.** When the store answers that there is no
+  `events.json`, a save may only create one, never replace one, so a Blob hiccup
+  cannot turn a whole calendar into the one task being saved. The reminder cron
+  likewise refuses to reconcile against "no task list", which would have
+  cancelled every reminder.
 - **A failed read never becomes a write.** Blob trouble answers `5xx` rather
   than overwriting the file with a guess, and only genuine validation problems
   (missing title or start) answer `4xx`.

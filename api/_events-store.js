@@ -29,6 +29,7 @@ import { normalizeDaughterPeriods } from './_daughter-periods.js';
 
 export const EVENTS_PATH = 'home-organizer/events.json';
 const SNAPSHOT_PREFIX = 'home-organizer/snapshots/';
+const BACKUP_PREFIX = 'home-organizer/backups/';
 const JSON_CONTENT_TYPE = 'application/json; charset=utf-8';
 // events.json keeps a long cache life so screens can watch it straight off the
 // CDN for free: an unchanged copy is a cache HIT, and every save purges it.
@@ -41,6 +42,8 @@ const SNAPSHOT_CACHE_MAX_AGE_S = 365 * 24 * 60 * 60;
 const FRESH_SAVE_WINDOW_MS = 15 * 1000;
 const SNAPSHOT_RETRY_DELAY_MS = 300;
 const ADOPT_RECHECK_MS = 10 * 60 * 1000;
+// The Blob CDN replays the copy from before an overwrite for at most a minute.
+const CDN_REPLAY_WINDOW_MS = 3 * 60 * 1000;
 let lastAdoptAttempt = { rev: '', at: 0 };
 
 function sleep(ms) {
@@ -104,6 +107,12 @@ export function isPreconditionFailed(error) {
     || /precondition failed/i.test(String(error?.message || ''));
 }
 
+// A save onto a store that head() called empty, refused because a task list is
+// there after all.
+function isAlreadyExists(error) {
+  return /already exists/i.test(String(error?.message || ''));
+}
+
 // The snapshot for the version head() named, or null when there is none yet.
 async function readSnapshot(meta, rev) {
   const url = urlFor(meta.url, snapshotPath(rev));
@@ -126,11 +135,17 @@ async function readSnapshot(meta, rev) {
 // The CDN copy of events.json is current only when it is byte for byte what
 // head() describes. Length alone let a same-length older copy through (moving
 // a task from 10:00 to 11:00 keeps the length), so the ETag is compared too.
+// A store whose ETags are not MD5s gives nothing to compare the bytes with;
+// then the copy is only trusted once the version is older than the CDN's
+// replay window, after which it cannot be an older copy any more.
 function isCurrentCopy(meta, text, response) {
   if (Buffer.byteLength(text, 'utf8') !== Number(meta.size)) return false;
   const stored = normalizeEtag(meta.etag).toLowerCase();
-  if (!/^[0-9a-f]{32}$/.test(stored)) return true;
-  return normalizeEtag(response.headers.get('etag')).toLowerCase() === stored || md5(text) === stored;
+  if (/^[0-9a-f]{32}$/.test(stored)) {
+    return normalizeEtag(response.headers.get('etag')).toLowerCase() === stored || md5(text) === stored;
+  }
+  const uploadedAt = new Date(meta.uploadedAt || 0).getTime();
+  return Number.isFinite(uploadedAt) && uploadedAt > 0 && Date.now() - uploadedAt > CDN_REPLAY_WINDOW_MS;
 }
 
 function maxAgeOf(cacheControl) {
@@ -155,17 +170,36 @@ async function writeSnapshot(rev, body) {
   }
 }
 
+// The one rewrite of events.json nobody asked for (see adoptDocument) is
+// preceded by a copy of exactly what is stored, kept until deleted by hand.
+async function writeBackup(rev, text) {
+  try {
+    await put(`${BACKUP_PREFIX}events-before-upgrade-${rev || Date.now()}.json`, text, {
+      access: 'public',
+      allowOverwrite: true,
+      addRandomSuffix: false,
+      contentType: JSON_CONTENT_TYPE
+    });
+    return true;
+  } catch (error) {
+    console.warn('Could not back up events.json before upgrading it:', error);
+    return false;
+  }
+}
+
 // A version saved before snapshots existed, or whose snapshot write failed,
 // read from a CDN copy that has been checked as current. Give it a snapshot so
 // the next read is consistent, and move a document still on the old short
-// cache life onto the long one (a one-off rewrite of the same bytes), so
-// screens can watch it for free. At most once per version per instance.
+// cache life onto the long one (a one-off rewrite of the same bytes, and only
+// if it still is the stored version), so screens can watch it for free. That
+// rewrite only happens once a backup copy of the bytes is safely stored. At
+// most once per version per instance.
 async function adoptDocument(meta, text, rev) {
   const now = Date.now();
   if (lastAdoptAttempt.rev === rev && now - lastAdoptAttempt.at < ADOPT_RECHECK_MS) return;
   lastAdoptAttempt = { rev, at: now };
   const maxAge = maxAgeOf(meta.cacheControl);
-  if (maxAge !== null && maxAge < EVENTS_CACHE_MAX_AGE_S && meta.etag) {
+  if (maxAge !== null && maxAge < EVENTS_CACHE_MAX_AGE_S && meta.etag && await writeBackup(rev, text)) {
     try {
       const stored = await put(EVENTS_PATH, text, {
         access: 'public',
@@ -228,18 +262,21 @@ export async function writeEventsDocument({ events, daughterPeriods }, base) {
     daughterPeriods: normalizeDaughterPeriods(daughterPeriods)
   };
   const body = JSON.stringify(document, null, 2);
+  // When head() said there is no task list yet, the save may only create one:
+  // a Blob hiccup that wrongly answered "not found" must never let a save
+  // replace a whole calendar with the one task it carries.
+  const creating = !base?.exists;
   let stored;
   try {
     stored = await put(EVENTS_PATH, body, {
       access: 'public',
-      allowOverwrite: true,
+      allowOverwrite: !creating,
       contentType: JSON_CONTENT_TYPE,
       cacheControlMaxAge: EVENTS_CACHE_MAX_AGE_S,
-      // Without an ETag (a brand new store) there is nothing to compare with.
-      ...(base?.etag ? { ifMatch: base.etag } : {})
+      ...(!creating && base?.etag ? { ifMatch: base.etag } : {})
     });
   } catch (error) {
-    if (isPreconditionFailed(error)) return { conflict: true };
+    if (isPreconditionFailed(error) || (creating && isAlreadyExists(error))) return { conflict: true };
     throw error;
   }
   const rev = revOf(stored?.etag);
@@ -249,7 +286,7 @@ export async function writeEventsDocument({ events, daughterPeriods }, base) {
   // Keep the snapshot this save replaced, for any screen that read its ETag a
   // moment ago; drop the one before it. Deletes cost no billed operation.
   const stale = String(base?.previousRev || '');
-  if (stale && stale !== rev && stale !== base?.rev) {
+  if (/^[a-z0-9_-]{1,128}$/.test(stale) && stale !== rev && stale !== base?.rev) {
     try {
       await del(snapshotPath(stale));
     } catch (error) {

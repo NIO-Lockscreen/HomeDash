@@ -344,6 +344,9 @@ async function writeJsonBlob(path, value) {
 export async function loadEventsForReminderCron() {
   const document = await readEventsDocument();
   if (!document.fresh) throw new Error('The task list could not be confirmed as current; reminders were left as they are.');
+  // "No task list at all" is far more likely a Blob hiccup than a calendar
+  // that was never used, and reconciling against it would cancel everything.
+  if (!document.exists) throw new Error('No task list was found; reminders were left as they are.');
   return document.events;
 }
 
