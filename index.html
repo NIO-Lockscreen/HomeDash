@@ -5879,7 +5879,9 @@
           const intervalMs = intervalDays * 86400000;
           let index = Math.max(0, Math.floor((startRange - start) / intervalMs) - 1);
           for (let i = 0; i < 80; i++) {
-            const occurrenceStart = new Date(start.getTime() + index * intervalMs);
+            // Step by calendar days, not by 7 x 24 hours, so the task keeps its clock
+            // time across a daylight-saving change.
+            const occurrenceStart = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index * intervalDays, start.getHours(), start.getMinutes(), start.getSeconds(), start.getMilliseconds());
             if (occurrenceStart > endRange) break;
             if (occurrenceStart >= startRange && occurrenceStart <= endRange && !isOccurrenceExcluded(event, occurrenceStart)) {
               const occurrence = makeOccurrence(event, occurrenceStart, index);

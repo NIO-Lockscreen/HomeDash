@@ -196,11 +196,16 @@ function expandEventOccurrences(event, rangeStart, rangeEnd) {
     return occurrences;
   }
 
+  // Occurrences keep the task's clock time in the organizer's time zone, so a
+  // daylight-saving change doesn't move them an hour.
+  const local = zonedParts(start);
+
   if (repeat === 'weekly' || repeat === 'biweekly') {
-    const intervalMs = (repeat === 'biweekly' ? 14 : 7) * 24 * 60 * 60 * 1000;
+    const intervalDays = repeat === 'biweekly' ? 14 : 7;
+    const intervalMs = intervalDays * 24 * 60 * 60 * 1000;
     let index = Math.max(0, Math.floor((rangeStart.getTime() - start.getTime()) / intervalMs) - 1);
     for (let i = 0; i < 120; i += 1) {
-      const occurrenceStart = new Date(start.getTime() + index * intervalMs);
+      const occurrenceStart = zonedDateTimeToUtc(local.year, local.month, local.day + index * intervalDays, local.hour, local.minute);
       if (occurrenceStart > rangeEnd) break;
       pushOccurrence(occurrenceStart, index);
       index += 1;
@@ -211,9 +216,8 @@ function expandEventOccurrences(event, rangeStart, rangeEnd) {
   if (repeat === 'yearly') {
     let index = 0;
     for (let year = rangeStart.getFullYear() - 1; year <= rangeEnd.getFullYear() + 1; year += 1) {
-      const occurrenceStart = new Date(start);
-      occurrenceStart.setFullYear(year);
-      if (occurrenceStart.getMonth() !== start.getMonth()) continue;
+      const occurrenceStart = zonedDateTimeToUtc(year, local.month, local.day, local.hour, local.minute);
+      if (zonedParts(occurrenceStart).month !== local.month) continue; // 29 February in a common year
       if (occurrenceStart < start) continue;
       pushOccurrence(occurrenceStart, index);
       index += 1;
