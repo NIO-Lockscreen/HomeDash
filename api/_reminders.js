@@ -1,7 +1,7 @@
 import { head, put } from '@vercel/blob';
+import { readEventsDocument } from './_events-store.js';
 import crypto from 'crypto';
 
-const EVENTS_PATH = 'home-organizer/events.json';
 const REMINDER_STATE_PATH = 'home-organizer/reminders-state.json';
 const REMINDER_SETTINGS_PATH = 'home-organizer/reminder-settings.json';
 const RESEND_SCHEDULE_HORIZON_MS = 8 * 24 * 60 * 60 * 1000; // Only queue near-term reminders; the cron refreshes this daily.
@@ -337,9 +337,14 @@ async function writeJsonBlob(path, value) {
   });
 }
 
+// Strict on purpose. The cron reconciles every reminder against this list and
+// cancels whatever is missing from it, so a failed read must stop the run
+// rather than look like an empty calendar, and an older copy must not be
+// mistaken for the current one.
 export async function loadEventsForReminderCron() {
-  const parsed = await readJsonBlob(EVENTS_PATH, { events: [] });
-  return Array.isArray(parsed.events) ? parsed.events : [];
+  const document = await readEventsDocument();
+  if (!document.fresh) throw new Error('The task list could not be confirmed as current; reminders were left as they are.');
+  return document.events;
 }
 
 async function loadReminderState() {

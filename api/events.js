@@ -1,11 +1,9 @@
-import { head, put } from '@vercel/blob';
 import crypto from 'crypto';
 import { syncReminderSchedulesForEvents } from './_reminders.js';
 import { organizerImageMeta } from './_images.js';
 import {
   IMAGE_GRACE_DAYS,
   isOrganizerBlobImage,
-  isBlobNotFoundError,
   isStaleClientCopy,
   chooseImageForStaleClient,
   pickAutoImage,
@@ -14,46 +12,25 @@ import {
   autoImageKindOf,
   isMismatchedBorrowedImage
 } from './_image-rules.js';
-import {
-  normalizeDaughterPeriods,
-  applyDaughterPeriodChange,
-  daughterPeriodChangeSurvived
-} from './_daughter-periods.js';
+import { normalizeDaughterPeriods, applyDaughterPeriodChange } from './_daughter-periods.js';
+import { readEventsDocument, writeEventsDocument, sortEvents, emptyDocument } from './_events-store.js';
 
-const EVENTS_PATH = 'home-organizer/events.json';
-// Every confirmed save also rewrites this marker. Screens read it straight off
-// the Blob CDN to learn that something changed, and only then spend a real read
-// on /api/events. The long cache life is what makes that free: an unchanged
-// marker is a CDN cache HIT, which Blob does not bill as an operation, and
-// overwriting it purges the CDN copy, so a change still shows within about a
-// minute. (events.json itself keeps its short cache life: the write path reads
-// it through the same CDN, and a purge that went missing must not be able to
-// hold a stale copy there for a month.)
-const VERSION_PATH = 'home-organizer/events-version.json';
-const VERSION_CACHE_MAX_AGE_S = 30 * 24 * 60 * 60;
-const VERSION_MARKER_RECHECK_MS = 60 * 60 * 1000;
 // Reported on every GET so the live server build can be read straight from
 // /api/events, rather than inferred from whether a save worked.
-const API_BUILD = '2026-10-22-a';
+const API_BUILD = '2026-10-23-a';
 // Which deployment answered. A wall display runs the same page for days; this
 // is how it notices a deploy and reloads itself.
 const DEPLOYMENT_ID = String(process.env.VERCEL_DEPLOYMENT_ID || process.env.VERCEL_GIT_COMMIT_SHA || '').trim();
 const EVENTS_CACHE_MS = 60 * 1000;
-const MAX_WRITE_ATTEMPTS = 3;
-const MAX_READ_ATTEMPTS = 3;
-const MAX_VERIFY_READS = 3;
-const VERIFY_RETRY_DELAY_MS = 250;
-// The function itself is cut off at 10 seconds (vercel.json), and a reply that
-// never arrives is worse than one that says the store has not caught up: stop
-// confirming in time to answer.
-const WRITE_BUDGET_MS = 7000;
+// A save that keeps meeting a newer version is re-applied this many times.
+const MAX_WRITE_ATTEMPTS = 4;
+const WRITE_RETRY_DELAY_MS = 150;
 // The last confirmed document: { updatedAt, events, daughterPeriods }.
 let eventsCache = null;
 let eventsCacheAt = 0;
-// Where screens read the version marker. Derived from events.json's own URL,
-// since both live in the same store.
-let versionUrl = '';
-let versionMarkerCheckedAt = 0;
+// events.json's own URL. Screens watch it straight off the CDN, for free, to
+// notice changes when the instant push below is not reaching them.
+let eventsUrl = '';
 // Serializes mutations that land on the same warm instance so they cannot
 // read-modify-write over each other locally.
 let mutationChain = Promise.resolve();
@@ -242,10 +219,9 @@ function markCreatedRecipients(event, recipients) {
   };
 }
 
-// `updatedAt` must be supplied by the caller and stay identical across every
-// retry of one request. It doubles as the write's verification token, so a
-// fresh stamp per attempt would move the target the read-back is checked
-// against and make a lagging read impossible to ever match.
+// `updatedAt` is supplied by the caller and stays identical across every retry
+// of one request, so a change re-applied after another save landed first is
+// stored exactly as it would have been the first time.
 function cleanEvent(input, existing = {}, updatedAt = new Date().toISOString()) {
   const id = existing.id || input.id || crypto.randomUUID();
   const title = String(input.title || '').trim().slice(0, 80);
@@ -318,111 +294,17 @@ function cleanEvent(input, existing = {}, updatedAt = new Date().toISOString()) 
   };
 }
 
-function sortEvents(events) {
-  return [...events].sort((a, b) => new Date(a.start) - new Date(b.start));
+function rememberEventsUrl(url) {
+  if (url) eventsUrl = String(url);
 }
 
-function md5(text) {
-  return crypto.createHash('md5').update(text, 'utf8').digest('hex');
-}
-
-function normalizeEtag(value) {
-  return String(value || '').trim().replace(/^W\//i, '').replace(/^"+|"+$/g, '').toLowerCase();
-}
-
-// An MD5 ETag from head(), or '' when the store gave something else.
-function storedMd5(meta) {
-  const etag = normalizeEtag(meta?.etag);
-  return /^[0-9a-f]{32}$/.test(etag) ? etag : '';
-}
-
-function emptyDocument() {
-  return { updatedAt: '', events: [], daughterPeriods: normalizeDaughterPeriods(null) };
-}
-
-function rememberVersionUrl(eventsUrl) {
-  if (versionUrl || !eventsUrl) return;
-  try {
-    const url = new URL(eventsUrl);
-    url.pathname = `/${VERSION_PATH}`;
-    url.search = '';
-    versionUrl = url.toString();
-  } catch {}
-}
-
-// Is the copy the CDN handed back the one the store holds? head() answers from
-// the Blob API; the contents come from the CDN, which keeps serving the copy
-// from before an overwrite for up to a minute. Byte length alone cannot tell
-// the two apart when an edit keeps the length - moving a task from 10:00 to
-// 11:00 does - and a save built on such a copy silently undid that edit. The
-// store's ETag is an MD5 of the content, so when head() gives one the content
-// has to match it as well.
-function isCurrentCopy(meta, text, response) {
-  if (Buffer.byteLength(text, 'utf8') !== Number(meta.size)) return false;
-  const stored = storedMd5(meta);
-  if (!stored) return true;
-  if (normalizeEtag(response.headers.get('etag')) === stored || md5(text) === stored) return true;
-  console.warn(`events.json: the CDN copy has the stored length but not the stored ETag ${stored}; treating it as an older copy.`);
-  return false;
-}
-
-// Reads the document and says whether it is really the current version.
-//
-// The blob URL is CDN-backed and the path is reused on every overwrite, so the
-// CDN can hand back the copy from before the last write for up to a minute.
-// The unique query string below does NOT get past it: the Blob CDN leaves the
-// query out of its cache key, so `?v=<anything>` is answered from the same
-// cached copy. There is no way to bypass the CDN for a public store, so a
-// replayed copy is detected instead (isCurrentCopy) and `fresh` says so.
-//
-// This matters most on the write path. A save that builds on a replayed copy
-// does not merely miss a task: it writes the whole document back without the
-// tasks that were added since, and answers 404 for a task that plainly exists.
-async function readEventsDocument({ attempts = MAX_READ_ATTEMPTS } = {}) {
-  let meta;
-  let text = '';
-  let fresh = false;
-
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      meta = await head(EVENTS_PATH);
-    } catch (error) {
-      if (isBlobNotFoundError(error)) return { ...emptyDocument(), fresh: true };
-      throw error;
-    }
-    rememberVersionUrl(meta.url);
-    const bust = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
-    const response = await fetch(`${meta.url}?v=${bust}`, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`Could not read events.json from Blob (${response.status}).`);
-    text = await response.text();
-    fresh = isCurrentCopy(meta, text, response);
-    if (fresh) break;
-    console.warn(`events.json came back as an older copy than the store holds (attempt ${attempt}/${attempts}).`);
-    if (attempt < attempts) await sleep(VERIFY_RETRY_DELAY_MS * attempt);
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error('events.json from Blob could not be read as JSON.');
-  }
-  // The document's own stamp is what tells a read that has not caught up yet
-  // (an older copy) apart from another device's newer write.
-  return {
-    updatedAt: String(parsed?.updatedAt || ''),
-    events: Array.isArray(parsed?.events) ? parsed.events : [],
-    daughterPeriods: normalizeDaughterPeriods(parsed?.daughterPeriods),
-    fresh
-  };
-}
-
-// The base a mutation is built on must be the current document. Rewriting the
-// whole file from a replayed copy is how tasks and pictures disappear, so a
-// read that cannot be confirmed stops the write instead. 503 keeps the change
-// queued on the device, which then retries it.
+// The base a mutation is built on must be the current document. Reads are
+// consistent through the snapshot; only when a version has no snapshot and the
+// CDN still holds an older copy is there nothing safe to build on, and then a
+// 503 keeps the change queued on the device, which retries it.
 async function readEventsForWrite() {
   const document = await readEventsDocument();
+  rememberEventsUrl(document.url);
   if (!document.fresh) {
     throw httpError(503, 'The store is still answering with an older copy of the task list, so this change was not applied. It stays queued on this device and will retry.');
   }
@@ -437,10 +319,8 @@ async function loadEvents(options = {}) {
   }
 
   try {
-    // A single attempt. A replayed copy is still there a few hundred
-    // milliseconds later, and every try costs a billed head(); the screen is
-    // told the copy is not confirmed and asks again a little later instead.
-    const document = await readEventsDocument({ attempts: 1 });
+    const document = await readEventsDocument();
+    rememberEventsUrl(document.url);
     // A copy the store could not confirm as current is still worth answering
     // with, but it must not become this instance's truth for the next minute.
     if (document.fresh) return { ...rememberEventsCache(document), fresh: true };
@@ -461,157 +341,33 @@ function rememberEventsCache(document) {
   return eventsCache;
 }
 
-// Returns what was written - the document stamp, its exact byte length and its
-// MD5 - so the write can be confirmed against the store's own metadata after.
-async function saveEvents(events, daughterPeriods) {
-  const sorted = sortEvents(events);
-  const periods = normalizeDaughterPeriods(daughterPeriods);
-  const stamp = new Date().toISOString();
-  const body = JSON.stringify({ updatedAt: stamp, events: sorted, daughterPeriods: periods }, null, 2);
-  const stored = await put(EVENTS_PATH, body, {
-    access: 'public',
-    allowOverwrite: true,
-    contentType: 'application/json; charset=utf-8',
-    cacheControlMaxAge: 0
-  });
-  rememberVersionUrl(stored?.url);
-  const document = rememberEventsCache({ updatedAt: stamp, events: sorted, daughterPeriods: periods });
-  return { stamp, bytes: Buffer.byteLength(body, 'utf8'), md5: md5(body), document };
-}
-
-// Rewrites the version marker every screen watches. A failure here does not
-// undo the save, which is already stored; screens then pick the change up on
-// their next timed read instead of within the minute.
-async function publishVersion(stamp) {
-  const updatedAt = String(stamp || '').trim();
-  if (!updatedAt) return '';
-  try {
-    await put(VERSION_PATH, JSON.stringify({ updatedAt }), {
-      access: 'public',
-      allowOverwrite: true,
-      contentType: 'application/json; charset=utf-8',
-      cacheControlMaxAge: VERSION_CACHE_MAX_AGE_S
-    });
-    versionMarkerCheckedAt = Date.now();
-    return updatedAt;
-  } catch (error) {
-    console.warn('Could not update the version marker:', error);
-    return '';
-  }
-}
-
-// A screen that found no marker asks for one. Only needed until the first save
-// after this was deployed: every save writes the marker from then on. Checked
-// at most once an hour per instance, since anyone can ask.
-async function ensureVersionMarker(document) {
-  if (!document.updatedAt || Date.now() - versionMarkerCheckedAt < VERSION_MARKER_RECHECK_MS) return;
-  versionMarkerCheckedAt = Date.now();
-  try {
-    await head(VERSION_PATH);
-    return;
-  } catch (error) {
-    if (!isBlobNotFoundError(error)) return;
-  }
-  await publishVersion(document.updatedAt);
-}
-
-// Does the store hold the bytes we just wrote? head() answers from the Blob
-// API, not from the CDN that serves the file's contents, so unlike a read of
-// the document itself it can never be a cached replay of an older version. A
-// matching MD5 (or, without one, a matching byte length) means our document is
-// the one in the store - or a byte-identical one from another device, which
-// says the same thing about our change.
-async function writtenDocumentIsStored(written) {
-  try {
-    const meta = await head(EVENTS_PATH);
-    if (Number(meta?.size) !== written.bytes) return false;
-    // Another device's document can have exactly the same length.
-    const stored = storedMd5(meta);
-    return !stored || stored === written.md5;
-  } catch (error) {
-    // Metadata we could not read proves nothing either way; the content
-    // read-back below decides.
-    if (!isBlobNotFoundError(error)) console.warn('Could not read events.json metadata after writing:', error);
-    return false;
-  }
-}
-
-// Was the write kept? Three answers, and they need opposite handling:
+// Every write is a read-modify-write of one shared document. Two devices saving
+// at once used to race - the slower one put back a copy built before the
+// faster one landed - and the old guard against that re-read the document
+// after every save. Now the save itself is conditional: it only lands if the
+// stored version is still the one the change was built on. If another save got
+// there first, the store refuses and the change is applied again on top of it.
 //
-//   'stored'  - the store holds our document, or a document carrying our
-//               change. Done.
-//   'lagging' - the put succeeded and every read still answers with a copy
-//               OLDER than the one we just wrote. Nothing has replaced our
-//               write; a read is simply behind. Writing again cannot fix a
-//               read, and this is what used to be reported to the phone as
-//               "another device saved at the same time", leaving a change
-//               queued forever that the server had in fact stored.
-//   'lost'    - a document NEWER than ours is stored and it does not carry
-//               our change. Another device really did overwrite us, and the
-//               change has to be re-applied onto the winner's snapshot.
-async function confirmWrite(written, verify, deadline) {
-  for (let attempt = 1; attempt <= MAX_VERIFY_READS; attempt += 1) {
-    if (await writtenDocumentIsStored(written)) return { status: 'stored', document: written.document };
-
-    const saved = await readEventsDocument();
-    if (typeof verify !== 'function' || verify(saved.events, saved)) {
-      // Return what the store holds so the reply carries any concurrent change
-      // from another device too.
-      return { status: 'stored', document: saved };
-    }
-    if (saved.updatedAt && saved.updatedAt >= written.stamp) return { status: 'lost', document: saved };
-    if (Date.now() >= deadline) break;
-    if (attempt < MAX_VERIFY_READS) await sleep(VERIFY_RETRY_DELAY_MS * attempt);
-  }
-  // Only ever saw copies older than our own write, so nothing has replaced it.
-  return { status: 'lagging', document: written.document };
-}
-
-// A confirmed write: remember it, and tell every screen something changed.
-async function settleWrite(document) {
-  const remembered = rememberEventsCache(document);
-  const version = await publishVersion(remembered.updatedAt);
-  return { ...remembered, version, verified: true };
-}
-
-// Every write is a read-modify-write over one shared document, so two devices
-// saving at once race: the slower one bases its copy on a snapshot taken before
-// the faster one landed and puts it back, silently erasing the other device's
-// task. Guard that by confirming each put and re-applying the change onto the
-// winner's snapshot when ours did not survive.
-//
-// `apply(events, attempt, document)` receives the freshest snapshot and returns
-// { events, verify, daughterPeriods? }, where verify(savedEvents, savedDocument)
-// reports whether this change is present in what the store actually kept. A
-// change that leaves `daughterPeriods` out keeps the stored ones. It may run
-// more than once, so it must not have side effects.
+// `apply(events, attempt, document)` receives the current snapshot and returns
+// { events, daughterPeriods? }; leaving daughterPeriods out keeps the stored
+// ones. It may run more than once, so it must not have side effects.
 //
 // Resolves to the stored document plus { verified, version }.
 async function mutateEvents(apply) {
   const run = async () => {
-    let outcome = null;
-    const deadline = Date.now() + WRITE_BUDGET_MS;
     for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
       const current = await readEventsForWrite();
-      const { events, verify, daughterPeriods } = await apply(current.events, attempt, current);
-      const written = await saveEvents(events, daughterPeriods ?? current.daughterPeriods);
-      outcome = { ...written.document, verified: false };
-
-      const confirmation = await confirmWrite(written, verify, deadline);
-      if (confirmation.status === 'stored') return settleWrite(confirmation.document);
-      if (confirmation.status === 'lagging') {
-        // The put succeeded, nothing newer has replaced it, and only the
-        // reading side is behind. Rewriting would put the same bytes back and
-        // ask the same question again; telling the device to retry would have
-        // it do that every 15 seconds forever. Report it as written.
-        console.warn('events.json was written but the read-back is still behind; accepting the write.');
-        return { ...(await settleWrite(confirmation.document)), lagging: true };
+      const { events, daughterPeriods } = await apply(current.events, attempt, current);
+      const written = await writeEventsDocument({ events, daughterPeriods: daughterPeriods ?? current.daughterPeriods }, current);
+      if (!written.conflict) {
+        rememberEventsUrl(written.url);
+        const stored = rememberEventsCache(written.document);
+        return { ...stored, version: stored.updatedAt, verified: true };
       }
-      console.warn(`events.json was overwritten by another write; re-applying (attempt ${attempt}/${MAX_WRITE_ATTEMPTS}).`);
-      if (Date.now() >= deadline) break;
-      if (attempt < MAX_WRITE_ATTEMPTS) await sleep(VERIFY_RETRY_DELAY_MS * attempt);
+      console.warn(`events.json changed while this save was being made; re-applying (attempt ${attempt}/${MAX_WRITE_ATTEMPTS}).`);
+      if (attempt < MAX_WRITE_ATTEMPTS) await sleep(WRITE_RETRY_DELAY_MS * attempt);
     }
-    return outcome || { ...emptyDocument(), verified: false };
+    return { ...emptyDocument(), verified: false };
   };
 
   const queued = mutationChain.then(run, run);
@@ -619,36 +375,11 @@ async function mutateEvents(apply) {
   return queued;
 }
 
-// Is this change present in what the store kept? Two tabs of the same phone can
-// send the same queued change twice; each request stamps it with its own
-// `updatedAt`, so the copy that is stored can be the same change under a
-// different stamp. Re-writing over that only starts the race again, so compare
-// the content too.
-function sameEventContent(a, b) {
-  const withoutStamp = event => {
-    const { updatedAt, ...rest } = event || {};
-    return JSON.stringify(rest);
-  };
-  return withoutStamp(a) === withoutStamp(b);
-}
-
-function eventSurvived(savedEvents, event) {
-  return (savedEvents || []).some(item => String(item.id) === String(event.id)
-    && (item.updatedAt === event.updatedAt || sameEventContent(item, event)));
-}
-
 // 503 keeps the change in the phone's pending queue so it retries, instead of
-// the client dropping it as a permanent failure.
-//
-// It says what the server saw, not what it guesses that means. All it really
-// knows is that the stored task list kept coming back carrying somebody else's
-// newer write instead of this one; whether that was another device, another tab
-// of the same one, or the store itself is not something it can tell. It used to
-// state flatly that another device had saved at the same time, which was
-// routinely untrue and sent the one person looking for the fault to look for a
-// second device that was never there.
+// the client dropping it as a permanent failure. Only reached when other saves
+// kept landing first, several times over.
 function sendUnverified(res) {
-  send(res, 503, { error: 'The task list kept coming back with a newer write than this one, so the change could not be confirmed. It stays queued on this device and will retry.' });
+  send(res, 503, { error: 'Other saves kept landing first, so this change was not applied yet. It stays queued on this device and will retry.' });
 }
 
 // Two devices can edit the same event. Device A replaces the image; device B,
@@ -702,15 +433,32 @@ async function borrowImageForTitle({ title, events, excludeId }) {
 // the slowest, least reversible step out of the 10-second write budget.
 const IMAGE_CLEANUP = Object.freeze({ deferred: true, gracePeriodDays: IMAGE_GRACE_DAYS });
 
+function hasAdminPin(req) {
+  return Boolean(process.env.ADMIN_PIN) && req.headers['x-admin-pin'] === process.env.ADMIN_PIN;
+}
+
+// The ntfy.sh topic every screen listens on for "something changed" pings.
+// A ping carries only a timestamp, never task contents, but anyone who knows
+// the topic can send one and make the screens re-read, so it is derived from a
+// server secret and only handed to requests that carry the admin PIN.
+function syncTopic() {
+  const secret = process.env.SYNC_TOPIC_SECRET || process.env.CRON_SECRET || process.env.BLOB_READ_WRITE_TOKEN || process.env.ADMIN_PIN || '';
+  if (!secret) return '';
+  const digest = crypto.createHmac('sha256', secret).update('homedash-sync-topic-v1').digest('hex');
+  return `homedash-sync-${digest.slice(0, 32)}`;
+}
+
 // What every reply carries so a screen can keep itself in step: the document
-// stamp, the marker value it can stop watching for, and where the marker is.
-function syncFields(document) {
+// stamp (also the version it can stop watching for), the URL it can watch for
+// free, and - for a PIN holder - where the instant pings arrive.
+function syncFields(document, { withTopic = false } = {}) {
   return {
     build: API_BUILD,
     deployment: DEPLOYMENT_ID,
     updatedAt: String(document?.updatedAt || ''),
-    version: String(document?.version || ''),
-    versionUrl,
+    version: String(document?.version || document?.updatedAt || ''),
+    versionUrl: eventsUrl,
+    ...(withTopic ? { syncTopic: syncTopic() } : {}),
     daughterPeriods: normalizeDaughterPeriods(document?.daughterPeriods)
   };
 }
@@ -729,10 +477,10 @@ export default async function handler(req, res) {
           : 'public, max-age=30, s-maxage=30, stale-while-revalidate=60'
       );
       const document = await loadEvents({ force: fresh });
-      if (fresh && document.fresh && url.searchParams.get('ensureVersion') === '1') await ensureVersionMarker(document);
       // `fresh: false` tells the screen this is the CDN's older copy: it keeps
       // what it has and asks again shortly, instead of treating it as current.
-      send(res, 200, { ...syncFields(document), events: document.events, fresh: document.fresh });
+      // The push topic only goes into replies that are never cached.
+      send(res, 200, { ...syncFields(document, { withTopic: fresh && hasAdminPin(req) }), events: document.events, fresh: document.fresh });
       return;
     }
 
@@ -752,9 +500,8 @@ export default async function handler(req, res) {
       // was let go. The device is not being refused anything then: it sent back
       // a picture nobody had chosen.
       let imageReleased = false;
-      // One stamp for the whole request, not one per attempt: every retry then
-      // writes a byte-identical event, so a read-back that is one generation
-      // behind still confirms the change instead of reporting it as lost.
+      // One stamp for the whole request, not one per attempt: a retry after
+      // another save landed first writes the same event again.
       const writeStamp = new Date().toISOString();
 
       const outcome = await mutateEvents(async currentEvents => {
@@ -811,7 +558,7 @@ export default async function handler(req, res) {
         const nextEvents = [...currentEvents];
         if (index === -1) nextEvents.push(event);
         else nextEvents[index] = event;
-        return { events: nextEvents, verify: saved => eventSurvived(saved, event) };
+        return { events: nextEvents };
       });
 
       if (!outcome.verified) {
@@ -836,11 +583,7 @@ export default async function handler(req, res) {
           if (index === -1) return { events: currentEvents };
           const nextEvents = [...currentEvents];
           nextEvents[index] = { ...nextEvents[index], emailReminder: event.emailReminder };
-          return {
-            events: nextEvents,
-            verify: saved => saved.some(item => String(item.id) === String(event.id)
-              && item.emailReminder?.creationEmailSentAt === event.emailReminder.creationEmailSentAt)
-          };
+          return { events: nextEvents };
         });
         if (stamped.verified) next = stamped;
       }
@@ -855,7 +598,7 @@ export default async function handler(req, res) {
       // what the task was already holding.
       const imageAutoFilled = Boolean(event.imageInheritedFrom) && (!requestedImageUrl || imageReleased);
       const imageUrlAccepted = String(event.imageUrl || '') === requestedImageUrl || imageAutoFilled || imageReleased;
-      send(res, created ? 201 : 200, { ...syncFields(next), event, events: next.events, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, imageAutoFilled, imageReleased, requestedImageUrl, imageCleanup: IMAGE_CLEANUP, reminderSync });
+      send(res, created ? 201 : 200, { ...syncFields(next, { withTopic: true }), event, events: next.events, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, imageAutoFilled, imageReleased, requestedImageUrl, imageCleanup: IMAGE_CLEANUP, reminderSync });
       return;
     }
 
@@ -863,14 +606,14 @@ export default async function handler(req, res) {
       const url = new URL(req.url, `https://${req.headers.host}`);
 
       if (url.searchParams.get('all') === '1') {
-        const outcome = await mutateEvents(async () => ({ events: [], verify: saved => saved.length === 0 }));
+        const outcome = await mutateEvents(async () => ({ events: [] }));
         if (!outcome.verified) {
           sendUnverified(res);
           return;
         }
         const reminderSync = await safeSyncReminders([], { all: true });
         // Clears the tasks only; the daughter periods are kept.
-        send(res, 200, { ...syncFields(outcome), events: [], localDeleted: true, synced: true, imageCleanup: IMAGE_CLEANUP, reminderSync });
+        send(res, 200, { ...syncFields(outcome, { withTopic: true }), events: [], localDeleted: true, synced: true, imageCleanup: IMAGE_CLEANUP, reminderSync });
         return;
       }
 
@@ -882,10 +625,7 @@ export default async function handler(req, res) {
         // so only the first pass may report it as missing.
         if (!matches.length && !removedEvents.length) throw httpError(404, 'Event not found.');
         if (matches.length) removedEvents = matches;
-        return {
-          events: currentEvents.filter(item => item.id !== id),
-          verify: saved => !saved.some(item => String(item.id) === String(id))
-        };
+        return { events: currentEvents.filter(item => item.id !== id) };
       });
       if (!outcome.verified) {
         sendUnverified(res);
@@ -894,7 +634,7 @@ export default async function handler(req, res) {
       const reminderSync = removedEvents.some(usesReminders)
         ? await safeSyncReminders(outcome.events, { eventIds: [id] })
         : NO_REMINDERS_TO_SYNC;
-      send(res, 200, { ...syncFields(outcome), events: outcome.events, localDeleted: true, synced: true, imageCleanup: IMAGE_CLEANUP, reminderSync });
+      send(res, 200, { ...syncFields(outcome, { withTopic: true }), events: outcome.events, localDeleted: true, synced: true, imageCleanup: IMAGE_CLEANUP, reminderSync });
       return;
     }
 
@@ -904,19 +644,15 @@ export default async function handler(req, res) {
       const payload = parsePayload(await readBody(req));
       const change = payload.daughterPeriod;
       if (!change || typeof change !== 'object') throw httpError(400, 'Nothing to change was sent.');
-      const outcome = await mutateEvents(async (currentEvents, attempt, current) => {
-        const expected = applyDaughterPeriodChange(current.daughterPeriods, change);
-        return {
-          events: currentEvents,
-          daughterPeriods: expected,
-          verify: (savedEvents, saved) => daughterPeriodChangeSurvived(saved?.daughterPeriods, change, expected)
-        };
-      });
+      const outcome = await mutateEvents(async (currentEvents, attempt, current) => ({
+        events: currentEvents,
+        daughterPeriods: applyDaughterPeriodChange(current.daughterPeriods, change)
+      }));
       if (!outcome.verified) {
         sendUnverified(res);
         return;
       }
-      send(res, 200, { ...syncFields(outcome), events: outcome.events, synced: true });
+      send(res, 200, { ...syncFields(outcome, { withTopic: true }), events: outcome.events, synced: true });
       return;
     }
 

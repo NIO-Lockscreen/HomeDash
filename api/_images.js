@@ -8,8 +8,8 @@ import {
   referencedImagePathnames,
   classifyImages
 } from './_image-rules.js';
+import { readEventsDocument } from './_events-store.js';
 
-const EVENTS_PATH = 'home-organizer/events.json';
 const SWEEP_STATE_PATH = 'home-organizer/image-sweep.json';
 
 // { exists, uploadedAt } for one stored image. A transient error reports the
@@ -82,11 +82,13 @@ async function deleteBlobs(entries) {
 // the time since a sweep first saw it unreferenced, and the time since it
 // was uploaded. Until then it is recoverable from the Blob dashboard.
 export async function sweepUnreferencedImages({ now = Date.now() } = {}) {
-  const eventsDoc = await readJsonBlobStrict(EVENTS_PATH);
-  if (eventsDoc === null) {
+  const eventsDoc = await readEventsDocument();
+  if (!eventsDoc.exists) {
     return { ok: true, skipped: 'events.json does not exist; nothing deleted.', graceDays: IMAGE_GRACE_DAYS };
   }
-  const events = Array.isArray(eventsDoc.events) ? eventsDoc.events : [];
+  // An older copy would make images that newer tasks use look unreferenced.
+  if (!eventsDoc.fresh) throw new Error('The task list could not be confirmed as current; no images were swept.');
+  const events = eventsDoc.events;
   const referenced = referencedImagePathnames(events);
 
   const [blobs, stateDoc] = await Promise.all([listAllImages(), readJsonBlobStrict(SWEEP_STATE_PATH)]);

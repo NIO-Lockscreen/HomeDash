@@ -4,10 +4,10 @@
     "start": "vercel dev"
   },
   "dependencies": {
-    "@vercel/blob": "latest",
-    "formidable": "latest"
+    "@vercel/blob": "^2.8.2",
+    "formidable": "^3.5.4"
   },
   "devDependencies": {
-    "@vercel/node": "latest"
+    "@vercel/node": "^27.0.1"
   }
 }

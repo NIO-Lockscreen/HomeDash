@@ -41,43 +41,38 @@ When you create, edit, complete, or delete a task from the phone, the app first 
 
 Open the hidden config menu by holding anywhere on the dashboard/admin screen. It shows the number of pending saves and has a retry button. It also reports tasks that are drawn on this device but that the server has not confirmed yet, so a task can no longer look saved while it is missing everywhere else. It names the app version this page is running and, when they differ, the version the server answered with — a page can sit open on the wall for days after a deploy, and "it is not doing the new thing" is usually just an old page. Reload it. If the server refused a new picture, that is reported there too, with the task it belongs to.
 
-## How concurrent saves are kept safe
+## How saves and reads are kept safe
 
 All tasks live in one shared `events.json` in Vercel Blob, so every save is a
-read-modify-write of the whole file. Three things keep two devices saving at
-once from erasing each other:
+read-modify-write of the whole file. The code for this is in
+`api/_events-store.js`.
 
-- **Every read is checked against the store.** The Blob URL is CDN-backed and
-  the path is reused on every overwrite, so for up to a minute after a save the
-  CDN can still hand back the older copy of `events.json`. A unique query string
-  does **not** get past it: the Blob CDN leaves the query out of its cache key
-  (measured: `?v=<random>` comes back as a cache HIT with the same age). So every
-  read is compared against `head()`, which answers from the Blob API rather than
-  the CDN. The byte length has to match, and so does the store's ETag (an MD5 of
-  the content). Length alone used to let a same-length older copy through —
-  moving a task from 10:00 to 11:00 keeps the length — and a save built on it
-  silently undid that move.
-- **A write is never built on a replayed copy.** If a read cannot be confirmed
-  as current, the save answers `503` instead of rewriting the whole file from an
-  old snapshot. That one rule prevents the worst failure this app can have:
-  rewriting `events.json` without the tasks and pictures added since the copy
-  was made — and it also stops a `404 Event not found` for a task that plainly
-  exists, which the phone would treat as permanent and drop the edit.
-- **Writes are confirmed against the store, not against a cached read.** After
-  each write, `head()` is asked whether the stored file is the exact document
-  just written (same byte length and same MD5 ETag). If it is, the write is
-  done — no CDN read involved. Otherwise the
-  document is read back, and the answer is one of three, each handled
-  differently:
-  - the change is there → done;
-  - a **newer** document is stored without the change → another device really did
-    overwrite it, so the change is re-applied on top of the winner, up to three
-    times;
-  - every read still answers with a copy **older** than the write → nothing has
-    replaced it and only the reading side is behind. The write stands. This used
-    to answer `503 "another device saved at the same time"` for a change the
-    server had in fact stored, which left it queued on the phone forever, and
-    every later change stuck in the queue behind it.
+- **Reads are never an older copy.** The Blob URL is CDN-backed and the path is
+  reused on every overwrite, so for up to a minute after a save the CDN still
+  hands out the older copy of `events.json`. A query string does **not** get
+  past it: the Blob CDN leaves the query out of its cache key (measured:
+  `?v=<random>` comes back as a cache HIT with the same age). So every save also
+  writes the same bytes to an immutable snapshot named after that version's
+  ETag, `home-organizer/snapshots/<etag>.json`. A read asks `head()` (the Blob
+  API, always current) for the ETag and fetches that snapshot. A path nobody has
+  requested yet cannot be in the CDN, and a path that is never overwritten cannot
+  go stale, so the read is current the moment the save returns. Other screens
+  reading the same version afterwards get it from the CDN cache for free. Only
+  the current and the previous snapshot are kept.
+- **Saves are compare-and-swap.** A save is written with `ifMatch: <etag of the
+  version it was built on>`. If another device saved in between, the store
+  refuses it, and the change is applied again on top of the newer version (up to
+  four times, then `503` and it stays queued on the device). This replaced the
+  old read-back verification, which cost extra reads per save and could still be
+  fooled by the CDN — a same-length edit, such as moving a task from 10:00 to
+  11:00, could be silently undone by another device saving within the minute.
+- **A fallback that is checked.** A version without a snapshot (one saved before
+  this design, or one whose snapshot write failed) is read from the CDN copy, and
+  only used when its byte length and ETag match what `head()` reports. Such a
+  version is then given a snapshot, and an `events.json` still on the old
+  one-minute cache life is moved onto the long one, once. If the CDN copy is
+  older, a save answers `503` instead of being built on it, and the reminder cron
+  and the image sweep skip their run rather than act on it.
 - **A failed read never becomes a write.** Blob trouble answers `5xx` rather
   than overwriting the file with a guess, and only genuine validation problems
   (missing title or start) answer `4xx`.
@@ -109,48 +104,46 @@ The browser expands those into temporary occurrences for display only. The serve
 
 - Event images are **no longer deleted the moment** a task is deleted or its picture replaced. The reminder cron (`/api/reminders-cron`, twice a day) sweeps images that no task has referenced for **7 days**, tracked in `home-organizer/image-sweep.json`. A picture lost to a bad save therefore stays in the Blob store for a week: find it under `home-organizer/images/` in the Vercel Blob dashboard and paste its URL into the task's image field. The sweep never deletes anything when `events.json` cannot be read, and never deletes an image uploaded less than 7 days ago.
 - A device holding an older copy of a task (it marks it done, moves its date, adds a reminder) can no longer swap that task's image for the old one it remembers, or clear it. It may still set a genuinely newer upload, so a resync from that device works as before.
-- Display mode loads cached tasks instantly, then performs one fresh server refresh on page boot and at midnight, and picks up changes from other devices through the version marker (see **Keeping every screen in step** below).
+- Display mode loads cached tasks instantly, then performs one fresh server refresh on page boot and at midnight, and picks up changes from other devices as they happen (see **Keeping every screen in step** below).
 - Desktop admin mode shows a large **Back to normal view** button so you can return to the Surface display after editing.
-- If admin and display are open in two tabs on the same device, the display tab is notified immediately after a successful save. Across different devices the version marker carries the change (see below).
+- If admin and display are open in two tabs on the same device, the display tab is notified immediately after a successful save. Across different devices a push carries the change (see below).
 
 ## Keeping every screen in step
 
-Every save the server confirms also rewrites a tiny marker,
-`home-organizer/events-version.json`, holding the stamp of the stored task list.
-Every open screen reads that marker straight off the Blob CDN every 30 seconds
-(and when it wakes, comes back online, is tapped, or the camera dimmer sees
-someone). Only when the marker has moved does it read `/api/events`.
+**Instantly, through a push.** The device that saves something sends a one-line
+"changed" ping — only the new version stamp, never task contents — through
+[ntfy.sh](https://ntfy.sh), the same free relay the YouTube panel uses. Every
+screen keeps one stream open to it, and on a ping reads `/api/events`, which is
+already the new version (see above). In practice a change shows on the other
+screens within a few seconds. A burst of queued saves sends one ping.
 
-Why this costs nothing against the Hobby limits:
+- The topic is derived from a server secret (`SYNC_TOPIC_SECRET` if set,
+  otherwise `CRON_SECRET`, the Blob token or the admin PIN) and only handed to
+  devices that send the admin PIN, so only screens with the PIN saved get
+  instant updates. A stranger cannot learn the topic from the site.
+- A ping that is not a version stamp, or names a version the screen already has,
+  costs nothing.
+- The ping is sent from the device, not the server: ntfy limits requests per
+  address, and Vercel's shared addresses would compete with everyone else's.
 
-- The marker is uploaded with a 30-day cache life, so while nothing changes the
-  CDN answers from its cache and the browser gets a `304`. Blob does not bill a
-  cache HIT as an operation; it only counts as a CDN request (Hobby includes a
-  million a month; one screen polling every 30 seconds is about 86,000).
-- Overwriting the marker purges the CDN copy, so a change reaches every screen
-  within about a minute: one billed cache miss on the marker, plus one task-list
-  read per screen.
-- `events.json` itself keeps its short cache life on purpose. The save path reads
-  it through the same CDN, and a purge that went missing must not be able to
-  hold a stale copy there for a month.
+**Within about a minute, for free, as the fallback.** For a screen without the
+PIN, or while the relay is unreachable, every screen also reads `events.json`
+straight off the Blob CDN every 30 seconds (and when it wakes, comes back online,
+is tapped, or the camera dimmer sees someone). `events.json` has a 30-day cache
+life, so while nothing changes the CDN answers from its cache and the browser
+gets a `304`. Blob does not bill a cache HIT as an operation; it only counts as a
+CDN request (Hobby includes a million a month; one screen checking every 30
+seconds is about 86,000). Each save purges the CDN copy, so this path sees a
+change within about a minute. Only a version newer than the one on screen leads
+to a read.
 
-The timed reads stay as a safety net, but while the marker is being read the
-hourly one only actually runs every few hours, and a tap only looks at the
-marker unless the last full read is more than 15 minutes old.
-
-When the server can only get the CDN's older copy of the task list it says so
-(`fresh: false`). The screen keeps what it has and asks again after 15, 30 and
-60 seconds, instead of showing the old list and refusing to read again for a
-minute — which is what used to make a tap right after a change on the phone
-show nothing.
+The timed reads stay as a safety net, but while the background check works the
+hourly one only actually runs every few hours, and a tap only does the free check
+unless the last full read is more than 15 minutes old.
 
 Every request the screens make is time-limited. One that never answered used to
 leave the screen believing a refresh was still under way, and from then on it
 never refreshed again until somebody reloaded it.
-
-The marker does not exist until the first save after this is deployed. A screen
-that finds it missing asks the server to create it and falls back to timed reads
-for half an hour.
 
 The wall display also reloads itself after a deploy, once it is back on the home
 view and nobody has touched it for a minute, so fixes reach it without anyone
@@ -159,8 +152,8 @@ fullscreen (double-press on the clock), since a reload would drop fullscreen;
 the config menu says a reload is due instead. Fullscreen started by the browser
 or a kiosk mode is not affected.
 
-The config menu shows whether live updates are working and when the last full
-read was.
+The config menu shows whether instant updates are connected, whether the
+background check is answering, and when the last full read was.
 
 ## Daughter periods are shared
 
@@ -168,7 +161,7 @@ The blue daughter periods in the month view, and every change to them, used to
 be stored only on the device they were made on, so a period moved on the phone
 never reached the wall display. They are now stored in `events.json` next to the
 tasks (as `daughterPeriods`), so every refresh a screen already does brings them
-along without an extra Blob read, and the marker carries their changes too.
+along without an extra Blob read, and their changes reach the other screens the same way task changes do.
 
 - Each edit (move, delete, reset, add) is sent as one change and applied to what
   the store holds, so edits to different periods from two screens both survive.
@@ -355,13 +348,14 @@ A good response looks like JSON with `ok: true`.
 
 This version is tuned to use far fewer Vercel Blob operations:
 
-- The dashboard no longer polls `/api/events` every 10 seconds, 10 minutes, or 2 minutes. It watches the version marker on the Blob CDN instead, which is free while nothing changes.
+- The dashboard no longer polls `/api/events` every 10 seconds, 10 minutes, or 2 minutes. Changes arrive as an instant push, with a check of `events.json` on the Blob CDN as the fallback, which is free while nothing changes.
 - Events are cached in `localStorage`, so the screen renders instantly from the last known calendar and keeps working if Blob/API is temporarily unavailable.
 - On page boot the app now performs one fresh `/api/events?fresh=1` read so loading/reloading the dashboard gets the newest server data.
-- After boot, fresh reads happen when the version marker moves, at midnight, and as a few-hourly safety net. Interactions are debounced and only look at the marker unless the last full read is old.
+- After boot, fresh reads happen when a push or the background check reports a newer version, at midnight, and as a few-hourly safety net. Interactions are debounced and only do the free check unless the last full read is old.
+- A save costs one billed read (`head()`) and two writes (`events.json` and its snapshot); a screen loading a change costs one or two billed reads. Old snapshots are deleted, which Blob does not bill.
 - A save of a task with no email reminders (before or after the save) skips the reminder bookkeeping, which used to cost a Blob read and a Blob write on every save. The reminder state is also no longer rewritten when a sync changed nothing.
 - The display re-renders locally every minute so date/time/day changes still update without calling Blob.
-- Normal `/api/events` reads still use short API/CDN caching and a small in-memory cache per serverless instance. Fresh boot/midnight reads bypass that cache on purpose.
+- Normal `/api/events` reads still use short API/CDN caching and a small in-memory cache per serverless instance. Fresh reads bypass that cache on purpose.
 - Uploaded images are optimized before upload, usually targeting about 650 KB instead of allowing multi-megabyte photos.
 - Re-uploading the exact same image now reuses the existing Blob URL by hashing the file instead of creating duplicates.
 

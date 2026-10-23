@@ -4472,24 +4472,34 @@
     // build the same way, so a device running stale cached JavaScript, or a
     // deploy that never landed, can be told apart from a real sync fault
     // instead of being guessed at.
-    const APP_BUILD = '2026-10-22-a';
-    // Blob-efficient sync. Every save on the server also rewrites a tiny
-    // version marker in Blob storage, and screens read that marker straight
-    // off the Blob CDN every SYNC_VERSION_POLL_MS. An unchanged marker is a CDN
-    // cache HIT, which Blob does not bill as an operation, so watching it costs
-    // nothing against the Hobby limits (it only counts as a CDN request, of
-    // which Hobby includes a million a month). Only when the marker changes
-    // does a screen spend a real read on /api/events. Page boot, midnight,
-    // taps and a few-hourly safety net still read on their own.
+    const APP_BUILD = '2026-10-23-a';
+    // Instant updates. The screen that saves something sends a one-line
+    // "changed" ping - only the new version stamp, never task contents -
+    // through ntfy.sh, the same free relay the YouTube panel uses, and every
+    // screen keeps one stream open to it. The ping lands in about a second and
+    // the screen reads the new list at once; the server's reads are no longer
+    // held back by the CDN, so that list is already the new one. The topic is
+    // only handed to devices that have the admin PIN.
+    const SYNC_PUSH_BASE = 'https://ntfy.sh';
+    const SYNC_TOPIC_KEY = 'homeOrganizerSyncTopic';
+    const SYNC_PUSH_RETRY_MS = 10 * 1000;
+    const SYNC_PUSH_TIMEOUT_MS = 5 * 1000;
+    // The fallback, for a screen without the PIN or when the relay is down:
+    // screens read the task list's own copy (events.json) straight off the
+    // Blob CDN every SYNC_VERSION_POLL_MS. An unchanged copy is a CDN cache
+    // HIT (a 304 to the browser), which Blob does not bill as an operation; it
+    // only counts as a CDN request, of which Hobby includes a million a month.
+    // Every save purges it, so this path sees a change within about a minute.
+    // Page boot, midnight, taps and a few-hourly safety net still read too.
     const SYNC_VERSION_POLL_MS = 30 * 1000;
     const SYNC_VERSION_MIN_GAP_MS = 5 * 1000;
     const SYNC_VERSION_TIMEOUT_MS = 10 * 1000;
-    // A missing marker is not cached by the CDN, so each look at it would be a
-    // billed miss. Back right off and ask the server to create it instead.
+    // A missing task list (a brand new store) is not cached by the CDN, so each
+    // look at it would be a billed miss. Back right off.
     const SYNC_VERSION_MISSING_BACKOFF_MS = 30 * 60 * 1000;
     const SYNC_VERSION_URL_KEY = 'homeOrganizerSyncVersionUrl';
-    // While the marker is being read, the timed read only has to catch a marker
-    // that failed to update, and a tap only has to look at the marker.
+    // While the background check is answering, the timed read is only a
+    // safety net, and a tap only has to do the (free) background check.
     const SAFETY_NET_REFRESH_MS = 3 * 60 * 60 * 1000;
     const INTERACTION_FULL_REFRESH_AFTER_MS = 15 * 60 * 1000;
     // The server says when it could only get the CDN's older copy of the task
@@ -4602,7 +4612,14 @@
       lastImageRefusal: null,
       serverBuild: '',
       syncVersionUrl: '',
-      // The marker value this screen has already loaded the task list for.
+      syncTopic: '',
+      syncPush: null,
+      syncPushOpen: false,
+      syncPushRetryTimer: null,
+      // A ping that arrived while a read was already on its way.
+      syncPushPending: '',
+      syncPushLastAt: 0,
+      // The version stamp of the task list this screen has loaded.
       syncVersionSeen: '',
       syncVersionLastOkAt: 0,
       syncVersionLastPollAt: 0,
@@ -6893,10 +6910,10 @@
     function scheduleNextHourlyEventRefresh() {
       window.setTimeout(async () => {
         if (isAutomaticEventRefreshWindow()) {
-          // With the version marker being read, changes arrive through it and
-          // this read is only a safety net for a marker that failed to update.
-          const coveredByMarker = syncVersionHealthy() && Date.now() - state.lastFreshEventLoadAt < SAFETY_NET_REFRESH_MS;
-          if (!coveredByMarker) await fetchEvents({ force: true, reason: 'hourly-daytime' });
+          // While the background check answers, changes arrive through it (or
+          // a push) and this read is only a safety net.
+          const covered = syncVersionHealthy() && Date.now() - state.lastFreshEventLoadAt < SAFETY_NET_REFRESH_MS;
+          if (!covered) await fetchEvents({ force: true, reason: 'hourly-daytime' });
           await processPendingWrites({ silent: true });
         }
         scheduleNextHourlyEventRefresh();
@@ -6908,11 +6925,11 @@
       if (state.interactionRefreshTimer) clearTimeout(state.interactionRefreshTimer);
       state.interactionRefreshTimer = window.setTimeout(async () => {
         if (state.eventFetchActive) return;
-        // A tap always looks at the marker when this screen knows where it is.
-        // That is free, and it loads the task list when anything has changed.
-        // Only when the marker cannot answer, or the last confirmed read is old
-        // enough that a marker update that went missing would matter, does the
-        // tap fall back to a full read (which keeps its minimum gap).
+        // A tap always does the background check when this screen knows where
+        // to look. That is free, and it loads the task list when anything has
+        // changed. Only when that check cannot answer, or the last confirmed
+        // read is old enough that a missed change would matter, does the tap
+        // fall back to a full read (which keeps its minimum gap).
         if (state.syncVersionUrl) {
           await pollSyncVersion('interaction');
           if (syncVersionHealthy() && Date.now() - state.lastFreshEventLoadAt < INTERACTION_FULL_REFRESH_AFTER_MS) {
@@ -7426,6 +7443,9 @@
       state.pendingWriteActive = true;
       let fatalError = null;
       let blockedByRetryableError = false;
+      // The newest version this pass stored, pinged to the other screens once
+      // at the end rather than once per save.
+      let savedVersion = '';
       try {
         while (true) {
           const queue = getPendingWrites();
@@ -7450,9 +7470,11 @@
               rememberServerBuild(data.build);
               noteServerDeployment(data.deployment);
               rememberSyncVersionUrl(data.versionUrl);
-              // This device already has its own change; the marker the server
-              // just moved for it is not news to this screen.
+              rememberSyncTopic(data.syncTopic);
+              // This device already has its own change; the version the server
+              // just stored for it is not news to this screen.
               markSyncVersionSeen(data.version);
+              if (data.version && (!savedVersion || data.version > savedVersion)) savedVersion = data.version;
               if (data.daughterPeriods) applyServerDaughterPeriods(data.daughterPeriods);
               if (op.opId === DAUGHTER_PERIOD_IMPORT_OP_ID) {
                 try { localStorage.setItem(DAUGHTER_PERIODS_MIGRATED_KEY, '1'); } catch {}
@@ -7525,6 +7547,7 @@
         renderAdminEvents();
         refreshDaughterPeriodsView();
         schedulePendingWriteRetry();
+        if (savedVersion) publishSyncPing(savedVersion);
       }
       if (fatalError) throw fatalError;
     }
@@ -7545,15 +7568,20 @@
           query.set('fresh', '1');
           query.set('t', String(Date.now()));
         }
-        if (options.ensureVersion) query.set('ensureVersion', '1');
         const url = `/api/events${query.toString() ? `?${query}` : ''}`;
-        const { response, data } = await fetchJsonWithTimeout(url, { cache: options.force ? 'no-store' : 'default' }, EVENT_FETCH_TIMEOUT_MS);
+        // A fresh read from a device with the PIN also learns the push topic.
+        const pin = options.force ? getPin().trim() : '';
+        const { response, data } = await fetchJsonWithTimeout(url, {
+          cache: options.force ? 'no-store' : 'default',
+          headers: pin ? { 'x-admin-pin': pin } : {}
+        }, EVENT_FETCH_TIMEOUT_MS);
         if (!response.ok) throw new Error(data.error || 'Could not load events.');
         // A 200 without a task list is not an empty calendar.
         if (!Array.isArray(data.events)) throw new Error('The server answered without a task list.');
         rememberServerBuild(data.build);
         noteServerDeployment(data.deployment);
         rememberSyncVersionUrl(data.versionUrl);
+        rememberSyncTopic(data.syncTopic);
         // `fresh: false` is the CDN's older copy from before the latest save.
         // It used to be taken as current, and a tap right after a change on the
         // phone then showed the old list and blocked further reads for a
@@ -7567,7 +7595,7 @@
         }
         if (confirmed) {
           state.lastFreshEventLoadAt = Date.now();
-          if (options.force) markSyncVersionSeen(options.expectVersion || data.updatedAt);
+          if (options.force) markSyncVersionSeen(data.updatedAt || options.expectVersion);
           clearStaleReadRetry();
         } else {
           scheduleStaleReadRetry(options);
@@ -7584,6 +7612,11 @@
       renderAdminEvents();
       refreshDaughterPeriodsView();
       processPendingWrites({ silent: true });
+      // A ping that came in while this read was on its way may name a newer
+      // version than the one just loaded.
+      const pendingPing = state.syncPushPending;
+      state.syncPushPending = '';
+      if (pendingPing) window.setTimeout(() => onSyncPing(pendingPing), 0);
       // Wait until the task is actually loaded before opening the editor, so a
       // deep link still works if the first read did not include it yet.
       if (adminMode && initialEditEventId && !state.editingId && !state.initialEditOpened && getSourceEvent(initialEditEventId)) {
@@ -7602,8 +7635,8 @@
       if (state.staleRetryTimer) return;
       const delay = STALE_READ_RETRY_DELAYS_MS[state.staleRetryAttempt];
       if (delay === undefined) {
-        // Out of retries. Stop chasing this marker value, or the next look at
-        // the marker would start the whole round again; the safety-net read
+        // Out of retries. Stop chasing this version, or the next background
+        // check would start the whole round again; the safety-net read
         // picks the change up later.
         state.staleRetryAttempt = 0;
         markSyncVersionSeen(options.expectVersion);
@@ -7624,6 +7657,11 @@
       try { localStorage.setItem(SYNC_VERSION_URL_KEY, text); } catch {}
     }
 
+    // Version stamps are ISO 8601 times in UTC, so they sort as text.
+    function isNewerSyncVersion(version) {
+      return Boolean(version) && (!state.syncVersionSeen || version > state.syncVersionSeen);
+    }
+
     function markSyncVersionSeen(version) {
       const text = String(version || '').trim();
       if (text) state.syncVersionSeen = text;
@@ -7634,9 +7672,10 @@
         && Date.now() - state.syncVersionLastOkAt < 2 * SYNC_VERSION_POLL_MS + SYNC_VERSION_TIMEOUT_MS;
     }
 
-    // Looks at the version marker on the Blob CDN and loads the task list only
-    // when it moved. Free while nothing changes: the CDN answers from its cache
-    // (a 304 to this browser), which Blob does not bill as an operation.
+    // Looks at the task list's copy on the Blob CDN and loads the list from the
+    // server only when it is newer than what this screen has. Free while
+    // nothing changes: the CDN answers from its cache (a 304 to this browser),
+    // which Blob does not bill as an operation.
     async function pollSyncVersion(reason = 'timer') {
       if (!state.syncVersionUrl || state.syncVersionPollActive) return;
       const now = Date.now();
@@ -7647,38 +7686,121 @@
       try {
         const { response, data } = await fetchJsonWithTimeout(state.syncVersionUrl, { cache: 'no-cache' }, SYNC_VERSION_TIMEOUT_MS);
         if (response.status === 404) {
-          // No marker yet (nothing has been saved since this was deployed).
-          // Ask the server to write one, and look again much later.
+          // Nothing has ever been saved. Look again much later.
           state.syncVersionBackoffUntil = Date.now() + SYNC_VERSION_MISSING_BACKOFF_MS;
-          fetchEvents({ force: true, reason: 'version-missing', ensureVersion: true }).catch(() => {});
           return;
         }
         if (!response.ok) return;
         state.syncVersionLastOkAt = Date.now();
         const version = String(data.updatedAt || '').trim();
-        if (!version || version === state.syncVersionSeen) return;
+        // Newer only. For up to a minute after a ping brought the new list in,
+        // the CDN still hands out the copy from before it; that is not news.
+        if (!isNewerSyncVersion(version)) return;
         // A read is already on its way, or waiting out an older CDN copy.
         if (state.eventFetchActive || state.staleRetryTimer) return;
         await fetchEvents({ force: true, reason: `version-${reason}`, expectVersion: version });
       } catch (error) {
-        console.warn('Could not read the sync version marker:', error);
+        console.warn('Could not do the background sync check:', error);
       } finally {
         state.syncVersionPollActive = false;
         updateLocalQueueStatus();
       }
     }
 
+    function rememberSyncTopic(topic) {
+      const text = String(topic || '').trim();
+      if (!/^homedash-sync-[0-9a-f]{32}$/.test(text) || text === state.syncTopic) return;
+      state.syncTopic = text;
+      try { localStorage.setItem(SYNC_TOPIC_KEY, text); } catch {}
+      startSyncPush();
+    }
+
+    function syncPushHealthy() {
+      return Boolean(state.syncPush) && state.syncPushOpen;
+    }
+
+    // One open stream to the relay. EventSource reconnects by itself after a
+    // dropped connection; a refused one (a busy relay answering 429) closes
+    // for good, so that one is restarted here.
+    function startSyncPush() {
+      if (!state.syncTopic || typeof EventSource !== 'function') return;
+      state.syncPush?.close();
+      clearTimeout(state.syncPushRetryTimer);
+      state.syncPushRetryTimer = null;
+      const stream = new EventSource(`${SYNC_PUSH_BASE}/${state.syncTopic}/sse`);
+      state.syncPush = stream;
+      state.syncPushOpen = false;
+      stream.onopen = () => {
+        if (state.syncPush !== stream) return;
+        state.syncPushOpen = true;
+        // Anything saved while the stream was down was not pinged here.
+        pollSyncVersion('push-open');
+        updateLocalQueueStatus();
+      };
+      // Pings arrive as unnamed events; the relay's open and keepalive events
+      // are named, so they never reach onmessage.
+      stream.onmessage = event => {
+        if (state.syncPush !== stream) return;
+        let message;
+        try {
+          message = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        if (message?.event === 'message') onSyncPing(String(message.message || '').trim());
+      };
+      stream.onerror = () => {
+        if (state.syncPush !== stream) return;
+        state.syncPushOpen = stream.readyState === EventSource.OPEN;
+        updateLocalQueueStatus();
+        if (stream.readyState !== EventSource.CLOSED) return;
+        state.syncPushRetryTimer = window.setTimeout(() => {
+          if (state.syncPush === stream) startSyncPush();
+        }, SYNC_PUSH_RETRY_MS);
+      };
+    }
+
+    // Another screen saved. Only a version stamp is accepted, and a version
+    // this screen already has costs nothing.
+    function onSyncPing(version) {
+      if (!/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(version) || !isNewerSyncVersion(version)) return;
+      state.syncPushLastAt = Date.now();
+      // A read is already on its way; look again once it is back.
+      if (state.eventFetchActive) {
+        state.syncPushPending = version;
+        return;
+      }
+      // Waiting out an older copy already; that retry picks this up.
+      if (state.staleRetryTimer) return;
+      fetchEvents({ force: true, reason: 'push', expectVersion: version }).catch(() => {});
+    }
+
+    // Tells the other screens that this one just saved. Sent from the device,
+    // not the server: the relay limits requests per address, and Vercel's
+    // shared addresses would be competing with everybody else's.
+    function publishSyncPing(version) {
+      const text = String(version || '').trim();
+      if (!state.syncTopic || !text) return;
+      fetchJsonWithTimeout(`${SYNC_PUSH_BASE}/${state.syncTopic}`, { method: 'POST', body: text }, SYNC_PUSH_TIMEOUT_MS)
+        .catch(error => console.warn('Could not send the sync ping:', error));
+    }
+
     function startSyncVersionPolling() {
       try { rememberSyncVersionUrl(localStorage.getItem(SYNC_VERSION_URL_KEY)); } catch {}
+      try { rememberSyncTopic(localStorage.getItem(SYNC_TOPIC_KEY)); } catch {}
       window.setInterval(() => {
         if (document.visibilityState !== 'hidden') pollSyncVersion('timer');
       }, SYNC_VERSION_POLL_MS);
       // A screen that wakes up, comes back online or is shown again looks at
       // once instead of waiting out the interval.
+      const resume = reason => {
+        if (state.syncTopic && (!state.syncPush || state.syncPush.readyState === EventSource.CLOSED)) startSyncPush();
+        pollSyncVersion(reason);
+      };
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') pollSyncVersion('visible');
+        if (document.visibilityState === 'visible') resume('visible');
       });
-      window.addEventListener('online', () => pollSyncVersion('online'));
+      window.addEventListener('online', () => resume('online'));
     }
 
     // Which deployment answered. The first one this page sees is the one it
@@ -8382,15 +8504,22 @@
       const lastRead = state.lastFreshEventLoadAt
         ? ` Last full read ${Math.max(0, Math.round((Date.now() - state.lastFreshEventLoadAt) / 60000))} min ago.`
         : '';
-      if (!state.syncVersionUrl) return `Live updates: waiting for the first answer from the server.${lastRead}`;
-      if (Date.now() < state.syncVersionBackoffUntil) {
-        return `Live updates: the server has no change marker yet; the next save creates it. Timed reads until then.${lastRead}`;
+      const instant = !state.syncTopic
+        ? 'Instant updates: off on this device (they need the admin PIN saved here).'
+        : syncPushHealthy()
+          ? 'Instant updates: connected.'
+          : 'Instant updates: reconnecting to the relay.';
+      let watch;
+      if (!state.syncVersionUrl) watch = 'Background check: waiting for the first answer from the server.';
+      else if (Date.now() < state.syncVersionBackoffUntil) watch = 'Background check: nothing has been saved yet.';
+      else if (!state.syncVersionLastOkAt) watch = 'Background check: starting.';
+      else {
+        const seconds = Math.max(0, Math.round((Date.now() - state.syncVersionLastOkAt) / 1000));
+        watch = syncVersionHealthy()
+          ? `Background check: on, last ${seconds}s ago.`
+          : `Background check: no answer for ${seconds}s, so this screen is on timed reads.`;
       }
-      if (!state.syncVersionLastOkAt) return `Live updates: starting.${lastRead}`;
-      const seconds = Math.max(0, Math.round((Date.now() - state.syncVersionLastOkAt) / 1000));
-      return syncVersionHealthy()
-        ? `Live updates: on, checked ${seconds}s ago.${lastRead}`
-        : `Live updates: the change marker has not answered for ${seconds}s, so this screen is on timed reads.${lastRead}`;
+      return `${instant} ${watch}${lastRead}`;
     }
 
     function fillConfigForm() {

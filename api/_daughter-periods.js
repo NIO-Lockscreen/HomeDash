@@ -56,11 +56,6 @@ export function normalizeDaughterPeriods(value) {
   return { overrides, extra };
 }
 
-function entryFor(periods, key) {
-  if (key.startsWith(EXTRA_PREFIX)) return periods.extra[key.slice(EXTRA_PREFIX.length)] ?? null;
-  return periods.overrides[key] ?? null;
-}
-
 // Applies one change to whatever the store holds right now, rather than
 // replacing the whole set, so two screens adjusting different periods at the
 // same time both keep their edit.
@@ -117,16 +112,4 @@ export function applyDaughterPeriodChange(current, change) {
     throw periodError('Unknown change to a daughter period.');
   }
   return next;
-}
-
-// Is this change present in what the store kept?
-export function daughterPeriodChangeSurvived(savedPeriods, change, expectedPeriods) {
-  const saved = normalizeDaughterPeriods(savedPeriods);
-  if (String(change?.action || '') === 'import') {
-    const incoming = normalizeDaughterPeriods(change);
-    return Object.keys(incoming.overrides).every(key => key in saved.overrides)
-      && Object.keys(incoming.extra).every(id => id in saved.extra);
-  }
-  const key = String(change?.key || '');
-  return JSON.stringify(entryFor(saved, key)) === JSON.stringify(entryFor(normalizeDaughterPeriods(expectedPeriods), key));
 }
