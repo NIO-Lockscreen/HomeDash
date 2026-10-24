@@ -428,26 +428,32 @@ phone upright or open it and the page underneath is back exactly as it was.
 - **How only the outer screen gets it.** Both Duo screens are the same shape,
   about 1:1.45. Opened, the inner screen is as tall as the outer one and twice
   as wide, so held normally it is landscape too, and it can be drawn at the
-  outer screen's size. "Small and landscape" was all the first version checked,
-  and the slideshow came up on the inner screen. Now it turns on only when all
-  of these hold, and each of the three middle ones rules the inner screen out
-  on its own:
-  - the **physical screen** (`screen.width`/`height`, not the window) is
-    360–520 px across and between 1:1.34 and 1:1.6. Dragging a PC window or
-    splitting an iPad to the same shape changes nothing; every iPad is at least
-    744 px across, and ordinary iPhones are about 1:2.17;
-  - it is at most about 1640 **real pixels** across (the outer screen has 1398,
-    the inner one 1878), however large those pixels are drawn;
-  - the **window fits on that screen**: a page on the inner screen that is still
-    told the outer screen's size is wider than it;
+  outer screen's size. It turns on only when all of these hold:
+  - **this is an iPhone Duo**: the browser says iPhone, and the physical screen
+    (`screen.width`/`height`) is phone-sized and between 1:1.34 and 1:1.6.
+    Either Duo screen passes; other iPhones are long and thin (about 1:2.17).
+    The reported screen is trusted only this far: after the phone is folded or
+    opened it can go on describing the screen that was left until a reload;
+  - the **window is at most 2350 real pixels wide**: the outer screen is 2034
+    across in landscape, the inner one 2670, however large those pixels are
+    drawn. The window and pixel ratio always describe the screen in use now;
+  - the **window fits on the reported screen**: a page on the inner screen that
+    is still told the outer screen's size is wider than it;
   - the **phone itself is turned on its side** (90° or 270°). A tent is the
     folded phone stood on its long edge; opened and held normally the phone is
     upright, even though its inner screen is wider than tall;
-  - the window is wider than tall, and the browser says iPhone.
-
-  Opening the phone does not always fire an event a page hears, so while the
-  slideshow is up it looks again every second, and it also listens for the
-  pixel density changing.
+  - the window is wider than tall.
+- **Rotation protection.** Turning, folding or opening the phone is a burst of
+  events, and for a moment the window, the pixel ratio and the turn angle can
+  disagree. Acting on such a moment could flash the slideshow onto the inner
+  screen during a turn, and a change that came without an event (or with its
+  event ahead of the new readings) was missed. Now:
+  - the slideshow only comes up once the same readings have held for 0.7 s, and
+    goes away on the first reading that says no;
+  - on a Duo the readings are also taken every second, not only on resize,
+    turn, pixel-ratio change and return to the page;
+  - the slides are placed in percentages of their own width and re-placed by a
+    `ResizeObserver`, so a size change cannot leave the next photo peeking in.
 - **Rotation lock** has to be off on the phone, or the page never turns to
   landscape. Added to the home screen, HomeDash runs without Safari's bars and
   the slideshow fills the whole screen.
@@ -460,10 +466,12 @@ phone upright or open it and the page underneath is back exactly as it was.
   quick second swipe seemed to get stuck. The car lockscreen had the same fault
   and has the same fix.
 - **Checking a phone.** The config menu (hold anywhere) has a *Tent view* line
-  with what the phone reports: screen size and shape, real pixels across and
-  the pixel ratio, window size, and how far the phone is turned. If a screen is
-  ever recognised wrongly, those numbers, read on both screens, are what the
-  check needs to be adjusted to.
+  with what the phone reports now (screen size and shape, pixel ratio, window
+  size and its width in real pixels, how far the phone is turned), followed by
+  the last six times the slideshow came up or went away, each with what was
+  read at that moment. The list is kept per tab, so it survives a reload. If a
+  screen is ever recognised wrongly, that line is what the check needs to be
+  adjusted to.
 - **Preview or switch off.** `?tent=1` shows it on any screen held in landscape,
   so it can be looked at on a PC; `?tent=0` keeps it off. Neither is remembered.
 
