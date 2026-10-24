@@ -3855,6 +3855,181 @@
     .edge-app-icon svg { width: 46px; height: 46px; display: block; }
     .edge-app:active .edge-app-icon { transform: scale(.93); }
 
+    /* A panel left open, or pulled off to the right, hops off its dock and
+       falls off the bottom of the screen, where it goes up in a tiny
+       mushroom cloud. JS moves the tray frame by frame and builds the cloud
+       where it landed. The handle stays away until the smoke clears. */
+    .edge-panel.is-falling .edge-panel-tray {
+      transition: none;
+      pointer-events: none;
+      will-change: transform;
+    }
+
+    .edge-panel.is-falling .edge-panel-handle {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .edge-nuke {
+      position: absolute;
+      left: var(--nuke-x, 50%);
+      bottom: 0;
+      width: 0;
+      height: 0;
+      pointer-events: none;
+    }
+
+    .edge-nuke > * {
+      position: absolute;
+      left: 0;
+      bottom: 0;
+    }
+
+    .edge-nuke-glare {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at var(--nuke-x, 50%) 100%, rgba(255, 246, 210, 0.7), rgba(255, 214, 150, 0.22) 45%, rgba(255, 214, 150, 0) 75%);
+      animation: edge-nuke-glare .5s ease-out forwards;
+    }
+
+    .edge-nuke-flash {
+      width: 240px;
+      height: 240px;
+      margin: 0 0 -120px -120px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #fff 0%, #fff6c4 16%, rgba(255, 196, 84, 0.8) 36%, rgba(255, 120, 40, 0) 70%);
+      animation: edge-nuke-flash .7s ease-out forwards;
+    }
+
+    .edge-nuke-ring {
+      width: 70px;
+      height: 20px;
+      margin: 0 0 -10px -35px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 224, 170, 0.95);
+      box-shadow: 0 0 12px rgba(255, 170, 80, 0.7);
+      animation: edge-nuke-ring .9s cubic-bezier(.2, .7, .3, 1) forwards;
+    }
+
+    .edge-nuke-dust {
+      width: 120px;
+      height: 34px;
+      margin: 0 0 -14px -60px;
+      border-radius: 50%;
+      background: radial-gradient(ellipse at 50% 60%, rgba(214, 160, 120, 0.85), rgba(150, 128, 116, 0.55) 55%, rgba(150, 128, 116, 0) 75%);
+      animation: edge-nuke-dust 1.6s ease-out forwards;
+    }
+
+    .edge-nuke-stem {
+      width: 22px;
+      height: 104px;
+      margin-left: -11px;
+      border-radius: 11px 11px 6px 6px;
+      background: linear-gradient(to top, rgba(255, 150, 60, 0.95), rgba(214, 124, 84, 0.9) 45%, rgba(150, 124, 112, 0.8));
+      transform-origin: 50% 100%;
+      animation: edge-nuke-stem 1.6s cubic-bezier(.2, .8, .3, 1) forwards;
+    }
+
+    .edge-nuke-collar {
+      width: 64px;
+      height: 16px;
+      margin: 0 0 54px -32px;
+      border-radius: 50%;
+      border: 3px solid rgba(214, 140, 96, 0.8);
+      background: rgba(255, 214, 170, 0.35);
+      animation: edge-nuke-collar 1.6s ease-out forwards;
+    }
+
+    .edge-nuke-cap {
+      width: 112px;
+      height: 62px;
+      margin: 0 0 -20px -56px;
+      border-radius: 50% 50% 42% 42% / 64% 64% 36% 36%;
+      background: radial-gradient(ellipse at 50% 64%, #fff3b0 0%, #ffc04a 20%, #ff7a2a 44%, #a4523a 70%, #7e6a62 100%);
+      box-shadow: 0 0 28px rgba(255, 140, 50, 0.55);
+      animation: edge-nuke-cap 1.6s cubic-bezier(.2, .8, .3, 1) forwards;
+    }
+
+    .edge-nuke-cap::before,
+    .edge-nuke-cap::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+      background: radial-gradient(circle at 50% 70%, #ffb347, #d0643a 55%, #8a6c62);
+    }
+
+    .edge-nuke-cap::before { width: 50px; height: 46px; left: 10px; top: -16px; }
+    .edge-nuke-cap::after { width: 56px; height: 50px; right: 8px; top: -20px; }
+
+    .edge-nuke-spark {
+      width: 7px;
+      height: 7px;
+      margin: 0 0 -3px -3px;
+      border-radius: 50%;
+      background: #ffd27a;
+      box-shadow: 0 0 8px rgba(255, 170, 60, 0.9);
+      animation: edge-nuke-spark .8s cubic-bezier(.15, .6, .4, 1) forwards;
+    }
+
+    .kiosk-shell.is-nuke-shaking { animation: edge-nuke-shake .45s linear; }
+
+    @keyframes edge-nuke-glare {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+
+    @keyframes edge-nuke-flash {
+      0% { transform: scale(.1); opacity: 1; }
+      25% { transform: scale(1); opacity: 1; }
+      100% { transform: scale(1.25); opacity: 0; }
+    }
+
+    @keyframes edge-nuke-ring {
+      0% { transform: scale(.2); opacity: 1; }
+      100% { transform: scale(6); opacity: 0; }
+    }
+
+    @keyframes edge-nuke-dust {
+      0% { transform: scale(.2, .4); opacity: 0; }
+      15% { opacity: 1; }
+      60% { transform: scale(1.5, 1); opacity: .85; }
+      100% { transform: scale(1.9, 1.1); opacity: 0; }
+    }
+
+    @keyframes edge-nuke-stem {
+      0% { transform: scaleY(0) scaleX(.6); opacity: 1; }
+      30% { transform: scaleY(1) scaleX(1); opacity: 1; }
+      65% { transform: scaleY(1.08) scaleX(1.1); opacity: .9; filter: none; }
+      100% { transform: scaleY(1.12) scaleX(1.35); opacity: 0; filter: grayscale(.8); }
+    }
+
+    @keyframes edge-nuke-collar {
+      0%, 18% { transform: scale(.3); opacity: 0; }
+      34% { transform: scale(1); opacity: 1; }
+      100% { transform: scale(1.9); opacity: 0; }
+    }
+
+    @keyframes edge-nuke-cap {
+      0% { transform: translateY(0) scale(.15); opacity: 1; filter: brightness(1.5); }
+      32% { transform: translateY(-96px) scale(1); opacity: 1; filter: brightness(1.15); }
+      65% { transform: translateY(-110px) scale(1.12); opacity: .95; filter: grayscale(.35); }
+      100% { transform: translateY(-124px) scale(1.3); opacity: 0; filter: grayscale(.85) brightness(.9); }
+    }
+
+    @keyframes edge-nuke-spark {
+      0% { transform: translate(0, 0) scale(1); opacity: 1; }
+      100% { transform: translate(var(--spark-x), var(--spark-y)) scale(.3); opacity: 0; }
+    }
+
+    @keyframes edge-nuke-shake {
+      0%, 100% { translate: 0 0; }
+      15% { translate: -5px 3px; }
+      30% { translate: 4px -3px; }
+      45% { translate: -3px 2px; }
+      60% { translate: 3px -1px; }
+      80% { translate: -1px 1px; }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       .edge-panel-tray,
       .edge-panel-scrim { transition: none; }
@@ -10351,8 +10526,18 @@ Cancel = choose whether to delete the whole series.`);
     const EDGE_PANEL_PEEK_MS = 650;
     const EDGE_PANEL_OPEN_X = 14;
     const EDGE_PANEL_DRAG_SLOP_PX = 6;
+    // Pulled on past open, the panel follows the finger stiffly and tilts as
+    // if coming loose; a finger this far past open pulls it off.
+    const EDGE_PANEL_STRETCH = 0.45;
+    const EDGE_PANEL_TEAR_PX = 150;
+    const EDGE_PANEL_TEAR_TILT_DEG = 8;
+    const EDGE_PANEL_WIGGLE_MS = 420;
+    const EDGE_PANEL_GRAVITY = 2600;
+    const EDGE_PANEL_FALL_MAX_MS = 4000;
+    const EDGE_PANEL_NUKE_MS = 1700;
+    const EDGE_PANEL_NUKE_SPARKS = 8;
 
-    const edgePanel = { autoCloseTimer: null, peekTimer: null, drag: null };
+    const edgePanel = { autoCloseTimer: null, peekTimer: null, drag: null, falling: false };
     const videoShare = { session: null, stream: null, retryTimer: null, qrLibrary: null };
     const videoPlayer = { player: null, token: 0, playing: false, heartbeat: null, api: null };
 
@@ -10408,7 +10593,96 @@ Cancel = choose whether to delete the whole series.`);
       els.edgePanelHandle?.setAttribute('aria-expanded', String(open));
       els.edgeYoutubeBtn?.setAttribute('tabindex', open ? '0' : '-1');
       clearTimeout(edgePanel.autoCloseTimer);
-      edgePanel.autoCloseTimer = open ? setTimeout(() => setEdgePanelOpen(false), EDGE_PANEL_AUTO_CLOSE_MS) : null;
+      edgePanel.autoCloseTimer = open ? setTimeout(() => dropEdgePanel(), EDGE_PANEL_AUTO_CLOSE_MS) : null;
+    }
+
+    // The panel comes off its dock, hops and tumbles off the bottom of the
+    // screen, and goes up in a mini nuke there. Without a launch it was left
+    // open, so it wiggles loose and jumps on its own; pulled off, it leaves
+    // where the finger let go of it, at the finger's speed.
+    function dropEdgePanel(launch = null) {
+      if (!els.edgePanel || edgePanel.falling) return;
+      edgePanel.drag = null;
+      els.edgePanel.classList.remove('is-dragging');
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        els.edgePanelTray.style.transform = '';
+        setEdgePanelOpen(false);
+        return;
+      }
+      const tray = els.edgePanelTray;
+      if (tray.contains(document.activeElement)) document.activeElement.blur();
+      const height = tray.offsetHeight;
+      const wiggleMs = launch ? 0 : EDGE_PANEL_WIGGLE_MS;
+      let x = launch ? launch.x : EDGE_PANEL_OPEN_X;
+      let y = 0;
+      let angle = launch ? launch.angle : 0;
+      const vx = launch ? Math.max(250, Math.min(window.innerWidth * 0.8, launch.vx)) : 260;
+      let vy = launch ? -650 : -950;
+      const spin = 120 + vx * 0.3;
+      edgePanel.falling = true;
+      els.edgePanel.classList.add('is-falling');
+      setEdgePanelOpen(false);
+
+      let last = null;
+      let elapsed = 0;
+      const frame = now => {
+        // Capped, so a frame held back by a hidden tab does not teleport it.
+        const dt = last === null ? 0 : Math.min(now - last, 40);
+        last = now;
+        elapsed += dt;
+        let squash = 0;
+        if (elapsed < wiggleMs) {
+          const progress = elapsed / wiggleMs;
+          angle = Math.sin(progress * Math.PI * 4) * 6 * (1 - progress);
+          if (progress > 0.6) squash = Math.sin(((progress - 0.6) / 0.4) * Math.PI) * 0.14;
+        } else {
+          const seconds = dt / 1000;
+          vy += EDGE_PANEL_GRAVITY * seconds;
+          x += vx * seconds;
+          y += vy * seconds;
+          angle += spin * seconds;
+        }
+        // The crouch before the jump keeps its feet where they were.
+        tray.style.transform = `translate(${x}px, ${y + (height * squash) / 2}px) rotate(${angle}deg) scale(${1 + squash}, ${1 - squash})`;
+        const rect = tray.getBoundingClientRect();
+        if (rect.top < window.innerHeight && elapsed < EDGE_PANEL_FALL_MAX_MS) {
+          requestAnimationFrame(frame);
+          return;
+        }
+        nukeEdgePanel(rect.left + rect.width / 2);
+      };
+      requestAnimationFrame(frame);
+    }
+
+    function nukeEdgePanel(landingX) {
+      // Back on its dock, out of sight; the handle returns once the smoke
+      // clears.
+      els.edgePanelTray.style.transform = '';
+      const nuke = document.createElement('div');
+      nuke.className = 'edge-nuke';
+      nuke.style.setProperty('--nuke-x', `${Math.round(Math.max(40, Math.min(window.innerWidth - 40, landingX)))}px`);
+      ['glare', 'dust', 'stem', 'collar', 'cap', 'flash', 'ring'].forEach(part => {
+        const piece = document.createElement('div');
+        piece.className = `edge-nuke-${part}`;
+        nuke.appendChild(piece);
+      });
+      for (let i = 0; i < EDGE_PANEL_NUKE_SPARKS; i++) {
+        const spark = document.createElement('div');
+        spark.className = 'edge-nuke-spark';
+        const direction = Math.PI * (0.1 + 0.8 * Math.random());
+        const distance = 50 + Math.random() * 90;
+        spark.style.setProperty('--spark-x', `${Math.round(Math.cos(direction) * distance)}px`);
+        spark.style.setProperty('--spark-y', `${Math.round(-Math.sin(direction) * distance)}px`);
+        nuke.appendChild(spark);
+      }
+      els.edgePanel.appendChild(nuke);
+      els.displayView?.classList.add('is-nuke-shaking');
+      setTimeout(() => {
+        nuke.remove();
+        els.displayView?.classList.remove('is-nuke-shaking');
+        els.edgePanel.classList.remove('is-falling');
+        edgePanel.falling = false;
+      }, EDGE_PANEL_NUKE_MS);
     }
 
     function peekEdgePanel() {
@@ -10428,7 +10702,7 @@ Cancel = choose whether to delete the whole series.`);
     }
 
     function startEdgePanelDrag(event, fromOpen) {
-      if (event.button > 0) return;
+      if (event.button > 0 || edgePanel.falling) return;
       // A second finger while one is already pulling. A press that never
       // moved holds no capture and may never see its pointerup (a mouse let
       // go outside the window), so that one is simply replaced.
@@ -10439,6 +10713,7 @@ Cancel = choose whether to delete the whole series.`);
         fromOpen,
         startX: event.clientX,
         x: fromOpen ? EDGE_PANEL_OPEN_X : edgePanelClosedX(),
+        tilt: 0,
         lastX: event.clientX,
         lastT: event.timeStamp,
         velocity: 0,
@@ -10465,12 +10740,21 @@ Cancel = choose whether to delete the whole series.`);
         clearTimeout(edgePanel.autoCloseTimer);
       }
       const closedX = edgePanelClosedX();
-      drag.x = Math.max(closedX, Math.min(EDGE_PANEL_OPEN_X, (drag.fromOpen ? EDGE_PANEL_OPEN_X : closedX) + dx));
+      const x = (drag.fromOpen ? EDGE_PANEL_OPEN_X : closedX) + dx;
       const dt = event.timeStamp - drag.lastT;
       if (dt > 0) drag.velocity = 0.6 * ((event.clientX - drag.lastX) / dt) + 0.4 * drag.velocity;
       drag.lastX = event.clientX;
       drag.lastT = event.timeStamp;
-      els.edgePanelTray.style.transform = `translateX(${drag.x}px)`;
+      // Only an open panel comes off, so a long swipe that opens it does not
+      // throw it away too.
+      const overshoot = drag.fromOpen ? Math.max(0, x - EDGE_PANEL_OPEN_X) : 0;
+      if (overshoot > EDGE_PANEL_TEAR_PX) {
+        dropEdgePanel({ x: drag.x, angle: drag.tilt, vx: drag.velocity * 1000 });
+        return;
+      }
+      drag.x = Math.max(closedX, Math.min(EDGE_PANEL_OPEN_X, x)) + overshoot * EDGE_PANEL_STRETCH;
+      drag.tilt = (overshoot / EDGE_PANEL_TEAR_PX) * EDGE_PANEL_TEAR_TILT_DEG;
+      els.edgePanelTray.style.transform = `translateX(${drag.x}px) rotate(${drag.tilt}deg)`;
     }
 
     function endEdgePanelDrag(event) {
@@ -10488,6 +10772,11 @@ Cancel = choose whether to delete the whole series.`);
         // A flick decides on its own; a finger that stopped before letting go
         // leaves it to how far the panel came out.
         const velocity = event.timeStamp - drag.lastT > 100 ? 0 : drag.velocity;
+        // Flung on to the right while pulled past open, it comes off too.
+        if (drag.x > EDGE_PANEL_OPEN_X + 8 && velocity > 0.5) {
+          dropEdgePanel({ x: drag.x, angle: drag.tilt, vx: velocity * 1000 });
+          return;
+        }
         const closedX = edgePanelClosedX();
         const progress = (drag.x - closedX) / (EDGE_PANEL_OPEN_X - closedX);
         if (velocity > 0.3) open = true;
@@ -10516,6 +10805,7 @@ Cancel = choose whether to delete the whole series.`);
       els.edgePanelHandle.addEventListener('keydown', event => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
+        if (edgePanel.falling) return;
         setEdgePanelOpen(true);
         els.edgeYoutubeBtn.focus({ preventScroll: true });
       });
