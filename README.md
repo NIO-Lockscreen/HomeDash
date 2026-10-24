@@ -410,6 +410,46 @@ the × closes the player.
   owners forbid playing their videos outside YouTube; the player says so instead
   of showing a black box.
 
+## Tent view on the iPhone Duo
+
+Fold the iPhone Duo shut and stand it up like a tent, so its outer screen is
+landscape, and HomeDash turns into a full-screen slideshow of the **next 7
+tasks** with their photos — the same one the car lockscreen opens. Swipe left
+and right between them, or leave it and it moves on every 30 seconds. Turn the
+phone upright or open it and the page underneath is back exactly as it was.
+
+- **Which tasks.** The next seven in start order: what is on now, then what is
+  coming. Finished ones drop off (a task without an end counts as one hour long),
+  so do completed ones, and frequent repeats appear no further ahead than the
+  wall display shows them. Each occurrence of a repeat is its own slide.
+- **Photos.** Framed exactly like everywhere else in HomeDash (focus point and
+  zoom from the editor). A task without a photo, or with one that is gone from
+  Blob storage, gets the calm placeholder.
+- **How only the Duo gets it.** Both Duo screens are the same shape, about
+  1:1.45, so the shape alone cannot say which one is in use; only the outer one
+  is phone-sized (about 466 px across against about 626 inside). The check reads
+  the **physical screen** (`screen.width`/`height`), not the window, so dragging
+  a PC window or splitting an iPad to the same shape changes nothing. It turns
+  on only when all of these hold:
+  - the browser says iPhone (an iPad says iPad or Mac, a PC says Windows or Mac);
+  - the screen is 360–520 px across (every iPad is at least 744, the Duo's inner
+    screen about 626);
+  - the screen's shape is between 1:1.34 and 1:1.6 (ordinary iPhones are about
+    1:2.17, an iPhone SE 1:1.78);
+  - the window is wider than it is tall, i.e. the phone is on its side.
+- **Rotation lock** has to be off on the phone, or the page never turns to
+  landscape. Added to the home screen, HomeDash runs without Safari's bars and
+  the slideshow fills the whole screen.
+- **The screen stays on** while the slideshow is up (Screen Wake Lock), since the
+  phone stands on the table untouched. It is let go as soon as the phone is
+  turned upright.
+- **Checking a phone.** The config menu (hold anywhere) has a *Tent view* line
+  with the screen size and shape the phone reports, and whether that counts as
+  the Duo's outer screen. If the Duo is ever not recognised, those numbers are
+  what the check needs to be adjusted to.
+- **Preview or switch off.** `?tent=1` shows it on any screen held in landscape,
+  so it can be looked at on a PC; `?tent=0` keeps it off. Neither is remembered.
+
 ## Weather effects
 
 The whole dashboard lives in `index.html` — the `<style>` and `<script>` blocks inside it are what the browser runs. There is no separate bundle to edit. (Two exported copies, `script.js` and `inline.js`, used to sit next to it; nothing loaded them, and two bug fixes were accidentally applied only to those copies and never reached the app. They have been deleted — put dashboard changes in `index.html`.)
