@@ -410,6 +410,71 @@ the × closes the player.
   owners forbid playing their videos outside YouTube; the player says so instead
   of showing a black box.
 
+## Tent view on the iPhone Duo
+
+Fold the iPhone Duo shut and stand it up like a tent, so its outer screen is
+landscape, and HomeDash turns into a full-screen slideshow of the **next 7
+tasks** with their photos — the same one the car lockscreen opens. Swipe left
+and right between them, or leave it and it moves on every 30 seconds. Turn the
+phone upright or open it and the page underneath is back exactly as it was.
+
+- **Which tasks.** The next seven in start order: what is on now, then what is
+  coming. Finished ones drop off (a task without an end counts as one hour long),
+  so do completed ones, and frequent repeats appear no further ahead than the
+  wall display shows them. Each occurrence of a repeat is its own slide.
+- **Photos.** Framed exactly like everywhere else in HomeDash (focus point and
+  zoom from the editor). A task without a photo, or with one that is gone from
+  Blob storage, gets the calm placeholder.
+- **How only the outer screen gets it.** Both Duo screens are the same shape,
+  about 1:1.45. Opened, the inner screen is as tall as the outer one and twice
+  as wide, so held normally it is landscape too, and it can be drawn at the
+  outer screen's size. It turns on only when all of these hold:
+  - **this is an iPhone Duo**: the browser says iPhone, and the physical screen
+    (`screen.width`/`height`) is phone-sized and between 1:1.34 and 1:1.6.
+    Either Duo screen passes; other iPhones are long and thin (about 1:2.17).
+    The reported screen is trusted only this far: after the phone is folded or
+    opened it can go on describing the screen that was left until a reload;
+  - the **window is at most 2350 real pixels wide**: the outer screen is 2034
+    across in landscape, the inner one 2670, however large those pixels are
+    drawn. The window and pixel ratio always describe the screen in use now;
+  - the **window fits on the reported screen**: a page on the inner screen that
+    is still told the outer screen's size is wider than it;
+  - the **phone itself is turned on its side** (90° or 270°). A tent is the
+    folded phone stood on its long edge; opened and held normally the phone is
+    upright, even though its inner screen is wider than tall;
+  - the window is wider than tall.
+- **Rotation protection.** Turning, folding or opening the phone is a burst of
+  events, and for a moment the window, the pixel ratio and the turn angle can
+  disagree. Acting on such a moment could flash the slideshow onto the inner
+  screen during a turn, and a change that came without an event (or with its
+  event ahead of the new readings) was missed. Now:
+  - the slideshow only comes up once the same readings have held for 0.7 s, and
+    goes away on the first reading that says no;
+  - on a Duo the readings are also taken every second, not only on resize,
+    turn, pixel-ratio change and return to the page;
+  - the slides are placed in percentages of their own width and re-placed by a
+    `ResizeObserver`, so a size change cannot leave the next photo peeking in.
+- **Rotation lock** has to be off on the phone, or the page never turns to
+  landscape. Added to the home screen, HomeDash runs without Safari's bars and
+  the slideshow fills the whole screen.
+- **The screen stays on** while the slideshow is up (Screen Wake Lock), since the
+  phone stands on the table untouched. It is let go as soon as the phone is
+  turned upright.
+- **Swiping.** A swipe that starts while the previous slide is still settling
+  (or while the slideshow is moving on by itself) carries on from the slide that
+  was arriving. It used to be able to reach only the slide already in view, so a
+  quick second swipe seemed to get stuck. The car lockscreen had the same fault
+  and has the same fix.
+- **Checking a phone.** The config menu (hold anywhere) has a *Tent view* line
+  with what the phone reports now (screen size and shape, pixel ratio, window
+  size and its width in real pixels, how far the phone is turned), followed by
+  the last six times the slideshow came up or went away, each with what was
+  read at that moment. The list is kept per tab, so it survives a reload. If a
+  screen is ever recognised wrongly, that line is what the check needs to be
+  adjusted to.
+- **Preview or switch off.** `?tent=1` shows it on any screen held in landscape,
+  so it can be looked at on a PC; `?tent=0` keeps it off. Neither is remembered.
+
 ## Weather effects
 
 The whole dashboard lives in `index.html` — the `<style>` and `<script>` blocks inside it are what the browser runs. There is no separate bundle to edit. (Two exported copies, `script.js` and `inline.js`, used to sit next to it; nothing loaded them, and two bug fixes were accidentally applied only to those copies and never reached the app. They have been deleted — put dashboard changes in `index.html`.)

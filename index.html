@@ -3981,6 +3981,220 @@
     .video-send-form { display: grid; gap: 10px; }
     .video-send-form input { font-size: 16px; }
 
+    /* Tent view: the iPhone Duo folded and stood up shows the next tasks full
+       screen, one photo at a time (see "Tent view on the iPhone Duo" in the
+       script). It sits under the camera dimmer, so a dimmed screen stays dim. */
+    .tent-view {
+      position: fixed;
+      inset: 0;
+      z-index: 9997;
+      overflow: hidden;
+      background: #0d0c0b;
+      color: #fff;
+      font-family: var(--sans);
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body.tent-active { overflow: hidden; }
+    body.tent-active .screen-controls { display: none; }
+
+    .tent-slides {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      /* Horizontal swipes are ours; there is nothing to scroll or zoom. */
+      touch-action: none;
+      cursor: grab;
+    }
+
+    .tent-slides.is-dragging { cursor: grabbing; }
+
+    .tent-slide {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      will-change: transform, opacity;
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
+    }
+
+    .tent-slide-photo,
+    .tent-slide-drift,
+    .tent-slide-scrim {
+      position: absolute;
+      inset: 0;
+    }
+
+    .tent-slide-photo { will-change: transform; }
+
+    .tent-slide-drift {
+      transform-origin: 50% 45%;
+      background: linear-gradient(160deg, #3a342e 0%, #1a1714 100%);
+    }
+
+    /* Framed like every other task photo: cover, focus point and zoom. The
+       slow drift lives on the parent so it never fights the zoom. */
+    .tent-slide-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: var(--image-focus-x, 50%) var(--image-focus-y, 38%);
+      transform-origin: var(--image-focus-x, 50%) var(--image-focus-y, 38%);
+      transform: scale(var(--image-scale, 1.01));
+      opacity: 0;
+      transition: opacity .55s ease;
+      pointer-events: none;
+      -webkit-user-drag: none;
+    }
+
+    .tent-slide-img.is-in { opacity: 1; }
+    .tent-slide.is-current .tent-slide-drift { animation: tent-drift-a 26s ease-in-out infinite alternate; }
+    .tent-slide.is-current.drift-b .tent-slide-drift { animation-name: tent-drift-b; }
+
+    .tent-slide-scrim {
+      background: linear-gradient(180deg, rgba(0,0,0,.42) 0%, rgba(0,0,0,0) 24%, rgba(0,0,0,0) 40%, rgba(0,0,0,.5) 66%, rgba(0,0,0,.84) 100%);
+      pointer-events: none;
+    }
+
+    .tent-slide-caption {
+      position: absolute;
+      left: calc(env(safe-area-inset-left, 0px) + clamp(18px, 4vw, 34px));
+      right: calc(env(safe-area-inset-right, 0px) + clamp(18px, 4vw, 34px));
+      bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(16px, 5vh, 30px));
+      pointer-events: none;
+    }
+
+    .tent-slide-title {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      overflow-wrap: anywhere;
+      font-size: clamp(24px, 7.5vh, 46px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+      text-shadow: 0 2px 14px rgba(0,0,0,.35);
+    }
+
+    .tent-slide-when {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      overflow: hidden;
+      white-space: nowrap;
+      color: rgba(255,255,255,.9);
+      font-size: clamp(15px, 4.4vh, 24px);
+      font-weight: 600;
+      text-shadow: 0 1px 8px rgba(0,0,0,.35);
+    }
+
+    .tent-slide-when b { color: #fff; font-weight: 800; }
+    .tent-slide-sep { opacity: .7; }
+
+    .tent-slide-live {
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: #e5564c;
+      color: #fff;
+      font-size: .7em;
+      font-weight: 900;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      text-shadow: none;
+    }
+
+    .tent-slide-location {
+      margin-top: 4px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      color: rgba(255,255,255,.74);
+      font-size: clamp(13px, 3.4vh, 18px);
+      font-weight: 600;
+    }
+
+    .tent-top {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(env(safe-area-inset-top, 0px) + 14px);
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .tent-dots {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(0,0,0,.34);
+    }
+
+    .tent-dots i {
+      width: 6px;
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(255,255,255,.5);
+      transition: width .3s ease, background-color .3s ease;
+    }
+
+    .tent-dots i.on { width: 16px; background: #fff; }
+
+    .tent-count {
+      margin-left: 4px;
+      color: rgba(255,255,255,.85);
+      font-size: 11.5px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tent-empty {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-content: center;
+      gap: 8px;
+      padding: 24px;
+      text-align: center;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 20% 0%, rgba(255,255,255,0.92), transparent 42%),
+        linear-gradient(135deg, #f7f1e9 0%, #ede4d8 100%);
+    }
+
+    .tent-empty-title {
+      font-family: var(--serif);
+      font-size: clamp(26px, 8vh, 40px);
+    }
+
+    .tent-empty-sub { color: var(--muted); font-weight: 600; }
+
+    .tent-view.is-entering .tent-slides { animation: tent-enter 480ms cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+    .tent-slide.tent-fade-in { animation: tent-fade-in 380ms ease-out both; }
+
+    @keyframes tent-drift-a { from { transform: scale(1) translate3d(0,0,0); } to { transform: scale(1.08) translate3d(-1.6%,-1.1%,0); } }
+    @keyframes tent-drift-b { from { transform: scale(1) translate3d(0,0,0); } to { transform: scale(1.08) translate3d(1.6%,-0.8%,0); } }
+    @keyframes tent-enter { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: scale(1); } }
+    @keyframes tent-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .tent-slide.is-current .tent-slide-drift { animation: none; }
+      .tent-view.is-entering .tent-slides { animation: tent-fade-in 200ms ease-out both; }
+    }
+
   </style>
 </head>
 <body>
@@ -4466,6 +4680,21 @@
     </section>
   </main>
 
+  <!-- The next tasks full screen, one photo at a time, while the iPhone Duo
+       stands folded like a tent (see "Tent view on the iPhone Duo"). -->
+  <div id="tentView" class="tent-view hidden" role="region" aria-roledescription="carousel" aria-label="Upcoming tasks">
+    <div id="tentSlides" class="tent-slides">
+      <div class="tent-slide"></div>
+      <div class="tent-slide"></div>
+      <div class="tent-slide"></div>
+    </div>
+    <div class="tent-top"><div id="tentDots" class="tent-dots hidden" aria-hidden="true"></div></div>
+    <div id="tentEmpty" class="tent-empty hidden">
+      <div id="tentEmptyTitle" class="tent-empty-title">Nothing coming up</div>
+      <div id="tentEmptySub" class="tent-empty-sub">The next tasks show up here with their photos.</div>
+    </div>
+  </div>
+
   <script>
     const WEATHER_CONFIG = { name: 'Trondheim', lat: 63.4305, lon: 10.3951, timezone: 'Europe/Oslo' };
     // Shown in the hidden config menu. /api/events reports the server's own
@@ -4754,7 +4983,13 @@
       videoSendForm: document.getElementById('videoSendForm'),
       videoSendInput: document.getElementById('videoSendInput'),
       videoSendBtn: document.getElementById('videoSendBtn'),
-      videoSendStatus: document.getElementById('videoSendStatus')
+      videoSendStatus: document.getElementById('videoSendStatus'),
+      tentView: document.getElementById('tentView'),
+      tentSlides: document.getElementById('tentSlides'),
+      tentDots: document.getElementById('tentDots'),
+      tentEmpty: document.getElementById('tentEmpty'),
+      tentEmptyTitle: document.getElementById('tentEmptyTitle'),
+      tentEmptySub: document.getElementById('tentEmptySub')
     };
 
     const params = new URLSearchParams(location.search);
@@ -7850,6 +8085,7 @@
     }
 
     function renderDisplay() {
+      renderTentView();
       if (adminMode) return;
       const { daily, main, upcoming, allUpcomingCount, upcomingPage, maxUpcomingPage, upcomingLimit, hiddenRepeatsCount, hiddenRepeatsVisible } = getDisplayEvents();
       const hasMainEvent = Boolean(main);
@@ -8372,6 +8608,7 @@
       const refusal = describeImageRefusal();
       if (refusal) parts.push(refusal);
       parts.push(describeLiveSync());
+      parts.push(describeTentView());
       if (state.newDeploymentSeen) parts.push('A newer version of the app has been deployed since this page loaded — reload it.');
       parts.push(state.serverBuild && state.serverBuild !== APP_BUILD
         ? `App version ${APP_BUILD}, server ${state.serverBuild} — this page is out of date, reload it.`
@@ -8557,7 +8794,7 @@
       });
 
       const startHold = event => {
-        if (event.target.closest?.('.month-modal, .config-modal, .weather-modal, .danger-modal, .task-action-sheet, .edge-panel, .video-overlay, input, textarea, button, select, a')) return;
+        if (event.target.closest?.('.month-modal, .config-modal, .weather-modal, .danger-modal, .task-action-sheet, .edge-panel, .video-overlay, .tent-view, input, textarea, button, select, a')) return;
         if (els.monthOverlay && !els.monthOverlay.classList.contains('hidden')) return;
         state.longPressOpened = false;
         clearTimeout(state.longPressTimer);
@@ -9176,6 +9413,7 @@ Cancel = choose whether to delete the whole series.`);
     }
 
     function renderAdminEvents() {
+      renderTentView();
       if (!adminMode) return;
       renderAdminShell();
       if (!hasSavedAdminPin()) {
@@ -10563,6 +10801,697 @@ Cancel = choose whether to delete the whole series.`);
       });
     }
 
+    // ---------------------------------------------------------------------
+    // Tent view on the iPhone Duo
+    //
+    // Folded shut and stood up like a tent, the iPhone Duo shows its outer
+    // screen in landscape. HomeDash then turns into a full-screen slideshow of
+    // the next 7 tasks with their photos, the one the car lockscreen opens:
+    // swipe between them, or leave it and it moves on every 30 seconds.
+    // Turning the phone back upright, or opening it, gives the page back
+    // exactly as it was; nothing underneath is touched.
+    //
+    // Telling the outer screen apart. Both Duo screens have the same shape,
+    // about 1:1.45. Opened, the inner screen is as tall as the outer one and
+    // twice as wide, so held normally it is landscape too, and it can be drawn
+    // at the outer screen's size in CSS pixels. All of these have to hold:
+    //   - this is an iPhone Duo: the browser says iPhone (an iPad says iPad or
+    //     Mac, a PC says Windows or Mac) and `screen` is phone-sized and 1:1.34
+    //     to 1:1.6. Either Duo screen passes; other iPhones are long and thin
+    //     (about 1:2.17, an SE 1:1.78). `screen` is trusted this far and no
+    //     further: once the phone is folded or opened it can go on describing
+    //     the screen that was left until the page is reloaded;
+    //   - the window is at most 2350 real pixels wide. The outer screen is
+    //     2034 across in landscape and the inner one 2670, however large those
+    //     pixels are drawn, and the window and pixel ratio always describe the
+    //     screen the page is on now;
+    //   - the window fits on the reported screen. A page on the inner screen
+    //     still told the outer screen's size is wider than it;
+    //   - the phone itself is turned on its side (90 or 270 degrees). The tent
+    //     is the folded phone stood on its long edge. Opened and held normally
+    //     the phone is upright, although its inner screen is wider than tall;
+    //   - the window is wider than tall.
+    //
+    // Rotation protection. Turning, folding or opening the phone is not one
+    // event but a burst of them, and for a moment the window, the pixel ratio
+    // and the angle can disagree, some still describing the screen being left.
+    // Deciding on such a moment can flash the slideshow onto the inner screen
+    // during a turn, and a change that came with no event, or with its event
+    // ahead of the new readings, used to be missed until the next one. So:
+    //   - it only comes up once the same readings have held for 700 ms, and it
+    //     goes away on the first reading that says no;
+    //   - on a Duo the readings are taken every second as well as on every
+    //     resize, turn, pixel-ratio change and return to the page;
+    //   - the slides are placed in percentages of their own width, and a
+    //     ResizeObserver re-places them, so a size change cannot leave the next
+    //     photo peeking in.
+    // The config menu lists the last few times it came up or went away, with
+    // what was read then, so a wrong turn on the phone can be traced.
+    //
+    // ?tent=1 shows it on any screen held in landscape, to preview it on a PC;
+    // ?tent=0 keeps it off. Neither is remembered.
+    // ---------------------------------------------------------------------
+    const TENT_VIEW_LIMIT = 7;
+    const TENT_SLIDE_MS = 30 * 1000;
+    const TENT_SLIDE_GAP_PX = 14;
+    // The slide animations are sampled into keyframes at this step and run on
+    // the compositor, so a busy page cannot make them stutter.
+    const TENT_ANIMATION_STEP_MS = 1000 / 60;
+    // The Duo's outer screen is 1398 x 2034 pixels, about 466 x 678 CSS px;
+    // the inner one 1878 x 2670 pixels. Those figures are not Apple's own, so
+    // the margins leave room for them being a little off, and for Display Zoom.
+    const DUO_SCREEN = { minShort: 360, maxShort: 700, minRatio: 1.34, maxRatio: 1.6 };
+    const DUO_OUTER_MAX_PIXELS_WIDE = 2350;
+    const TENT_SETTLE_MS = 700;
+    const TENT_CHECK_MS = 1000;
+    const TENT_HISTORY_KEY = 'homeOrganizerTentHistory';
+
+    const tentView = {
+      active: false,
+      forced: params.get('tent'),
+      // Three slides (previous, current, next) placed by transforms. When the
+      // slideshow moves on, the current slide keeps its loaded photo; only the
+      // one that wraps round to the far side is drawn again.
+      slots: [],
+      events: [],
+      count: 0,
+      index: 0,
+      offset: 0,
+      anim: null,
+      drag: null,
+      timer: null,
+      minuteTimer: null,
+      renderPending: false,
+      wakeLock: null,
+      syncFrame: 0,
+      // Readings that say "on", and since when, until they have held long
+      // enough to act on.
+      candidate: null,
+      settleTimer: null,
+      // The slide width the slides were last placed for.
+      placedWidth: 0
+    };
+    const tentSlotHtml = new WeakMap();
+    const tentReducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+    function screenShape() {
+      const short = Math.min(screen.width, screen.height);
+      const long = Math.max(screen.width, screen.height);
+      return { short, long, ratio: short ? long / short : 0, pixelRatio: window.devicePixelRatio || 1 };
+    }
+
+    // The window's long side in real pixels: in landscape, the width of the
+    // screen the page is on now. The layout viewport, so a pinch zoom does
+    // not change it.
+    function windowPixelsWide() {
+      const root = document.documentElement;
+      const longSide = Math.max(root.clientWidth || window.innerWidth, root.clientHeight || window.innerHeight);
+      return Math.round(longSide * (window.devicePixelRatio || 1));
+    }
+
+    // How far the phone is turned: 0, 90, 180 or 270, or null where the
+    // browser does not say.
+    function deviceTurnAngle() {
+      const angle = Number(screen.orientation?.angle ?? window.orientation);
+      return Number.isFinite(angle) ? ((angle % 360) + 360) % 360 : null;
+    }
+
+    function isIphoneDuo() {
+      if (!/iPhone/.test(navigator.userAgent || '')) return false;
+      const { short, ratio } = screenShape();
+      return short >= DUO_SCREEN.minShort && short <= DUO_SCREEN.maxShort
+        && ratio >= DUO_SCREEN.minRatio && ratio <= DUO_SCREEN.maxRatio;
+    }
+
+    function isDuoOuterScreen() {
+      if (!isIphoneDuo()) return false;
+      const { short, long } = screenShape();
+      const windowFits = Math.max(window.innerWidth, window.innerHeight) <= long * 1.08
+        && Math.min(window.innerWidth, window.innerHeight) <= short * 1.08;
+      return windowFits && windowPixelsWide() <= DUO_OUTER_MAX_PIXELS_WIDE;
+    }
+
+    function tentViewWanted() {
+      if (tentView.forced === '0') return false;
+      if (window.innerWidth <= window.innerHeight) return false;
+      if (tentView.forced === '1') return true;
+      const angle = deviceTurnAngle();
+      return isDuoOuterScreen() && (angle === null || angle % 180 === 90);
+    }
+
+    // Everything the decision rests on, short: compared between readings, and
+    // shown in the config menu.
+    function tentReadings() {
+      const { short, long, ratio, pixelRatio } = screenShape();
+      const angle = deviceTurnAngle();
+      return `screen ${short}×${long} (1:${ratio.toFixed(2)}) at ${pixelRatio}x, window ${window.innerWidth}×${window.innerHeight}, `
+        + `${windowPixelsWide()} pixels wide, turned ${angle === null ? '?' : `${angle}°`}`;
+    }
+
+    function readTentHistory() {
+      try {
+        const list = JSON.parse(sessionStorage.getItem(TENT_HISTORY_KEY) || '[]');
+        return Array.isArray(list) ? list : [];
+      } catch {
+        return [];
+      }
+    }
+
+    // Kept per tab, so it survives the reload that is the first thing anyone
+    // tries when the screen looks wrong.
+    function noteTentChange(active) {
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const list = [...readTentHistory(), `${time} ${active ? 'on' : 'off'} (${tentReadings()})`].slice(-6);
+      try { sessionStorage.setItem(TENT_HISTORY_KEY, JSON.stringify(list)); } catch {}
+    }
+
+    // For the config menu: what this screen measures, so a screen that should
+    // (or should not) get the tent view can be told apart from a wrong guess.
+    function describeTentView() {
+      const readings = tentReadings();
+      let line;
+      if (tentView.forced === '0') line = `Tent view: kept off by ?tent=0; ${readings}.`;
+      else if (tentView.forced === '1') line = `Tent view: forced on in landscape by ?tent=1; ${readings}.`;
+      else if (tentView.active) line = `Tent view: on, the iPhone Duo's outer screen stood on its side; ${readings}.`;
+      else if (isDuoOuterScreen()) line = `Tent view: the iPhone Duo's outer screen; it shows the next ${TENT_VIEW_LIMIT} tasks once the phone stands on its side; ${readings}.`;
+      else if (isIphoneDuo()) line = `Tent view: off, this is the iPhone Duo's inner screen; ${readings}.`;
+      else line = `Tent view: not on this screen; ${readings}.`;
+      const history = readTentHistory();
+      return history.length ? `${line} Recently: ${history.join('; ')}.` : line;
+    }
+
+    // The next tasks as the car lockscreen lists them: in start order, those
+    // that have not ended yet (a task without an end lasts an hour), and
+    // frequent repeats no further ahead than the display shows them.
+    function tentViewEvents() {
+      const now = new Date();
+      const end = new Date(now.getTime() + 365 * 86400000);
+      const repeatCutoff = endOfNextMonth(now);
+      return expandEventsInRange(todayStart(), end, { includeCompleted: false })
+        .filter(event => !isHiddenFutureRepeatingOccurrence(event, repeatCutoff))
+        .filter(event => event.date.getTime() + eventDurationMs(event) > now.getTime())
+        .slice(0, TENT_VIEW_LIMIT);
+    }
+
+    function tentSlideHtml(event) {
+      const now = new Date();
+      const start = event.date;
+      const live = start <= now && now.getTime() < start.getTime() + eventDurationMs(event);
+      const day = sameDay(start, now)
+        ? 'Today'
+        : sameDay(start, addLocalDays(now, 1)) ? 'Tomorrow' : formatUpcomingDate(start);
+      // The placeholder goes without its label: the caption already names the task.
+      const image = event.imageUrl || placeholderFor(event.id, '');
+      return `
+        <div class="tent-slide-photo"><div class="tent-slide-drift">
+          <img class="tent-slide-img" alt="" draggable="false" decoding="async" src="${htmlEscape(image)}" style="${imageFocusStyle(event)}">
+        </div></div>
+        <div class="tent-slide-scrim"></div>
+        <div class="tent-slide-caption">
+          <div class="tent-slide-title">${htmlEscape(event.title || 'Untitled task')}</div>
+          <div class="tent-slide-when">${live ? '<span class="tent-slide-live">Now</span>' : ''}<b>${htmlEscape(day)}</b><span class="tent-slide-sep">·</span><span>${htmlEscape(formatTime(start, false))}</span></div>
+          ${event.location ? `<div class="tent-slide-location">${htmlEscape(event.location)}</div>` : ''}
+        </div>
+      `;
+    }
+
+    function fillTentSlot(slot, index) {
+      const event = index >= 0 ? tentView.events[index] : null;
+      const html = event ? tentSlideHtml(event) : '';
+      if (tentSlotHtml.get(slot) === html) return;
+      tentSlotHtml.set(slot, html);
+      slot.innerHTML = html;
+      slot.classList.remove('tent-fade-in');
+      const img = slot.querySelector('.tent-slide-img');
+      if (!img) return;
+      const shown = () => img.classList.add('is-in');
+      img.addEventListener('load', shown);
+      // A photo gone from Blob storage gets the calm placeholder, as on every
+      // other card. Handled here because the shared fallback adds a label.
+      img.addEventListener('error', () => {
+        if (img.dataset.fallbackApplied === '1') return;
+        img.dataset.fallbackApplied = '1';
+        img.src = placeholderFor(event.id, '');
+      });
+      if (img.complete && img.naturalWidth) shown();
+    }
+
+    function wrapTentIndex(index) {
+      const count = tentView.count;
+      return count ? ((index % count) + count) % count : 0;
+    }
+
+    function fillTentSlots() {
+      const many = tentView.count > 1;
+      fillTentSlot(tentView.slots[1], tentView.index);
+      // The neighbours are drawn too, so their photos are loaded before they slide in.
+      fillTentSlot(tentView.slots[0], many ? wrapTentIndex(tentView.index - 1) : -1);
+      fillTentSlot(tentView.slots[2], many ? wrapTentIndex(tentView.index + 1) : -1);
+    }
+
+    function markTentCurrent() {
+      tentView.slots.forEach((slot, position) => {
+        const current = position === 1;
+        slot.classList.toggle('is-current', current);
+        slot.classList.toggle('drift-b', current && tentView.index % 2 === 1);
+        if (!current) slot.classList.remove('tent-fade-in');
+        slot.setAttribute('aria-hidden', current ? 'false' : 'true');
+      });
+    }
+
+    function renderTentDots(active = tentView.index) {
+      const dots = els.tentDots;
+      if (Number(dots.dataset.count) !== tentView.count) {
+        dots.innerHTML = `${'<i></i>'.repeat(tentView.count)}<span class="tent-count"></span>`;
+        dots.dataset.count = String(tentView.count);
+      }
+      dots.querySelectorAll('i').forEach((dot, index) => dot.classList.toggle('on', index === active));
+      dots.querySelector('.tent-count').textContent = `${active + 1}/${tentView.count}`;
+      dots.classList.toggle('hidden', tentView.count < 2);
+    }
+
+    function renderTentView() {
+      if (!tentView.active) return;
+      // Redrawing a slide mid-swipe would drop the photo being dragged.
+      if (tentView.anim || tentView.drag) {
+        tentView.renderPending = true;
+        return;
+      }
+      tentView.renderPending = false;
+      const events = tentViewEvents();
+      const current = tentView.events[tentView.index];
+      const keep = current ? events.findIndex(event => event._instanceId === current._instanceId) : -1;
+      tentView.events = events;
+      tentView.count = events.length;
+      tentView.index = Math.max(0, keep);
+      tentView.offset = 0;
+      const loading = !events.length && state.eventFetchActive && !state.serverEvents.length;
+      els.tentEmptyTitle.textContent = loading ? 'Loading tasks…' : 'Nothing coming up';
+      els.tentEmptySub.classList.toggle('hidden', loading);
+      els.tentEmpty.classList.toggle('hidden', events.length > 0);
+      fillTentSlots();
+      markTentCurrent();
+      placeTentSlides(0);
+      renderTentDots();
+      if (tentView.count < 2) stopTentTimer();
+      else if (!tentView.timer) startTentTimer();
+    }
+
+    function tentSlideWidth() {
+      return els.tentSlides.clientWidth || window.innerWidth;
+    }
+
+    function roundTo(value, places) {
+      const factor = 10 ** places;
+      return Math.round(value * factor) / factor;
+    }
+
+    // Where a slide sits for a given offset. The photo moves at 70% of its
+    // slide's speed, and a slide fades a little as it leaves.
+    function tentSlotPose(position, width) {
+      const away = Math.min(1, Math.abs(position) / width);
+      return {
+        transform: `translate3d(${roundTo(position, 2)}px,0px,0px)`,
+        opacity: String(roundTo(1 - 0.3 * away, 4)),
+        parallax: `translate3d(${roundTo(-position * 0.3, 2)}px,0px,0px)`
+      };
+    }
+
+    // The same places as tentSlotPose(), but in percentages of the slide's
+    // own width plus pixels, so they stay right if the width changes before
+    // anything is told (a turn, the Safari bar).
+    function placeTentSlides(offset) {
+      tentView.placedWidth = tentSlideWidth();
+      const width = tentView.placedWidth + TENT_SLIDE_GAP_PX;
+      tentView.slots.forEach((slot, position) => {
+        const step = position - 1;
+        const pixels = step * TENT_SLIDE_GAP_PX + offset;
+        slot.style.transform = `translate3d(calc(${step * 100}% + ${roundTo(pixels, 2)}px),0px,0px)`;
+        slot.style.opacity = tentSlotPose(step * width + offset, width).opacity;
+        if (slot.firstElementChild) slot.firstElementChild.style.transform = `translate3d(calc(${step * -30}% + ${roundTo(-pixels * 0.3, 2)}px),0px,0px)`;
+      });
+    }
+
+    // Runs the shared offset along offsetAt(ms) for `duration` ms. Stopped
+    // early by stopTentAnimation(), which leaves the slides where they are.
+    function animateTentSlides(offsetAt, duration, done) {
+      stopTentAnimation();
+      const width = tentSlideWidth() + TENT_SLIDE_GAP_PX;
+      const steps = Math.max(2, Math.ceil(duration / TENT_ANIMATION_STEP_MS) + 1);
+      const frames = [[], [], [], [], [], []];
+      for (let step = 0; step < steps; step++) {
+        const progress = step / (steps - 1);
+        const offset = offsetAt(duration * progress);
+        for (let position = 0; position < 3; position++) {
+          const pose = tentSlotPose((position - 1) * width + offset, width);
+          frames[position].push({ offset: progress, transform: pose.transform, opacity: pose.opacity });
+          frames[3 + position].push({ offset: progress, transform: pose.parallax });
+        }
+      }
+      const targets = [...tentView.slots, ...tentView.slots.map(slot => slot.firstElementChild)];
+      const animations = [];
+      targets.forEach((target, index) => {
+        if (target?.animate) animations.push(target.animate(frames[index], { duration, fill: 'forwards', easing: 'linear' }));
+      });
+      const finish = () => {
+        tentView.offset = offsetAt(duration);
+        placeTentSlides(tentView.offset);
+        animations.forEach(animation => animation.cancel());
+        done?.();
+        if (tentView.renderPending && !tentView.anim && !tentView.drag) renderTentView();
+      };
+      if (!animations.length) {
+        finish();
+        return;
+      }
+      const record = { animations, offsetAt, duration };
+      tentView.anim = record;
+      animations[0].onfinish = () => {
+        if (tentView.anim !== record) return;
+        tentView.anim = null;
+        finish();
+      };
+    }
+
+    function stopTentAnimation() {
+      const record = tentView.anim;
+      if (!record) return;
+      tentView.anim = null;
+      const time = Number(record.animations[0]?.currentTime);
+      tentView.offset = record.offsetAt(Number.isFinite(time) ? Math.max(0, Math.min(record.duration, time)) : 0);
+      placeTentSlides(tentView.offset);
+      record.animations.forEach(animation => animation.cancel());
+    }
+
+    // A move cut short (by a swipe, the timer or a resize) counts once it is
+    // past halfway: the slide it was heading for becomes the current one, and
+    // the offset is kept from there. Never counted, it left the next swipe
+    // only the slide already in view to reach, so that swipe did nothing.
+    function rebaseTentOffset() {
+      const width = tentSlideWidth() + TENT_SLIDE_GAP_PX;
+      while (tentView.count > 1 && Math.abs(tentView.offset) > width / 2) {
+        const direction = tentView.offset < 0 ? 1 : -1;
+        const offset = tentView.offset + direction * width;
+        commitTentSlide(direction);
+        tentView.offset = offset;
+        placeTentSlides(offset);
+      }
+    }
+
+    function commitTentSlide(direction) {
+      const [previous, current, next] = tentView.slots;
+      tentView.index = wrapTentIndex(tentView.index + direction);
+      tentView.slots = direction > 0 ? [current, next, previous] : [next, previous, current];
+      tentView.offset = 0;
+      fillTentSlots();
+      markTentCurrent();
+      placeTentSlides(0);
+      renderTentDots();
+    }
+
+    // Damped spring: how far from rest after t ms, starting `from` away with
+    // `velocity` px/ms.
+    function dampedSpring(t, from, velocity, omega, damping) {
+      if (t <= 0) return from;
+      const damped = omega * Math.sqrt(1 - damping * damping);
+      const decay = Math.exp(-damping * omega * t);
+      return decay * (from * Math.cos(damped * t) + ((velocity + damping * omega * from) / damped) * Math.sin(damped * t));
+    }
+
+    // After a swipe: spring onto the next slide (direction 1), the previous
+    // one (-1), or back onto this one (0), carrying the finger's speed.
+    function settleTentSlides(direction, velocity) {
+      const width = tentSlideWidth() + TENT_SLIDE_GAP_PX;
+      const target = -direction * width;
+      const from = tentView.offset - target;
+      const reduced = tentReducedMotion.matches;
+      const omega = (2 * Math.PI) / (reduced ? 320 : 600);
+      const damping = reduced ? 0.96 : 0.7;
+      const duration = reduced ? 360 : 950;
+      animateTentSlides(
+        t => (t >= duration ? target : target + dampedSpring(t, from, velocity, omega, damping)),
+        duration,
+        () => { if (direction) commitTentSlide(direction); }
+      );
+    }
+
+    function stopTentTimer() {
+      clearTimeout(tentView.timer);
+      tentView.timer = null;
+    }
+
+    function startTentTimer() {
+      stopTentTimer();
+      if (!tentView.active || tentView.count < 2 || tentView.drag || document.hidden) return;
+      tentView.timer = setTimeout(advanceTentSlide, TENT_SLIDE_MS);
+    }
+
+    // The calm move on: an ease-in-out slide, or a cross-fade when the phone
+    // asks for reduced motion.
+    function advanceTentSlide() {
+      tentView.timer = null;
+      if (!tentView.active || tentView.count < 2 || tentView.drag || document.hidden) return;
+      stopTentAnimation();
+      rebaseTentOffset();
+      renderTentDots(wrapTentIndex(tentView.index + 1));
+      if (tentReducedMotion.matches) {
+        commitTentSlide(1);
+        tentView.slots[1].classList.add('tent-fade-in');
+        startTentTimer();
+        return;
+      }
+      const width = tentSlideWidth() + TENT_SLIDE_GAP_PX;
+      const from = tentView.offset;
+      const duration = 1150;
+      animateTentSlides(t => {
+        const u = Math.max(0, Math.min(1, t / duration));
+        const eased = u < 0.5 ? 4 * u * u * u : 1 - ((-2 * u + 2) ** 3) / 2;
+        return from + (-width - from) * eased;
+      }, duration, () => {
+        commitTentSlide(1);
+        startTentTimer();
+      });
+    }
+
+    function cancelTentDrag() {
+      if (!tentView.drag) return;
+      const { id } = tentView.drag;
+      tentView.drag = null;
+      try { els.tentSlides.releasePointerCapture(id); } catch {}
+      els.tentSlides.classList.remove('is-dragging');
+    }
+
+    function startTentDrag(event) {
+      if (tentView.drag || !tentView.active) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      // No text selection, image drag or emulated mouse events.
+      event.preventDefault();
+      stopTentTimer();
+      stopTentAnimation();
+      rebaseTentOffset();
+      // The dots may still show where the interrupted move was heading.
+      renderTentDots();
+      try { els.tentSlides.setPointerCapture(event.pointerId); } catch {}
+      tentView.drag = { id: event.pointerId, x0: event.clientX, offset0: tentView.offset, moved: false, points: [{ x: event.clientX, t: event.timeStamp }] };
+      els.tentSlides.classList.add('is-dragging');
+    }
+
+    function moveTentDrag(event) {
+      const drag = tentView.drag;
+      if (!drag || event.pointerId !== drag.id) return;
+      event.preventDefault();
+      const dx = event.clientX - drag.x0;
+      const width = tentSlideWidth() + TENT_SLIDE_GAP_PX;
+      let offset = drag.offset0 + dx;
+      if (!drag.moved && Math.abs(dx) > 6) drag.moved = true;
+      // Nothing to swipe to: rubber band. Past a whole slide: resist.
+      if (tentView.count < 2) offset *= 0.35;
+      else if (Math.abs(offset) > width) offset = Math.sign(offset) * (width + (Math.abs(offset) - width) * 0.3);
+      tentView.offset = offset;
+      placeTentSlides(offset);
+      drag.points.push({ x: event.clientX, t: event.timeStamp });
+      while (drag.points.length > 2 && event.timeStamp - drag.points[0].t > 90) drag.points.shift();
+    }
+
+    function endTentDrag(event) {
+      const drag = tentView.drag;
+      if (!drag || event.pointerId !== drag.id) return;
+      cancelTentDrag();
+      const first = drag.points[0];
+      const last = drag.points[drag.points.length - 1];
+      const elapsed = last.t - first.t;
+      const velocity = event.type === 'pointerup' && elapsed > 0 ? Math.max(-4, Math.min(4, (last.x - first.x) / elapsed)) : 0;
+      const width = tentSlideWidth() + TENT_SLIDE_GAP_PX;
+      // Where the flick would carry the slides decides the move, so a quick
+      // short flick turns the page as well as a long slow drag.
+      const projected = tentView.offset + velocity * 160;
+      let direction = 0;
+      if (tentView.count > 1 && drag.moved) {
+        if (projected < -width * 0.22) direction = 1;
+        else if (projected > width * 0.22) direction = -1;
+      }
+      if (direction) renderTentDots(wrapTentIndex(tentView.index + direction));
+      settleTentSlides(direction, velocity);
+      // A swipe starts the 30 seconds over.
+      startTentTimer();
+    }
+
+    // The phone stands on a table while this is up, so it should not lock
+    // after its usual 30 seconds. The browser lets the lock go whenever the
+    // page is hidden; it is asked for again when the page comes back.
+    async function holdTentWakeLock() {
+      if (!tentView.active || tentView.wakeLock || document.visibilityState !== 'visible' || !navigator.wakeLock) return;
+      try {
+        const lock = await navigator.wakeLock.request('screen');
+        if (!tentView.active || tentView.wakeLock) {
+          lock.release().catch(() => {});
+          return;
+        }
+        tentView.wakeLock = lock;
+        lock.addEventListener('release', () => {
+          if (tentView.wakeLock === lock) tentView.wakeLock = null;
+        });
+      } catch {}
+    }
+
+    function releaseTentWakeLock() {
+      const lock = tentView.wakeLock;
+      tentView.wakeLock = null;
+      lock?.release().catch(() => {});
+    }
+
+    function setTentViewActive(active) {
+      if (active === tentView.active) return;
+      tentView.active = active;
+      noteTentChange(active);
+      els.tentView.classList.toggle('hidden', !active);
+      document.body.classList.toggle('tent-active', active);
+      if (!active) {
+        cancelTentDrag();
+        stopTentAnimation();
+        stopTentTimer();
+        clearInterval(tentView.minuteTimer);
+        tentView.minuteTimer = null;
+        releaseTentWakeLock();
+        return;
+      }
+      // An open keyboard would sit on top of the slideshow.
+      document.activeElement?.blur?.();
+      renderTentView();
+      els.tentView.classList.remove('is-entering');
+      void els.tentView.offsetWidth;
+      els.tentView.classList.add('is-entering');
+      // "Now", "Today" and finished tasks move on with the clock.
+      tentView.minuteTimer = setInterval(renderTentView, 60 * 1000);
+      holdTentWakeLock();
+    }
+
+    // Off at once on any reading that says no; on only once the same
+    // readings have said yes for TENT_SETTLE_MS (see "Rotation protection").
+    function syncTentView() {
+      tentView.syncFrame = 0;
+      const wanted = tentViewWanted();
+      if (!wanted || tentView.active) {
+        tentView.candidate = null;
+        clearTimeout(tentView.settleTimer);
+        setTentViewActive(wanted);
+        relayoutTentSlides();
+        return;
+      }
+      const readings = tentReadings();
+      const now = Date.now();
+      if (tentView.candidate?.readings !== readings) tentView.candidate = { readings, since: now };
+      const waited = now - tentView.candidate.since;
+      clearTimeout(tentView.settleTimer);
+      if (waited < TENT_SETTLE_MS) {
+        tentView.settleTimer = setTimeout(requestTentViewSync, TENT_SETTLE_MS - waited);
+        return;
+      }
+      tentView.candidate = null;
+      setTentViewActive(true);
+    }
+
+    // Still up, at a new width. A drag carries on under the finger; a move in
+    // flight counts if it was past halfway, and the slides settle on the
+    // current one. Dropping either used to leave a swipe stuck.
+    function relayoutTentSlides() {
+      if (!tentView.active || tentSlideWidth() === tentView.placedWidth) return;
+      if (tentView.drag) {
+        placeTentSlides(tentView.offset);
+        return;
+      }
+      stopTentAnimation();
+      rebaseTentOffset();
+      tentView.offset = 0;
+      placeTentSlides(0);
+      renderTentDots();
+      if (tentView.renderPending) renderTentView();
+      if (!tentView.timer) startTentTimer();
+    }
+
+    // Opening or folding the phone can change only the pixel density, which
+    // fires no resize.
+    function watchTentPixelRatio() {
+      matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener?.('change', () => {
+        requestTentViewSync();
+        watchTentPixelRatio();
+      }, { once: true });
+    }
+
+    function requestTentViewSync() {
+      if (!tentView.syncFrame) tentView.syncFrame = requestAnimationFrame(syncTentView);
+    }
+
+    function bindTentView() {
+      if (!els.tentView) return;
+      tentView.slots = [...els.tentSlides.querySelectorAll('.tent-slide')];
+      els.tentSlides.addEventListener('pointerdown', startTentDrag);
+      els.tentSlides.addEventListener('pointermove', moveTentDrag);
+      els.tentSlides.addEventListener('pointerup', endTentDrag);
+      els.tentSlides.addEventListener('pointercancel', endTentDrag);
+      els.tentSlides.addEventListener('lostpointercapture', event => {
+        if (tentView.drag && event.pointerId === tentView.drag.id) endTentDrag({ type: 'pointercancel', pointerId: event.pointerId });
+      });
+      // iOS would otherwise rubber-band the page underneath, or bring the
+      // Safari toolbar back, on every swipe.
+      els.tentView.addEventListener('touchmove', event => event.preventDefault(), { passive: false });
+      els.tentView.addEventListener('animationend', event => {
+        if (event.target === els.tentSlides) els.tentView.classList.remove('is-entering');
+      });
+      window.addEventListener('resize', requestTentViewSync);
+      window.addEventListener('orientationchange', requestTentViewSync);
+      window.addEventListener('pageshow', requestTentViewSync);
+      matchMedia('(orientation: landscape)').addEventListener?.('change', requestTentViewSync);
+      screen.orientation?.addEventListener?.('change', requestTentViewSync);
+      watchTentPixelRatio();
+      if (window.ResizeObserver) {
+        new ResizeObserver(() => {
+          relayoutTentSlides();
+          requestTentViewSync();
+        }).observe(els.tentSlides);
+      }
+      // Events alone miss a change that came without one, or whose event came
+      // before the new readings. A reading costs nothing, so a Duo also looks
+      // every second; nothing else needs to.
+      if (tentView.forced === '1' || isIphoneDuo()) {
+        setInterval(() => {
+          if (!document.hidden) requestTentViewSync();
+        }, TENT_CHECK_MS);
+      }
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) requestTentViewSync();
+        if (!tentView.active) return;
+        if (document.hidden) {
+          stopTentTimer();
+          return;
+        }
+        renderTentView();
+        startTentTimer();
+        holdTentWakeLock();
+      });
+      syncTentView();
+    }
+
     function init() {
       setMode();
       window.addEventListener('resize', () => { fitKioskToScreen(); if (!adminMode) renderDisplay(); });
@@ -10775,6 +11704,8 @@ Cancel = choose whether to delete the whole series.`);
         bindAdmin();
         loadReminderSettings();
       }
+      // Last, so a first load with nothing cached shows "Loading" rather than an empty calendar.
+      bindTentView();
     }
 
     // A phone that scanned the wall's YouTube QR code gets the send page
