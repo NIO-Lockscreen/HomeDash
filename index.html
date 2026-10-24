@@ -10810,16 +10810,27 @@ Cancel = choose whether to delete the whole series.`);
     // exactly as it was; nothing underneath is touched.
     //
     // Telling the outer screen apart. Both Duo screens have the same shape,
-    // about 1:1.45, so the shape alone does not say which one is in use. Only
-    // the outer one is phone-sized, though: about 466 px across, against about
-    // 626 inside. And it is the screen that is measured, not the window.
-    // `screen` is the physical display, which no window can resize, so a PC or
-    // an iPad with its window dragged or split to the same shape still reports
-    // its own big screen. An iPad can have the shape (an iPad mini is 1:1.52)
-    // but is never under 744 px across; an ordinary iPhone is phone-sized but
-    // long and thin, about 1:2.17. The browser has to say iPhone as well: an
-    // iPad says iPad or Mac, a PC says Windows or Mac. Landscape is read off
-    // the window, which turns with the phone.
+    // about 1:1.45. Opened, the inner screen is as tall as the outer one and
+    // twice as wide, so held normally it is landscape too, and it can be drawn
+    // at the outer screen's size in CSS pixels. Small and landscape-shaped is
+    // therefore not enough (it was all that was checked at first, and the
+    // slideshow came up on the inner screen). All of these have to hold, and
+    // each of the middle three rules the inner screen out on its own:
+    //   - the screen is phone-sized and 1:1.34 to 1:1.6. It is `screen` that
+    //     is measured, the physical display, which no window can resize: a PC
+    //     or an iPad with its window dragged or split to the Duo's shape still
+    //     reports its own big screen. An iPad can have the shape (an iPad mini
+    //     is 1:1.52) but is never under 744 px across; an ordinary iPhone is
+    //     about 1:2.17;
+    //   - it is about 1398 real pixels across, not the inner screen's 1878,
+    //     whatever size those pixels are drawn at;
+    //   - the window fits on that screen. A page on the inner screen that is
+    //     still told the outer screen's size is wider than it;
+    //   - the phone itself is turned on its side (90 or 270 degrees). The tent
+    //     is the folded phone stood on its long edge. Opened and held normally
+    //     the phone is upright, although its inner screen is wider than tall;
+    //   - the window is wider than tall, and the browser says iPhone (an iPad
+    //     says iPad or Mac, a PC says Windows or Mac).
     //
     // ?tent=1 shows it on any screen held in landscape, to preview it on a PC;
     // ?tent=0 keeps it off. Neither is remembered.
@@ -10830,9 +10841,10 @@ Cancel = choose whether to delete the whole series.`);
     // The slide animations are sampled into keyframes at this step and run on
     // the compositor, so a busy page cannot make them stutter.
     const TENT_ANIMATION_STEP_MS = 1000 / 60;
-    // CSS px. The Duo's outer screen is about 466 x 678; its inner one about
-    // 626 x 890. The margins leave room for Display Zoom.
-    const DUO_OUTER_SCREEN = { minShort: 360, maxShort: 520, minRatio: 1.34, maxRatio: 1.6 };
+    // The Duo's outer screen is about 466 x 678 CSS px, 1398 x 2034 pixels;
+    // the inner one 1878 x 2670 pixels. Those figures are not Apple's own, so
+    // the margins leave room for them being a little off, and for Display Zoom.
+    const DUO_OUTER_SCREEN = { minShort: 360, maxShort: 520, minRatio: 1.34, maxRatio: 1.6, maxPixelsAcross: 1640 };
 
     const tentView = {
       active: false,
@@ -10851,7 +10863,10 @@ Cancel = choose whether to delete the whole series.`);
       minuteTimer: null,
       renderPending: false,
       wakeLock: null,
-      syncFrame: 0
+      syncFrame: 0,
+      checkTimer: null,
+      // The slide width the slides were last placed for.
+      placedWidth: 0
     };
     const tentSlotHtml = new WeakMap();
     const tentReducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -10859,31 +10874,48 @@ Cancel = choose whether to delete the whole series.`);
     function screenShape() {
       const short = Math.min(screen.width, screen.height);
       const long = Math.max(screen.width, screen.height);
-      return { short, long, ratio: short ? long / short : 0 };
+      const pixelRatio = window.devicePixelRatio || 1;
+      return { short, long, ratio: short ? long / short : 0, pixelRatio, pixelsAcross: Math.round(short * pixelRatio) };
+    }
+
+    // How far the phone is turned: 0, 90, 180 or 270, or null where the
+    // browser does not say.
+    function deviceTurnAngle() {
+      const angle = Number(screen.orientation?.angle ?? window.orientation);
+      return Number.isFinite(angle) ? ((angle % 360) + 360) % 360 : null;
     }
 
     function isDuoOuterScreen() {
       if (!/iPhone/.test(navigator.userAgent || '')) return false;
-      const { short, ratio } = screenShape();
+      const { short, long, ratio, pixelsAcross } = screenShape();
+      const windowFits = Math.max(window.innerWidth, window.innerHeight) <= long * 1.08
+        && Math.min(window.innerWidth, window.innerHeight) <= short * 1.08;
       return short >= DUO_OUTER_SCREEN.minShort && short <= DUO_OUTER_SCREEN.maxShort
-        && ratio >= DUO_OUTER_SCREEN.minRatio && ratio <= DUO_OUTER_SCREEN.maxRatio;
+        && ratio >= DUO_OUTER_SCREEN.minRatio && ratio <= DUO_OUTER_SCREEN.maxRatio
+        && pixelsAcross <= DUO_OUTER_SCREEN.maxPixelsAcross
+        && windowFits;
     }
 
     function tentViewWanted() {
       if (tentView.forced === '0') return false;
       if (window.innerWidth <= window.innerHeight) return false;
-      return tentView.forced === '1' || isDuoOuterScreen();
+      if (tentView.forced === '1') return true;
+      const angle = deviceTurnAngle();
+      return isDuoOuterScreen() && (angle === null || angle % 180 === 90);
     }
 
     // For the config menu: what this screen measures, so a screen that should
     // (or should not) get the tent view can be told apart from a wrong guess.
     function describeTentView() {
-      const { short, long, ratio } = screenShape();
-      const size = `screen ${short}×${long} (1:${ratio.toFixed(2)}), window ${window.innerWidth}×${window.innerHeight}`;
+      const { short, long, ratio, pixelRatio, pixelsAcross } = screenShape();
+      const angle = deviceTurnAngle();
+      const size = `screen ${short}×${long} (1:${ratio.toFixed(2)}), ${pixelsAcross} pixels across at ${pixelRatio}x, `
+        + `window ${window.innerWidth}×${window.innerHeight}, turned ${angle === null ? 'unknown' : `${angle}°`}`;
       if (tentView.forced === '0') return `Tent view: kept off by ?tent=0; ${size}.`;
       if (tentView.forced === '1') return `Tent view: forced on in landscape by ?tent=1; ${size}.`;
+      if (tentViewWanted()) return `Tent view: on, the iPhone Duo's outer screen stood on its side; ${size}.`;
       return isDuoOuterScreen()
-        ? `Tent view: this is the iPhone Duo's outer screen, so it shows the next ${TENT_VIEW_LIMIT} tasks in landscape; ${size}.`
+        ? `Tent view: this looks like the iPhone Duo's outer screen; it shows the next ${TENT_VIEW_LIMIT} tasks once the phone stands on its side; ${size}.`
         : `Tent view: not on this screen; ${size}.`;
     }
 
@@ -11025,7 +11057,8 @@ Cancel = choose whether to delete the whole series.`);
     }
 
     function placeTentSlides(offset) {
-      const width = tentSlideWidth() + TENT_SLIDE_GAP_PX;
+      tentView.placedWidth = tentSlideWidth();
+      const width = tentView.placedWidth + TENT_SLIDE_GAP_PX;
       tentView.slots.forEach((slot, position) => {
         const pose = tentSlotPose((position - 1) * width + offset, width);
         slot.style.transform = pose.transform;
@@ -11085,6 +11118,21 @@ Cancel = choose whether to delete the whole series.`);
       record.animations.forEach(animation => animation.cancel());
     }
 
+    // A move cut short (by a swipe, the timer or a resize) counts once it is
+    // past halfway: the slide it was heading for becomes the current one, and
+    // the offset is kept from there. Never counted, it left the next swipe
+    // only the slide already in view to reach, so that swipe did nothing.
+    function rebaseTentOffset() {
+      const width = tentSlideWidth() + TENT_SLIDE_GAP_PX;
+      while (tentView.count > 1 && Math.abs(tentView.offset) > width / 2) {
+        const direction = tentView.offset < 0 ? 1 : -1;
+        const offset = tentView.offset + direction * width;
+        commitTentSlide(direction);
+        tentView.offset = offset;
+        placeTentSlides(offset);
+      }
+    }
+
     function commitTentSlide(direction) {
       const [previous, current, next] = tentView.slots;
       tentView.index = wrapTentIndex(tentView.index + direction);
@@ -11138,9 +11186,10 @@ Cancel = choose whether to delete the whole series.`);
     function advanceTentSlide() {
       tentView.timer = null;
       if (!tentView.active || tentView.count < 2 || tentView.drag || document.hidden) return;
+      stopTentAnimation();
+      rebaseTentOffset();
       renderTentDots(wrapTentIndex(tentView.index + 1));
       if (tentReducedMotion.matches) {
-        stopTentAnimation();
         commitTentSlide(1);
         tentView.slots[1].classList.add('tent-fade-in');
         startTentTimer();
@@ -11174,6 +11223,9 @@ Cancel = choose whether to delete the whole series.`);
       event.preventDefault();
       stopTentTimer();
       stopTentAnimation();
+      rebaseTentOffset();
+      // The dots may still show where the interrupted move was heading.
+      renderTentDots();
       try { els.tentSlides.setPointerCapture(event.pointerId); } catch {}
       tentView.drag = { id: event.pointerId, x0: event.clientX, offset0: tentView.offset, moved: false, points: [{ x: event.clientX, t: event.timeStamp }] };
       els.tentSlides.classList.add('is-dragging');
@@ -11254,6 +11306,8 @@ Cancel = choose whether to delete the whole series.`);
         stopTentTimer();
         clearInterval(tentView.minuteTimer);
         tentView.minuteTimer = null;
+        clearInterval(tentView.checkTimer);
+        tentView.checkTimer = null;
         releaseTentWakeLock();
         return;
       }
@@ -11265,6 +11319,11 @@ Cancel = choose whether to delete the whole series.`);
       els.tentView.classList.add('is-entering');
       // "Now", "Today" and finished tasks move on with the clock.
       tentView.minuteTimer = setInterval(renderTentView, 60 * 1000);
+      // Opening the phone need not fire any event a page hears: the window
+      // can keep its size. So while the slideshow is up, look every second.
+      tentView.checkTimer = setInterval(() => {
+        if (!tentViewWanted()) requestTentViewSync();
+      }, 1000);
       holdTentWakeLock();
     }
 
@@ -11272,15 +11331,30 @@ Cancel = choose whether to delete the whole series.`);
       tentView.syncFrame = 0;
       const wasActive = tentView.active;
       setTentViewActive(tentViewWanted());
-      if (!wasActive || !tentView.active) return;
-      // Still up after a resize: settle straight onto the current slide at the new width.
-      cancelTentDrag();
+      if (!wasActive || !tentView.active || tentSlideWidth() === tentView.placedWidth) return;
+      // Still up, at a new width. A drag carries on under the finger; a move
+      // in flight counts if it was past halfway, and the slides settle on the
+      // current one. Dropping either here used to leave a swipe stuck.
+      if (tentView.drag) {
+        placeTentSlides(tentView.offset);
+        return;
+      }
       stopTentAnimation();
+      rebaseTentOffset();
       tentView.offset = 0;
       placeTentSlides(0);
       renderTentDots();
       if (tentView.renderPending) renderTentView();
       if (!tentView.timer) startTentTimer();
+    }
+
+    // Opening or folding the phone can change only the pixel density, which
+    // fires no resize.
+    function watchTentPixelRatio() {
+      matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener?.('change', () => {
+        requestTentViewSync();
+        watchTentPixelRatio();
+      }, { once: true });
     }
 
     function requestTentViewSync() {
@@ -11306,6 +11380,8 @@ Cancel = choose whether to delete the whole series.`);
       window.addEventListener('resize', requestTentViewSync);
       window.addEventListener('orientationchange', requestTentViewSync);
       matchMedia('(orientation: landscape)').addEventListener?.('change', requestTentViewSync);
+      screen.orientation?.addEventListener?.('change', requestTentViewSync);
+      watchTentPixelRatio();
       document.addEventListener('visibilitychange', () => {
         if (!tentView.active) return;
         if (document.hidden) {

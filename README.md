@@ -425,28 +425,45 @@ phone upright or open it and the page underneath is back exactly as it was.
 - **Photos.** Framed exactly like everywhere else in HomeDash (focus point and
   zoom from the editor). A task without a photo, or with one that is gone from
   Blob storage, gets the calm placeholder.
-- **How only the Duo gets it.** Both Duo screens are the same shape, about
-  1:1.45, so the shape alone cannot say which one is in use; only the outer one
-  is phone-sized (about 466 px across against about 626 inside). The check reads
-  the **physical screen** (`screen.width`/`height`), not the window, so dragging
-  a PC window or splitting an iPad to the same shape changes nothing. It turns
-  on only when all of these hold:
-  - the browser says iPhone (an iPad says iPad or Mac, a PC says Windows or Mac);
-  - the screen is 360–520 px across (every iPad is at least 744, the Duo's inner
-    screen about 626);
-  - the screen's shape is between 1:1.34 and 1:1.6 (ordinary iPhones are about
-    1:2.17, an iPhone SE 1:1.78);
-  - the window is wider than it is tall, i.e. the phone is on its side.
+- **How only the outer screen gets it.** Both Duo screens are the same shape,
+  about 1:1.45. Opened, the inner screen is as tall as the outer one and twice
+  as wide, so held normally it is landscape too, and it can be drawn at the
+  outer screen's size. "Small and landscape" was all the first version checked,
+  and the slideshow came up on the inner screen. Now it turns on only when all
+  of these hold, and each of the three middle ones rules the inner screen out
+  on its own:
+  - the **physical screen** (`screen.width`/`height`, not the window) is
+    360–520 px across and between 1:1.34 and 1:1.6. Dragging a PC window or
+    splitting an iPad to the same shape changes nothing; every iPad is at least
+    744 px across, and ordinary iPhones are about 1:2.17;
+  - it is at most about 1640 **real pixels** across (the outer screen has 1398,
+    the inner one 1878), however large those pixels are drawn;
+  - the **window fits on that screen**: a page on the inner screen that is still
+    told the outer screen's size is wider than it;
+  - the **phone itself is turned on its side** (90° or 270°). A tent is the
+    folded phone stood on its long edge; opened and held normally the phone is
+    upright, even though its inner screen is wider than tall;
+  - the window is wider than tall, and the browser says iPhone.
+
+  Opening the phone does not always fire an event a page hears, so while the
+  slideshow is up it looks again every second, and it also listens for the
+  pixel density changing.
 - **Rotation lock** has to be off on the phone, or the page never turns to
   landscape. Added to the home screen, HomeDash runs without Safari's bars and
   the slideshow fills the whole screen.
 - **The screen stays on** while the slideshow is up (Screen Wake Lock), since the
   phone stands on the table untouched. It is let go as soon as the phone is
   turned upright.
+- **Swiping.** A swipe that starts while the previous slide is still settling
+  (or while the slideshow is moving on by itself) carries on from the slide that
+  was arriving. It used to be able to reach only the slide already in view, so a
+  quick second swipe seemed to get stuck. The car lockscreen had the same fault
+  and has the same fix.
 - **Checking a phone.** The config menu (hold anywhere) has a *Tent view* line
-  with the screen size and shape the phone reports, and whether that counts as
-  the Duo's outer screen. If the Duo is ever not recognised, those numbers are
-  what the check needs to be adjusted to.
+  with what the phone reports: screen size and shape, real pixels across and
+  the pixel ratio, window size, and how far the phone is turned. If a screen is
+  ever recognised wrongly, those numbers, read on both screens, are what the
+  check needs to be adjusted to.
 - **Preview or switch off.** `?tent=1` shows it on any screen held in landscape,
   so it can be looked at on a PC; `?tent=0` keeps it off. Neither is remembered.
 
