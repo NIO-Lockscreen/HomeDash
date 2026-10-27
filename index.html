@@ -7223,7 +7223,8 @@
       state.selectedInstanceId = instanceId;
       state.selectedDayKey = dayKey;
       state.dailyCalendarMode = false;
-      state.upcomingPage = 0;
+      // Stay on the upcoming page the task was picked from; the idle reset
+      // still brings the list back to page 1.
       state.selectedEventFlipped = false;
       state.heroEventFlipped = false;
       noteInteraction();
