@@ -475,6 +475,16 @@ phone upright or open it and the page underneath is back exactly as it was.
 - **Preview or switch off.** `?tent=1` shows it on any screen held in landscape,
   so it can be looked at on a PC; `?tent=0` keeps it off. Neither is remembered.
 
+### Phone calendar on the outer screen, held upright
+
+The phone calendar uses the outer screen's full width. iOS reports about 84px
+of unsafe area down the outer screen's right side for its status icons, although
+they only take the top corner. Padding the whole page by it left an empty strip
+down one side. The phone layout's `padding` also had the left and right insets
+swapped, so the strip ended up on the left. The sides are now the right way
+round, and in portrait the page ignores the side insets (other iPhones report
+none upright). On its side, the insets still keep the page clear of the island.
+
 ## Weather effects
 
 The whole dashboard lives in `index.html` — the `<style>` and `<script>` blocks inside it are what the browser runs. There is no separate bundle to edit. (Two exported copies, `script.js` and `inline.js`, used to sit next to it; nothing loaded them, and two bug fixes were accidentally applied only to those copies and never reached the app. They have been deleted — put dashboard changes in `index.html`.)

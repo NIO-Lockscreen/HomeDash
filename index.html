@@ -3143,11 +3143,12 @@
         width: 100%;
         max-width: 520px;
         margin: 0 auto;
+        /* top, right, bottom, left */
         padding:
           calc(env(safe-area-inset-top, 0px) + 12px)
-          max(12px, env(safe-area-inset-left, 0px))
+          max(12px, env(safe-area-inset-right, 0px))
           calc(env(safe-area-inset-bottom, 0px) + 88px)
-          max(12px, env(safe-area-inset-right, 0px));
+          max(12px, env(safe-area-inset-left, 0px));
       }
 
       .admin-header {
@@ -3441,6 +3442,20 @@
       .config-help {
         font-size: 13px;
         line-height: 1.35;
+      }
+    }
+
+    /* Held upright, the phone calendar uses the full width. Other iPhones
+       report no side inset in portrait. The iPhone Duo's outer screen reports
+       about 84px on its right for its status icons, but they only take the
+       top corner, so padding the whole page by it left an empty strip down
+       one side. (The rule above also had the two sides swapped, which moved
+       that strip to the left.) Turned on its side, the insets still apply and
+       keep the page clear of the island. */
+    @media (max-width: 780px) and (orientation: portrait) {
+      .admin-shell {
+        padding-left: 12px;
+        padding-right: 12px;
       }
     }
 
