@@ -8807,10 +8807,10 @@
       upClean: true,
       popKey: '',
       popSprites: new Map(),
-      fogLayer: null,
       capCanvas: null,
       pop: null,
       ledgeState: null,
+      mistBuffer: null,
       sprites: { flake: null, flakeOut: null, fog: null, fogNight: null, glow: null, pile: null },
       surface: { front: new Float32Array(0), back: new Float32Array(0) },
       water: null,
@@ -9074,25 +9074,6 @@
       return sprite;
     }
 
-    function wxFogSprite(night) {
-      const key = night ? 'fogNight' : 'fog';
-      if (weatherFx.sprites[key]) return weatherFx.sprites[key];
-      const sprite = document.createElement('canvas');
-      sprite.width = sprite.height = 128;
-      const ctx = sprite.getContext('2d');
-      // Grey, not white: the frame around the card is pale, and white mist
-      // would vanish on it.
-      const tone = night ? '140,150,172' : '190,194,200';
-      const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-      gradient.addColorStop(0, `rgba(${tone},.9)`);
-      gradient.addColorStop(0.4, `rgba(${tone},.55)`);
-      gradient.addColorStop(1, `rgba(${tone},0)`);
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 128, 128);
-      weatherFx.sprites[key] = sprite;
-      return sprite;
-    }
-
     // The halo a lightning flash throws around the card, drawn once per size.
     function wxGlowSprite() {
       const fx = weatherFx;
@@ -9218,7 +9199,7 @@
         // anything to happen; drizzle, rain and thunder share the water.
         fx.water = family === 'water' ? newWaterState(0.38) : null;
         fx.snow = family === 'snow' ? newSnowState(0.42) : null;
-        fx.fog = family === 'fog' ? { puffs: [], clock: 0 } : null;
+        fx.fog = family === 'fog' ? { puffs: [], clock: 0, sideClock: 0, topClock: 0, burst: 0 } : null;
         fx.ledgeState = family === 'water' || family === 'snow' ? newLedgeState() : null;
       }
       const popKind = weatherPopKind(effect, night);
@@ -10052,41 +10033,164 @@
 
     // --- Fog -----------------------------------------------------------
 
+    // Mist made of many soft puffs, each lit from above (a pale top, a cool
+    // grey base), carried on a slow turbulent flow. Cold mist sinks: it spills
+    // over the card's bottom edge like dry ice over a shelf, drops into the
+    // gap, pools on the Upcoming strip's edge and creeps along it, and some of
+    // it curls on over the front of the strip and fades. Wisps also slip out
+    // of the card's sides and drift lazily over its top. It is drawn on the
+    // pop-out layer, in front of the border, so the card seems to stand in a
+    // bank of fog.
+    const WX_MIST_MAX = 170;
+
+    // One smooth puff, lit from above: pale on top, cool grey underneath.
+    function wxMistSprite(night) {
+      return wxPopSprite(`mist|${night ? 'n' : 'd'}`, 64, 64, ctx => {
+        const tone = ctx.createLinearGradient(0, 8, 0, 56);
+        // The frame around the card stays light at night too, so night mist
+        // is a pale, moonlit blue rather than dark smoke.
+        tone.addColorStop(0, night ? 'rgb(226,233,248)' : 'rgb(252,253,255)');
+        tone.addColorStop(1, night ? 'rgb(156,167,196)' : 'rgb(190,198,211)');
+        ctx.fillStyle = tone;
+        ctx.fillRect(0, 0, 64, 64);
+        ctx.globalCompositeOperation = 'destination-in';
+        const mask = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        mask.addColorStop(0, 'rgba(0,0,0,1)');
+        mask.addColorStop(0.45, 'rgba(0,0,0,.6)');
+        mask.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = mask;
+        ctx.fillRect(0, 0, 64, 64);
+      });
+    }
+
+    function spawnMist(fog, g, kind) {
+      const r = wxRand(16, 30) * g.scale;
+      const puff = {
+        age: 0,
+        life: wxRand(8, 13),
+        r,
+        r0: r,
+        grow: wxRand(1.7, 2.5),
+        a: wxRand(0.55, 1),
+        variant: Math.floor(Math.random() * 3),
+        seed: Math.random() * 100,
+        rot: Math.random() * 6.28,
+        spin: wxRand(-0.12, 0.12),
+        pooled: false,
+        spill: Math.random() < 0.35,
+        spilling: false,
+        kind
+      };
+      if (kind === 'bottom') {
+        Object.assign(puff, { x: wxRand(0.04, 0.96) * g.W, y: g.H - wxRand(2, 12), vx: wxRand(-5, 5), vy: wxRand(5, 12) });
+      } else if (kind === 'side') {
+        const side = Math.random() < 0.5 ? -1 : 1;
+        Object.assign(puff, { x: side < 0 ? wxRand(-2, 8) : g.W - wxRand(-2, 8), y: wxRand(0.35, 0.95) * g.H, vx: side * wxRand(5, 12), vy: wxRand(1, 5), life: wxRand(7, 10) });
+      } else {
+        Object.assign(puff, { x: wxRand(0.05, 0.95) * g.W, y: wxRand(-8, 2), vx: wxRand(-8, 8), vy: wxRand(-3, 0), life: wxRand(6, 9), r: r * 0.8, r0: r * 0.8, a: puff.a * 0.6 });
+      }
+      fog.puffs.push(puff);
+    }
+
     function stepFog(dt) {
       const fx = weatherFx;
       const fog = fx.fog;
       const g = fx.geo;
-      // Many faint puffs rather than a few strong ones: together they make
-      // an even haze instead of separate smudges.
-      fog.clock += dt * 6 * (g.W / 420);
-      while (fog.clock >= 1) {
-        fog.clock -= 1;
-        if (fog.puffs.length >= 80) continue;
-        const side = Math.random() < 0.22 ? (Math.random() < 0.5 ? -1 : 1) : 0;
-        fog.puffs.push(side
-          ? { x: side < 0 ? 2 : g.W - 2, y: wxRand(0.55, 0.95) * g.H, vx: side * wxRand(3, 8), vy: wxRand(2, 6), r: wxRand(20, 40) * g.scale, age: 0, life: wxRand(8, 12) }
-          : { x: wxRand(0.02, 0.98) * g.W, y: g.H - wxRand(4, 14), vx: wxRand(-4, 4) + (fx.windy ? 8 : 0), vy: wxRand(3, 8), r: wxRand(28, 54) * g.scale, age: 0, life: wxRand(8, 13) });
+      const L = wxLedge();
+      const boost = fog.burst > 0 ? 3.5 : 1;
+      fog.burst = Math.max(0, (fog.burst || 0) - dt);
+      fog.clock += dt * 9 * (g.W / 420) * boost;
+      fog.sideClock = (fog.sideClock || 0) + dt * 1.6 * boost;
+      fog.topClock = (fog.topClock || 0) + dt * 0.8;
+      for (const [clock, kind] of [['clock', 'bottom'], ['sideClock', 'side'], ['topClock', 'top']]) {
+        while (fog[clock] >= 1) {
+          fog[clock] -= 1;
+          if (fog.puffs.length < WX_MIST_MAX) spawnMist(fog, g, kind);
+        }
       }
+      const t = fx.time;
+      const wind = fx.windy ? 14 * g.side : 0;
       fog.puffs.forEach(puff => {
         puff.age += dt;
-        puff.x += puff.vx * dt;
-        puff.y += puff.vy * dt;
-        puff.r += 2.2 * g.scale * dt;
+        // A slow, turbulent flow, so the mist curls instead of sliding.
+        const flowX = Math.sin(puff.y * 0.031 + t * 0.35 + puff.seed) * 6 + Math.sin(puff.x * 0.017 - t * 0.22 + puff.seed * 0.5) * 4;
+        const flowY = Math.cos(puff.x * 0.027 + t * 0.3 + puff.seed * 1.7) * 3;
+        if (!puff.pooled) {
+          // Cold mist sinks.
+          if (puff.kind !== 'top') puff.vy += 5 * dt;
+          if (L && !puff.spilling && overLedge(puff.x) && puff.y + puff.r * 0.2 >= L.t && puff.y < L.t + 4) {
+            if (puff.spill) {
+              puff.spilling = true;
+            } else {
+              // Lands on the edge and spreads along it.
+              puff.pooled = true;
+              puff.vy = -wxRand(0.5, 2);
+              puff.vx += (Math.random() < 0.5 ? -1 : 1) * wxRand(6, 14);
+            }
+          }
+        } else {
+          puff.vy += (-1.2 - puff.vy) * Math.min(1, dt * 2);
+          puff.y = Math.min(puff.y, L ? L.t - puff.r * 0.15 : puff.y);
+        }
+        puff.vx *= 1 - Math.min(1, dt * 0.15);
+        puff.vy = Math.min(puff.vy, 16);
+        puff.x += (puff.vx + flowX + wind) * dt;
+        puff.y += (puff.vy + flowY * (puff.pooled ? 0.3 : 1)) * dt;
+        puff.r += (puff.r0 * (puff.grow - 1) / puff.life) * dt;
+        puff.rot += puff.spin * dt;
       });
-      fog.puffs = fog.puffs.filter(puff => puff.age < puff.life);
+      fog.puffs = fog.puffs.filter(puff => puff.age < puff.life && (!L || puff.y < L.t + 70));
     }
 
-    function drawFogSpill(ctx) {
+    // The puffs are gathered in a small, low-resolution buffer and then laid
+    // over the dashboard scaled up and slightly blurred, so they merge into
+    // one soft bank instead of showing as separate blobs.
+    const WX_MIST_RES = 0.45;
+
+    function drawPopMist(ctx) {
       const fx = weatherFx;
-      const sprite = wxFogSprite(fx.night);
-      fx.fog.puffs.forEach(puff => {
-        const alpha = 0.24 * Math.sin(Math.PI * puff.age / puff.life) * wxCoverFade(puff.x, puff.y);
-        if (alpha <= 0.01) return;
-        ctx.globalAlpha = alpha;
-        ctx.drawImage(sprite, puff.x - puff.r, puff.y - puff.r, puff.r * 2, puff.r * 2);
+      const fog = fx.fog;
+      if (!fog || !fog.puffs.length) return;
+      const g = fx.geo;
+      const L = wxLedge();
+      const padX = 150;
+      const top = -80;
+      const bottom = L ? L.t + 90 : g.H + 170;
+      const bw = g.W + padX * 2;
+      const bh = bottom - top;
+      let buffer = fx.mistBuffer;
+      if (!buffer) buffer = fx.mistBuffer = document.createElement('canvas');
+      const pw = Math.max(1, Math.ceil(bw * WX_MIST_RES));
+      const ph = Math.max(1, Math.ceil(bh * WX_MIST_RES));
+      if (buffer.width !== pw || buffer.height !== ph) {
+        buffer.width = pw;
+        buffer.height = ph;
+      }
+      const bc = buffer.getContext('2d');
+      bc.setTransform(1, 0, 0, 1, 0, 0);
+      bc.clearRect(0, 0, pw, ph);
+      bc.setTransform(WX_MIST_RES, 0, 0, WX_MIST_RES, padX * WX_MIST_RES, -top * WX_MIST_RES);
+      const sprite = wxMistSprite(fx.night).canvas;
+      const textLine = g.H - g.textSafe;
+      fog.puffs.forEach(puff => {
+        const life = puff.age / puff.life;
+        let alpha = 0.5 * puff.a * wxSmooth(0, 0.15, life) * (1 - wxSmooth(0.55, 1, life));
+        // What curls on over the front of the strip fades as it goes down.
+        if (L && puff.spilling) alpha *= 1 - wxSmooth(L.t + 6, L.t + 45, puff.y);
+        // Over the readout itself it thins out, so the text stays legible.
+        if (puff.x > 0 && puff.x < g.W && puff.y > 12 && puff.y < textLine) alpha *= 0.25;
+        if (alpha <= 0.004) return;
+        const size = puff.r * 3.2;
+        bc.globalAlpha = alpha;
+        bc.drawImage(sprite, puff.x - size / 2, puff.y - size / 2, size, size);
       });
-      ctx.globalAlpha = 1;
-      return fx.fog.puffs.length > 0;
+      bc.globalAlpha = 1;
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.filter = `blur(${(1.6 * g.dpr).toFixed(1)}px)`;
+      ctx.drawImage(buffer, -padX, top, bw, bh);
+      ctx.restore();
     }
 
     // --- The Upcoming strip as a ledge ------------------------------------
@@ -10256,7 +10360,11 @@
       const max = wxClamp(g.H * 0.03, 6, 11) * g.scale;
       s.snowMax = max;
       for (let index = 0; index < s.cols; index++) snow[index] = Math.max(0, snow[index] - WX_LEDGE_SNOW_SETTLE_PX_S * dt);
-      for (let index = 0; index < s.cols - 1; index++) {
+      // A heap keeps to its natural slope, and only under the card it falls
+      // from: snow does not creep along the whole strip.
+      const first = Math.max(0, ledgeIndex(-30));
+      const last = Math.min(s.cols - 1, ledgeIndex(g.W + 30));
+      for (let index = first; index < last; index++) {
         const diff = snow[index] - snow[index + 1];
         if (Math.abs(diff) > 2.2) {
           const move = (Math.abs(diff) - 2.2) * 0.25 * Math.sign(diff);
@@ -10433,49 +10541,66 @@
       }
     }
 
-    // The drift on the edge, in front of everything (pop layer).
+    // The drift on the edge, in front of everything (pop layer). Only where
+    // snow actually lies: each heap is its own shape, with rounded ends.
     function drawLedgeSnow(ctx) {
       const fx = weatherFx;
       const L = wxLedge();
       const s = fx.ledgeState;
       if (!L || !s || !s.cols) return;
-      let any = false;
-      for (let index = 0; index < s.cols; index++) if (s.snow[index] > 0.4) { any = true; break; }
-      if (!any) return;
-      const heightAt = index => {
-        const x = L.l + index * WX_LEDGE_STEP;
-        return overLedge(x) ? s.snow[index] : 0;
+      const smooth = index => {
+        const at = k => {
+          const i = Math.max(0, Math.min(s.cols - 1, k));
+          return overLedge(L.l + i * WX_LEDGE_STEP) ? s.snow[i] : 0;
+        };
+        return (at(index - 2) + at(index - 1) * 2 + at(index) * 3 + at(index + 1) * 2 + at(index + 2)) / 9;
       };
-      const path = () => {
-        ctx.beginPath();
-        ctx.moveTo(L.l, L.t + 1.4);
-        for (let index = 0; index < s.cols; index++) {
-          const x = L.l + index * WX_LEDGE_STEP;
-          const h = (heightAt(Math.max(0, index - 1)) + heightAt(index) * 2 + heightAt(Math.min(s.cols - 1, index + 1))) / 4;
-          ctx.lineTo(x, L.t + 1.4 - h);
+      const base = L.t + 1.2;
+      const heaps = [];
+      let start = -1;
+      for (let index = 0; index <= s.cols; index++) {
+        const h = index < s.cols ? smooth(index) : 0;
+        if (h > 0.35 && start < 0) start = index;
+        if ((h <= 0.35 || index === s.cols) && start >= 0) {
+          heaps.push([start, index - 1]);
+          start = -1;
         }
-        ctx.lineTo(L.r, L.t + 1.4);
+      }
+      heaps.forEach(([from, to]) => {
+        const x0 = L.l + from * WX_LEDGE_STEP - 3;
+        const x1 = L.l + to * WX_LEDGE_STEP + 3;
+        const contour = () => {
+          ctx.moveTo(x0, base);
+          for (let index = from; index <= to; index++) ctx.lineTo(L.l + index * WX_LEDGE_STEP, base - smooth(index));
+          ctx.lineTo(x1, base);
+        };
+        // Its shadow on the face of the strip, just under the edge.
+        ctx.beginPath();
+        ctx.moveTo(x0 + 2, base);
+        ctx.lineTo(x1 - 2, base);
+        ctx.lineTo(x1 - 4, base + 5);
+        ctx.lineTo(x0 + 4, base + 5);
         ctx.closePath();
-      };
-      // Its shadow on the face of the strip, just under the edge.
-      const shade = ctx.createLinearGradient(0, L.t + 1, 0, L.t + 7);
-      shade.addColorStop(0, 'rgba(50,76,116,.16)');
-      shade.addColorStop(1, 'rgba(50,76,116,0)');
-      ctx.save();
-      path();
-      ctx.translate(0, 4);
-      ctx.fillStyle = shade;
-      ctx.fill();
-      ctx.restore();
-      path();
-      const fill = ctx.createLinearGradient(0, L.t - s.snowMax * 1.3, 0, L.t + 1.4);
-      fill.addColorStop(0, fx.night ? 'rgba(236,243,255,.96)' : '#ffffff');
-      fill.addColorStop(1, fx.night ? 'rgba(170,190,226,.95)' : 'rgba(220,231,246,.97)');
-      ctx.fillStyle = fill;
-      ctx.fill();
-      ctx.lineWidth = 0.8;
-      ctx.strokeStyle = 'rgba(110,140,182,.35)';
-      ctx.stroke();
+        const shade = ctx.createLinearGradient(0, base, 0, base + 5);
+        shade.addColorStop(0, 'rgba(50,76,116,.16)');
+        shade.addColorStop(1, 'rgba(50,76,116,0)');
+        ctx.fillStyle = shade;
+        ctx.fill();
+        ctx.beginPath();
+        contour();
+        ctx.closePath();
+        const fill = ctx.createLinearGradient(0, base - s.snowMax * 1.3, 0, base);
+        fill.addColorStop(0, fx.night ? 'rgba(236,243,255,.96)' : '#ffffff');
+        fill.addColorStop(1, fx.night ? 'rgba(170,190,226,.95)' : 'rgba(220,231,246,.97)');
+        ctx.fillStyle = fill;
+        ctx.fill();
+        // Outline only along the top of the heap.
+        ctx.beginPath();
+        contour();
+        ctx.lineWidth = 0.8;
+        ctx.strokeStyle = 'rgba(110,140,182,.35)';
+        ctx.stroke();
+      });
     }
 
     // --- Out of the frame: the pop-out layer -------------------------------
@@ -11092,83 +11217,6 @@
     }
 
     // --- Fog -------------------------------------------------------------
-
-    const WX_POP_FOG_X = 90;
-    const WX_POP_FOG_Y = 70;
-
-    function wxFogBand(width, height, seed, night) {
-      width = Math.round(width);
-      height = Math.round(height);
-      return wxPopSprite(`fog-band|${width}|${height}|${seed}|${night ? 'n' : 'd'}`, width, height, (ctx, w, h) => {
-        const rnd = wxMulberry(seed);
-        const tone = night ? '150,160,182' : '200,204,210';
-        // One continuous soft strip, with big faint billows rolling in it.
-        const strip = ctx.createLinearGradient(0, 0, 0, h);
-        strip.addColorStop(0, `rgba(${tone},0)`);
-        strip.addColorStop(0.5, `rgba(${tone},.24)`);
-        strip.addColorStop(1, `rgba(${tone},0)`);
-        ctx.fillStyle = strip;
-        ctx.fillRect(0, 0, w, h);
-        ctx.filter = 'blur(5px)';
-        for (let index = 0; index < 26; index++) {
-          const x = rnd() * w;
-          const y = h / 2 + (rnd() - 0.5) * h * 0.25;
-          const r = h * (0.32 + rnd() * 0.28);
-          [x - w, x, x + w].forEach(px => {
-            const puff = ctx.createRadialGradient(px, y, 0, px, y, r);
-            puff.addColorStop(0, `rgba(${tone},.16)`);
-            puff.addColorStop(1, `rgba(${tone},0)`);
-            ctx.fillStyle = puff;
-            ctx.beginPath();
-            ctx.arc(px, y, r, 0, Math.PI * 2);
-            ctx.fill();
-          });
-        }
-      });
-    }
-
-    function drawPopFog(ctx) {
-      const fx = weatherFx;
-      const g = fx.geo;
-      const layerW = Math.ceil(g.W + WX_POP_FOG_X * 2);
-      const layerH = Math.ceil(g.H + WX_POP_FOG_Y * 2);
-      let layer = fx.fogLayer;
-      if (!layer) layer = fx.fogLayer = document.createElement('canvas');
-      if (layer.width !== Math.round(layerW * g.dpr) || layer.height !== Math.round(layerH * g.dpr)) {
-        layer.width = Math.round(layerW * g.dpr);
-        layer.height = Math.round(layerH * g.dpr);
-      }
-      const lc = layer.getContext('2d');
-      lc.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
-      lc.globalCompositeOperation = 'source-over';
-      lc.clearRect(0, 0, layerW, layerH);
-      const surge = 1 + fx.pop.surge;
-      const bands = [
-        { y: g.H + 4, h: 70, speed: 7, seed: 3, a: 1 },
-        { y: g.H + 14, h: 56, speed: -5, seed: 9, a: 0.8 },
-        { y: -8, h: 50, speed: 4, seed: 15, a: 0.55 }
-      ];
-      bands.forEach(band => {
-        const sprite = wxFogBand(layerW, band.h * g.scale, band.seed, fx.night);
-        const offset = ((fx.time * band.speed * g.scale) % layerW + layerW) % layerW;
-        const y = WX_POP_FOG_Y + band.y - sprite.h / 2;
-        lc.globalAlpha = Math.min(1, band.a * surge);
-        lc.drawImage(sprite.canvas, offset - layerW, y, layerW, sprite.h);
-        lc.drawImage(sprite.canvas, offset, y, layerW, sprite.h);
-      });
-      lc.globalAlpha = 1;
-      // Only around the card: fade out sideways.
-      lc.globalCompositeOperation = 'destination-in';
-      const mask = lc.createLinearGradient(0, 0, layerW, 0);
-      mask.addColorStop(0, 'rgba(0,0,0,0)');
-      mask.addColorStop(WX_POP_FOG_X / layerW, 'rgba(0,0,0,1)');
-      mask.addColorStop(1 - WX_POP_FOG_X / layerW, 'rgba(0,0,0,1)');
-      mask.addColorStop(1, 'rgba(0,0,0,0)');
-      lc.fillStyle = mask;
-      lc.fillRect(0, 0, layerW, layerH);
-      lc.globalCompositeOperation = 'source-over';
-      ctx.drawImage(layer, -WX_POP_FOG_X, -WX_POP_FOG_Y, layerW, layerH);
-    }
 
     // --- Rain on the card ------------------------------------------------
 
@@ -11822,7 +11870,7 @@
       if (kind === 'clouds' || kind === 'sun-cloud' || kind === 'moon-cloud') drawPopClouds(ctx);
       if (pop.flare) drawPopFlare(ctx);
       if (pop.stars.length) drawPopStars(ctx);
-      if (kind === 'fog') drawPopFog(ctx);
+      if (kind === 'fog') drawPopMist(ctx);
       if (kind === 'rain' || kind === 'thunder') drawPopRain(ctx);
       if (kind === 'snow') drawPopSnow(ctx);
       if (pop.bolt) drawPopBolt(ctx);
@@ -11839,8 +11887,7 @@
       else if (kind === 'moon' || kind === 'moon-cloud') spawnShootingStar();
       else if (kind === 'clouds') spawnCloudWisp();
       else if (kind === 'fog') {
-        pop.surge = 1.2;
-        if (fx.fog) fx.fog.clock += 20;
+        if (fx.fog) fx.fog.burst = 4;
       } else if (kind === 'rain') spawnRunner();
       else if (kind === 'thunder') strikeLightningNow();
       else if (kind === 'snow') {
@@ -11913,7 +11960,6 @@
       ctx.translate(g.sx, g.sy);
       if (fx.family === 'water') drew = drawWaterSpill(ctx) || drew;
       else if (fx.family === 'snow') drew = drawSnowSpill(ctx) || drew;
-      else if (fx.family === 'fog') drew = drawFogSpill(ctx) || drew;
       if (fx.ledgeState) drew = drawLedgeSpill(ctx) || drew;
       if (fx.pop?.iceDrops?.length) {
         drew = true;
@@ -12005,7 +12051,7 @@
         fx.snow.cols = fx.snow.cols.map((value, index) => Math.max(value, fx.snow.profile[index] * 0.85));
         startSnowSift();
       } else if (fx.fog && fx.geo) {
-        for (let index = 0; index < 12; index++) fx.fog.clock += 1;
+        fx.fog.burst = 3;
       }
       renderWeatherDebug();
     }

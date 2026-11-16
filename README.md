@@ -545,8 +545,17 @@ What each sky does:
   neighbouring card, drifting slowly, each with a shadow on whatever is behind
   it. About once a minute a small cloud breaks off and drifts away over the
   next card. Clouds are kept clear of the temperature and its icon.
-- **Fog**: soft banks of mist roll along the top and bottom edges, in front of
-  the border, and mist also pours out under the card.
+- **Fog**: the card stands in a bank of mist. Many soft puffs, each lit from
+  above (pale on top, cool grey underneath), ride a slow, turbulent flow, so
+  the mist curls rather than slides. Cold mist sinks: it spills over the card's
+  bottom edge like dry ice over a shelf, drops into the gap, pools on the
+  Upcoming strip's edge and creeps along it, and about a third of it curls on
+  over the front of the strip and fades. Wisps also slip out of the card's
+  sides and drift over its top. The puffs are gathered in a small
+  low-resolution buffer and laid over the dashboard slightly blurred, so they
+  merge into one soft bank instead of showing as separate blobs. Over the
+  readout itself the mist thins out, so the text stays legible. At night it is
+  a pale, moonlit blue, since the frame around the card stays light.
 - **Wind** (any sky): streaks blow out of the card's side, towards the
   neighbouring card.
 
@@ -590,9 +599,11 @@ edge of the Upcoming strip instead of vanishing under it.
   fits and starts, wandering a little, behind the *Upcoming* title and on under
   the photos (they show again in the gaps between them). Each leaves a wet
   trail that dries in about twelve seconds; the film dries slowly too.
-- **Snow** (sifted powder, falling flakes) builds a small drift on the edge.
+- **Snow** (sifted powder, falling flakes) builds a small heap on the edge,
+  right under the weather card where it falls; it keeps a natural slope but
+  never creeps along the rest of the strip, and only the heap itself is drawn.
   Where it grows too tall, a lump slides over and tumbles down the face, under
-  the photos. The drift keeps a natural slope and settles slowly.
+  the photos. The heap settles slowly.
 - Drips from the icicles splash on the edge.
 
 When there is no Upcoming strip under the card, things fall on under whatever
@@ -619,6 +630,8 @@ On the wall display, press **Q** to open a small panel in the top right corner:
   live.
 - **Night** and **Windy** switch on the dark sky and the wind gusts. Used on the
   live sky, they start a test of that same sky.
+- In fog, *Pour mist now* and *Mist rolls in* both send a burst of mist over
+  the edge for a few seconds.
 - **Fill up now** fills the water or the snow pile (and the snow cap and
   icicles) to full, so the leak or the spill follows a few seconds later.
   **Leak now** (or *Spill snow now* / *Pour mist now*) starts it straight away.
