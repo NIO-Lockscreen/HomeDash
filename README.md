@@ -588,6 +588,26 @@ What each sky does:
   under its overhang, icicles grow from the bottom edge and drip, and large,
   soft, out-of-focus flakes fall past the card's sides as if close to the eye.
 - **Fog** pours over the bottom edge as a grey haze that pools under the card.
+### A few particles leak out
+
+The card's own CSS rain drops and snowflakes are cut off at its border, but
+about one in a hundred of the ones that reach it is not. The rate is worked out
+from the particles actually animating in the card (each one's fall time), so it
+stays at 1% whatever the sky: roughly 20 to 35 drops a minute in rain, 8 in
+drizzle, 2 to 4 flakes a minute in snow. Each leaker copies the size, length,
+slant, speed and sway of a randomly picked live particle and is drawn on the
+spill layer, outside the card only, so it seems to pass through the border
+rather than appear at it.
+
+- Drops fall out of the bottom and splash on the Upcoming strip. The gap there
+  is short, so about a third slip out of a side instead (mostly the left, as
+  the rain drifts left), nudged outwards, and fall the whole way down beside
+  the card. Outside, on the pale frame, they are drawn in the day colour even
+  at night, or they would not show.
+- Flakes drift out of the bottom onto the Upcoming strip's heap, or sway out
+  over a side and slide under the next card.
+- In the Q panel, *Leak now* / *Spill snow now* also sends five of them at once.
+
 ### The Upcoming strip as a ledge
 
 Water and snow that fall out of the bottom of the weather card land on the top

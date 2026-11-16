@@ -8811,6 +8811,8 @@
       pop: null,
       ledgeState: null,
       mistBuffer: null,
+      leak: null,
+      leakKey: '',
       sprites: { flake: null, flakeOut: null, fog: null, fogNight: null, glow: null, pile: null },
       surface: { front: new Float32Array(0), back: new Float32Array(0) },
       water: null,
@@ -9202,6 +9204,13 @@
         fx.fog = family === 'fog' ? { puffs: [], clock: 0, sideClock: 0, topClock: 0, burst: 0 } : null;
         fx.ledgeState = family === 'water' || family === 'snow' ? newLedgeState() : null;
       }
+      // The CSS particles were just rebuilt when the sky changed: read them
+      // again, so the ones that leak out keep matching them.
+      const leakKey = state.weatherEffectKey;
+      if (leakKey !== fx.leakKey) {
+        fx.leakKey = leakKey;
+        fx.leak = readWeatherLeaks(effect);
+      }
       const popKind = weatherPopKind(effect, night);
       if (popKind !== fx.pop?.kind) fx.pop = popKind ? newPopState(popKind) : null;
       // The readout was just re-rendered: its lowest line may have moved.
@@ -9271,6 +9280,7 @@
       if (fx.family === 'water') stepWater(dt);
       else if (fx.family === 'snow') stepSnow(dt);
       else if (fx.family === 'fog') stepFog(dt);
+      stepLeaks(dt);
       stepLedge(dt);
       stepPop(dt, flashState);
       drawWeatherFxCard();
@@ -10191,6 +10201,154 @@
       ctx.filter = `blur(${(1.6 * g.dpr).toFixed(1)}px)`;
       ctx.drawImage(buffer, -padX, top, bw, bh);
       ctx.restore();
+    }
+
+    // --- Particles that leak out ------------------------------------------
+    //
+    // The card's own CSS rain drops and snowflakes are cut off at its border.
+    // About one in a hundred of the ones that reach the border is not: a twin
+    // drawn on the spill layer takes over right at the edge and carries on
+    // with the same size, length, slant, speed and sway, copied from one of
+    // the live particles. Drops fall into the gap and splash on the Upcoming
+    // strip; flakes drift out of the bottom, or sway out over a side and slide
+    // under the next card.
+    const WX_LEAK_SHARE = 0.01;
+    const WX_LEAK_MAX = 24;
+    const WX_RAIN_TILT = Math.sin((14 * Math.PI) / 180);
+
+    // Read the live particles: how many reach the border each second, and
+    // what they look like.
+    function readWeatherLeaks(effect) {
+      const kind = effect === 'snow' ? 'snow' : weatherFxFamily(effect) === 'water' ? 'rain' : null;
+      if (!kind || !els.weatherEffect) return null;
+      const num = (element, name) => parseFloat(element.style.getPropertyValue(name)) || 0;
+      const params = [];
+      let perSecond = 0;
+      els.weatherEffect.querySelectorAll(kind === 'snow' ? '.flake' : '.drop').forEach(element => {
+        const dur = num(element, '--dur');
+        if (dur <= 0) return;
+        perSecond += 1000 / dur;
+        params.push(kind === 'snow'
+          ? { dur, size: num(element, '--size'), drift: num(element, '--drift'), sway: num(element, '--sway'), blur: num(element, '--blur'), o: num(element, '--o') || 0.8 }
+          : { dur, h: num(element, '--h'), w: num(element, '--w'), o: num(element, '--o') || 0.6 });
+      });
+      return { kind, params, rate: perSecond * WX_LEAK_SHARE, clock: Math.random(), items: [] };
+    }
+
+    function spawnLeak(leak, g) {
+      const p = leak.params[Math.floor(Math.random() * leak.params.length)];
+      const seconds = p.dur / 1000;
+      if (leak.kind === 'rain') {
+        // Same travel as wxRainFall: 152% of the card down, 7% of it to the
+        // left, over one duration.
+        const vx = (-0.07 * g.W) / seconds;
+        const vy = (1.52 * g.H) / seconds;
+        // The gap under the card is short, so about a third slip out of a
+        // side instead, nudged outwards, and fall the whole way down beside
+        // the card. Rain drifts left, so mostly out of the left side.
+        if (Math.random() < 0.35) {
+          const side = Math.random() < 0.75 ? -1 : 1;
+          leak.items.push({
+            x: side < 0 ? -wxRand(1, 3) : g.W + wxRand(1, 3),
+            y: wxRand(0.1, 0.75) * g.H,
+            vx: vx + side * wxRand(30, 60) * g.scale,
+            vy,
+            len: p.h,
+            w: p.w,
+            o: p.o
+          });
+          return;
+        }
+        leak.items.push({
+          x: wxRand(0.03, 0.97) * g.W,
+          y: g.H - wxRand(0, p.h * 0.4),
+          vx,
+          vy,
+          len: p.h,
+          w: p.w,
+          o: p.o
+        });
+        return;
+      }
+      const side = Math.random() < 0.25 ? (Math.random() < 0.5 ? -1 : 1) : 0;
+      leak.items.push({
+        bx: side > 0 ? g.W + wxRand(-0.2, 0.6) * p.drift : side < 0 ? -wxRand(-0.2, 0.6) * p.drift : wxRand(0.03, 0.97) * g.W,
+        x: 0,
+        y: side ? wxRand(0.3, 0.9) * g.H : g.H - p.size,
+        vy: (1.42 * g.H) / seconds,
+        size: p.size,
+        drift: p.drift,
+        period: (2 * p.sway) / 1000,
+        phase: Math.random() * Math.PI * 2,
+        o: p.o * (p.blur > 1 ? 0.7 : 1)
+      });
+    }
+
+    function stepLeaks(dt) {
+      const fx = weatherFx;
+      const leak = fx.leak;
+      if (!leak || !leak.params.length) return;
+      const g = fx.geo;
+      leak.clock += dt * leak.rate;
+      while (leak.clock >= 1) {
+        leak.clock -= 1;
+        if (leak.items.length < WX_LEAK_MAX) spawnLeak(leak, g);
+      }
+      const ledge = wxLedge();
+      leak.items.forEach(item => {
+        item.y += item.vy * dt;
+        if (leak.kind === 'rain') item.x += item.vx * dt;
+        else item.x = item.bx + item.drift * Math.sin((2 * Math.PI * fx.time) / item.period + item.phase);
+      });
+      leak.items = leak.items.filter(item => {
+        if (ledge && overLedge(item.x) && item.y >= ledge.t - 1) {
+          if (leak.kind === 'rain') ledgeLand('water', item.x, 0.25, item.vy);
+          else ledgeLand('snow', item.x, 0.4 * g.scale);
+          return false;
+        }
+        return item.y < g.H + WX_FX_PAD_BOTTOM + 20 && item.x > -WX_FX_PAD_X && item.x < g.W + WX_FX_PAD_X;
+      });
+    }
+
+    // On the spill layer, outside the card only, so each one seems to pass
+    // through the border rather than appear at it.
+    function drawLeaks(ctx) {
+      const fx = weatherFx;
+      const leak = fx.leak;
+      if (!leak || !leak.items.length) return false;
+      if (leak.kind === 'rain') {
+        // Outside, on the pale frame, a drop needs a darker blue than the
+        // light one the card uses at night.
+        const colour = fx.night || fx.effect === 'thunder' ? '90,118,170' : '34,58,88';
+        ctx.lineCap = 'round';
+        leak.items.forEach(item => {
+          const alpha = item.o * wxCoverFade(item.x, item.y);
+          if (alpha <= 0.01) return;
+          const tx = item.x + WX_RAIN_TILT * item.len;
+          const ty = item.y - Math.cos((14 * Math.PI) / 180) * item.len;
+          const streak = ctx.createLinearGradient(tx, ty, item.x, item.y);
+          streak.addColorStop(0, `rgba(${colour},0)`);
+          streak.addColorStop(0.78, `rgba(${colour},${(0.82 * alpha).toFixed(3)})`);
+          streak.addColorStop(1, `rgba(${colour},${(0.9 * alpha).toFixed(3)})`);
+          ctx.beginPath();
+          ctx.moveTo(tx, ty);
+          ctx.lineTo(item.x, item.y);
+          ctx.lineWidth = item.w;
+          ctx.strokeStyle = streak;
+          ctx.stroke();
+        });
+      } else {
+        const sprite = wxFlakeSprite(true);
+        leak.items.forEach(item => {
+          const alpha = item.o * wxCoverFade(item.x, item.y);
+          if (alpha <= 0.01) return;
+          const size = item.size * 2.4;
+          ctx.globalAlpha = alpha;
+          ctx.drawImage(sprite, item.x - size / 2, item.y - size / 2, size, size);
+        });
+        ctx.globalAlpha = 1;
+      }
+      return true;
     }
 
     // --- The Upcoming strip as a ledge ------------------------------------
@@ -11961,6 +12119,7 @@
       if (fx.family === 'water') drew = drawWaterSpill(ctx) || drew;
       else if (fx.family === 'snow') drew = drawSnowSpill(ctx) || drew;
       if (fx.ledgeState) drew = drawLedgeSpill(ctx) || drew;
+      drew = drawLeaks(ctx) || drew;
       if (fx.pop?.iceDrops?.length) {
         drew = true;
         ctx.fillStyle = 'rgba(176,206,240,.9)';
@@ -12053,6 +12212,8 @@
       } else if (fx.fog && fx.geo) {
         fx.fog.burst = 3;
       }
+      // And a handful of the card's own drops or flakes leak out with it.
+      if (fx.leak?.params.length && fx.geo) for (let index = 0; index < 5; index++) spawnLeak(fx.leak, fx.geo);
       renderWeatherDebug();
     }
 
@@ -12070,6 +12231,7 @@
         parts.push(`snow ${Math.round((total / WX_SNOW_COLS) * 100)}% · ${phase}`);
       } else if (fx.fog) parts.push('mist pours over the edge');
       if (fx.ledgeState?.wet > 0.08 || fx.ledgeState?.rivulets.length) parts.push(`${fx.ledgeState.rivulets.length} rivulets on the Upcoming strip`);
+      if (fx.leak?.params.length) parts.push(`${fx.leak.kind === 'snow' ? 'flakes' : 'drops'} leaking ${(fx.leak.rate * 60).toFixed(0)}/min`);
       if (fx.pop?.flare) parts.push('flare');
       if (fx.pop?.kind === 'snow') parts.push(`snow cap ${Math.round(fx.pop.cap * 100)}%`);
       if (!fx.running && (fx.family || fx.pop) && !wxReducedMotion.matches) parts.push('paused while the card is hidden');
