@@ -842,6 +842,157 @@
       .weather-effect .gust { display: none; }
     }
 
+    /* ------------------------------------------------------------------
+       Weather that leaves the card.
+
+       Two canvases, both drawn by one animation loop (weatherFx in the
+       script). #weatherFx lies inside the card, in front of the readout: the
+       water that fills the bottom when it rains, the snow that piles up.
+       Both stop just below the lowest line of text, so the readout stays
+       dry; behind the frosted hourly table they could hardly be seen. #weatherSpill lies in the dashboard frame itself, over
+       the weather card but under every other card, and only ever draws
+       outside the weather card: water that leaks out through the bottom
+       edge, snowflakes that drift out, mist that pours over the edge, the
+       glow of a lightning flash. Anything that falls on from there passes
+       under the clock, the photo or the Upcoming strip.
+       ------------------------------------------------------------------ */
+    .kiosk-shell { position: relative; }
+    .weather-card { z-index: 1; }
+    .clock-card,
+    .event-hero,
+    .upcoming-card {
+      position: relative;
+      z-index: 3;
+    }
+
+    .weather-card > canvas.weather-fx {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 3;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 900ms ease;
+    }
+
+    .kiosk-shell > canvas.weather-spill {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 0;
+      height: 0;
+      z-index: 2;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 900ms ease;
+    }
+
+    .weather-card > canvas.weather-fx.is-on,
+    .kiosk-shell > canvas.weather-spill.is-on { opacity: 1; }
+
+    /* The canvas draws ripples where the drops meet the water instead. */
+    .weather-card.wx-fx-water .weather-effect .splash { display: none; }
+
+    .weather-card.show-selected-event > canvas.weather-fx,
+    .kiosk-shell.daily-calendar-mode canvas.weather-fx,
+    .kiosk-shell.daily-calendar-mode canvas.weather-spill { display: none; }
+
+    /* Weather test panel (press Q on the wall display). */
+    .wx-debug {
+      position: fixed;
+      right: 18px;
+      top: 18px;
+      z-index: 60;
+      width: min(340px, calc(100vw - 36px));
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border-radius: 22px;
+      background: rgba(255, 252, 247, 0.94);
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      box-shadow: 0 22px 60px rgba(47, 43, 39, 0.24);
+      backdrop-filter: blur(18px);
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .wx-debug-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .wx-debug-title {
+      font-weight: 950;
+      letter-spacing: -.01em;
+      font-size: 15px;
+    }
+
+    .wx-debug-hint { color: var(--muted); font-weight: 650; font-size: 12px; }
+
+    .wx-debug-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .wx-debug-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .wx-debug-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .wx-debug-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .wx-debug button {
+      min-height: 36px;
+      padding: 6px 8px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      font-weight: 800;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+
+    .wx-debug button.is-on {
+      background: #2f2b27;
+      border-color: #2f2b27;
+      color: #fff;
+    }
+
+    .wx-debug button:disabled { opacity: .4; cursor: default; }
+
+    .wx-debug-status {
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      min-height: 1.3em;
+    }
+
+    .wx-debug-badge {
+      position: fixed;
+      left: 50%;
+      top: 10px;
+      z-index: 59;
+      transform: translateX(-50%);
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: rgba(47, 43, 39, 0.78);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .02em;
+      pointer-events: none;
+    }
+
     .weather-content {
       display: grid;
       gap: clamp(12px, 1.4vmin, 20px);
@@ -3787,12 +3938,17 @@
       transform: translateY(-50%);
     }
 
+    /* The grab area reaches well past the visible grip, so a pull can start
+       a finger's width in from the screen edge. A swipe that starts right on
+       the edge belongs to Windows (Widgets / Task View) and never reaches the
+       page. A tap on the part of it that lies over the clock still reaches
+       the clock: only a sideways pull is kept for the panel. */
     .edge-panel-handle {
       position: absolute;
       left: 0;
       top: 50%;
-      width: 34px;
-      height: 104px;
+      width: 112px;
+      height: clamp(180px, 34vh, 300px);
       transform: translateY(-50%);
       pointer-events: auto;
       touch-action: none;
@@ -3804,7 +3960,7 @@
     .edge-panel-handle::before {
       content: '';
       position: absolute;
-      left: 5px;
+      left: 8px;
       top: 50%;
       width: 6px;
       height: 62px;
@@ -4389,6 +4545,7 @@
 </head>
 <body>
   <main id="displayView" class="kiosk-shell" aria-live="polite">
+    <canvas id="weatherSpill" class="weather-spill" aria-hidden="true"></canvas>
     <section class="left-stack">
       <article id="clockCard" class="clock-card">
         <div>
@@ -4400,6 +4557,7 @@
 
       <article id="weatherCard" class="weather-card">
         <div id="weatherEffect" class="weather-effect partly" aria-hidden="true"></div>
+        <canvas id="weatherFx" class="weather-fx" aria-hidden="true"></canvas>
         <div id="weatherContent" class="weather-content">
           <div class="current-weather">
             <div id="weatherIcon" class="weather-icon">🌤️</div>
@@ -4814,6 +4972,46 @@
     </section>
   </div>
 
+  <section id="wxDebug" class="wx-debug hidden" role="dialog" aria-label="Weather test">
+    <div class="wx-debug-head">
+      <div>
+        <div class="wx-debug-title">Weather test</div>
+        <div class="wx-debug-hint">Q or Esc closes · the test stays on</div>
+      </div>
+      <button id="wxDebugClose" type="button" aria-label="Close weather test">×</button>
+    </div>
+    <div class="wx-debug-label">Sky</div>
+    <div class="wx-debug-grid" id="wxDebugSky">
+      <button type="button" data-wx-sky="live">Live</button>
+      <button type="button" data-wx-sky="clear">Clear</button>
+      <button type="button" data-wx-sky="partly">Partly</button>
+      <button type="button" data-wx-sky="clouds">Clouds</button>
+      <button type="button" data-wx-sky="fog">Fog</button>
+      <button type="button" data-wx-sky="drizzle">Drizzle</button>
+      <button type="button" data-wx-sky="rain">Rain</button>
+      <button type="button" data-wx-sky="snow">Snow</button>
+      <button type="button" data-wx-sky="thunder">Thunder</button>
+    </div>
+    <div class="wx-debug-grid two">
+      <button type="button" id="wxDebugNight">Night</button>
+      <button type="button" id="wxDebugWind">Windy</button>
+    </div>
+    <div class="wx-debug-label">Water and snow</div>
+    <div class="wx-debug-grid two">
+      <button type="button" id="wxDebugFill">Fill up now</button>
+      <button type="button" id="wxDebugSpill">Leak / spill now</button>
+    </div>
+    <div class="wx-debug-label">Speed of fill and leak</div>
+    <div class="wx-debug-grid four" id="wxDebugSpeed">
+      <button type="button" data-wx-speed="1">1×</button>
+      <button type="button" data-wx-speed="4">4×</button>
+      <button type="button" data-wx-speed="12">12×</button>
+      <button type="button" data-wx-speed="40">40×</button>
+    </div>
+    <div id="wxDebugStatus" class="wx-debug-status"></div>
+  </section>
+  <div id="wxDebugBadge" class="wx-debug-badge hidden"></div>
+
   <div id="edgePanel" class="edge-panel hidden">
     <div id="edgePanelScrim" class="edge-panel-scrim"></div>
     <div class="edge-panel-dock">
@@ -5155,6 +5353,14 @@
       deleteAllEventsBtn: document.getElementById('deleteAllEventsBtn'),
       cancelDeleteAllBtn: document.getElementById('cancelDeleteAllBtn'),
       dangerStatus: document.getElementById('dangerStatus'),
+      wxDebug: document.getElementById('wxDebug'),
+      wxDebugClose: document.getElementById('wxDebugClose'),
+      wxDebugNight: document.getElementById('wxDebugNight'),
+      wxDebugWind: document.getElementById('wxDebugWind'),
+      wxDebugFill: document.getElementById('wxDebugFill'),
+      wxDebugSpill: document.getElementById('wxDebugSpill'),
+      wxDebugStatus: document.getElementById('wxDebugStatus'),
+      wxDebugBadge: document.getElementById('wxDebugBadge'),
       edgePanel: document.getElementById('edgePanel'),
       edgePanelScrim: document.getElementById('edgePanelScrim'),
       edgePanelTray: document.getElementById('edgePanelTray'),
@@ -7087,11 +7293,14 @@
       if (state.selectedEventFlipped || state.heroEventFlipped) return false;
       if (hiddenRepeatingTasksVisible()) return false;
       if (anyDisplayOverlayOpen()) return false;
+      if (weatherDebug.open || weatherDebugActive() || weatherFx.speed !== 1) return false;
       return true;
     }
 
     function resetToHomeView() {
       closeWeatherOverlay();
+      // A weather test left on goes back to the live sky.
+      closeWeatherDebug({ backToLive: true });
       if (isOverlayOpen(els.monthOverlay)) closeMonthView();
       if (isOverlayOpen(els.configOverlay)) closeConfigMenu();
       if (isOverlayOpen(els.dangerOverlay)) closeDangerMenu();
@@ -8467,9 +8676,1461 @@
       // Only rebuild the particles when the sky actually changed. Rebuilding
       // on every minute-tick restarted every animation and made the card
       // visibly stutter once a minute.
-      if (state.weatherEffectKey === key) return;
-      state.weatherEffectKey = key;
-      els.weatherEffect.innerHTML = weatherParticleHtml(effect, { night, windy, density, scale });
+      if (state.weatherEffectKey !== key) {
+        state.weatherEffectKey = key;
+        els.weatherEffect.innerHTML = weatherParticleHtml(effect, { night, windy, density, scale });
+      }
+      weatherFxUpdate({ effect, code, night, windy });
+    }
+
+    // ---------------------------------------------------------------------
+    // Weather that leaves the card (see the CSS note at .weather-fx).
+    //
+    // One animation loop draws two canvases: #weatherFx inside the card, in
+    // front of the readout but never higher than its lowest line of text,
+    // and #weatherSpill in the dashboard frame, over the
+    // weather card and under every other card, clipped so it only ever
+    // paints outside the weather card. Something that crosses the card edge
+    // is drawn on both, so it leaves the card without a seam, and it fades
+    // out as it slides under a neighbouring card.
+    //
+    // - Rain and drizzle fill the bottom of the card with water. Full, it
+    //   holds a few seconds and then springs two or three leaks: thin
+    //   streams pour out of the bottom edge, break into drips as the level
+    //   falls, and leave beads hanging under the card that drip for a while.
+    //   The cycle takes a few minutes; heavier rain fills faster.
+    // - Snow piles up on the bottom of the card and, once the pile is full,
+    //   part of it sifts out through the bottom edge in a powdery fall. Now
+    //   and then a flake drifts out of the card, and a gust blows a few out
+    //   sideways, under the photo or the clock.
+    // - Fog pours over the bottom edge.
+    // - A lightning flash also lights up the frame around the card.
+    //
+    // Runs only while the card shows the weather, the page is in view, no
+    // overlay covers it and the screen is not dimmed. Reduced motion turns it
+    // off. The CSS sky underneath is unchanged.
+    // ---------------------------------------------------------------------
+    const WX_FX_MAX_DPR = 2;
+    const WX_FX_PAD_X = 72;
+    const WX_FX_PAD_TOP = 36;
+    const WX_FX_PAD_BOTTOM = 170;
+    const WX_FX_COVER_FADE_PX = 16;
+    // Seconds for an empty card to fill in steady rain at full intensity.
+    const WX_WATER_FILL_S = 150;
+    const WX_WATER_BRIM_S = 3;
+    const WX_WATER_DRAIN_S = 8;
+    const WX_WATER_HOLE_OPEN_S = 1.4;
+    const WX_WATER_STREAM_MIN = 0.32;
+    const WX_WATER_BEADS_S = 34;
+    const WX_WATER_GRAVITY = 1500;
+    const WX_SNOW_FILL_S = 210;
+    const WX_SNOW_SIFT_S = 4.8;
+    const WX_SNOW_COLS = 56;
+    const WX_FLASH_PERIOD_MS = 7000;
+    // Same keyframes as wxFlash in the CSS, so the frame lights up together
+    // with the card.
+    const WX_FLASH_KEYS = [[0, 0], [0.82, 0], [0.83, 0.95], [0.85, 0.1], [0.87, 0.7], [0.91, 0], [1, 0]];
+    const wxReducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+    const weatherFx = {
+      ready: false,
+      running: false,
+      raf: 0,
+      clearTimer: null,
+      last: 0,
+      time: 0,
+      effect: null,
+      family: null,
+      night: false,
+      windy: false,
+      intensity: 0.8,
+      speed: 1,
+      flash: 0,
+      flashEl: null,
+      geo: null,
+      cardCanvas: null,
+      cardCtx: null,
+      spillCanvas: null,
+      spillCtx: null,
+      spillClean: true,
+      sprites: { flake: null, flakeOut: null, fog: null, fogNight: null, glow: null, pile: null },
+      surface: { front: new Float32Array(0), back: new Float32Array(0) },
+      water: null,
+      snow: null,
+      fog: null
+    };
+
+    const wxRand = (min, max) => min + Math.random() * (max - min);
+    const wxClamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+    function weatherFxFamily(effect) {
+      if (effect === 'rain' || effect === 'drizzle' || effect === 'thunder') return 'water';
+      if (effect === 'snow') return 'snow';
+      if (effect === 'fog') return 'fog';
+      return null;
+    }
+
+    function weatherFxIntensity(code) {
+      return ({
+        51: 0.45, 53: 0.6, 55: 0.75, 56: 0.55, 57: 0.75,
+        61: 0.6, 63: 0.8, 65: 1, 66: 0.65, 67: 0.9, 80: 0.6, 81: 0.8, 82: 1,
+        71: 0.55, 73: 0.75, 75: 1, 77: 0.45, 85: 0.65, 86: 1,
+        95: 1, 96: 1, 99: 1
+      })[code] ?? 0.8;
+    }
+
+    function wxRoundRectPath(ctx, x, y, w, h, r) {
+      const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + w, y, x + w, y + h, radius);
+      ctx.arcTo(x + w, y + h, x, y + h, radius);
+      ctx.arcTo(x, y + h, x, y, radius);
+      ctx.arcTo(x, y, x + w, y, radius);
+      ctx.closePath();
+    }
+
+    function initWeatherFx() {
+      const fx = weatherFx;
+      if (fx.ready) return true;
+      if (adminMode || !els.weatherCard || !els.displayView) return false;
+      fx.cardCanvas = document.getElementById('weatherFx');
+      fx.spillCanvas = document.getElementById('weatherSpill');
+      fx.cardCtx = fx.cardCanvas?.getContext?.('2d') || null;
+      fx.spillCtx = fx.spillCanvas?.getContext?.('2d') || null;
+      if (!fx.cardCtx || !fx.spillCtx) return false;
+      fx.ready = true;
+
+      const remeasure = () => {
+        if (fx.running) measureWeatherFx();
+      };
+      window.addEventListener('resize', remeasure);
+      if (window.ResizeObserver) {
+        const observer = new ResizeObserver(remeasure);
+        [els.displayView, els.weatherCard, els.clockCard, els.heroEvent, document.querySelector('.upcoming-card')]
+          .filter(Boolean)
+          .forEach(element => observer.observe(element));
+      }
+      // Whatever hides the weather readout, covers the screen or dims it
+      // pauses the loop: an overlay with a blurred backdrop would otherwise
+      // have to re-blur a moving canvas every frame.
+      const observer = new MutationObserver(() => weatherFxSync());
+      [document.body, els.displayView, els.weatherCard, els.weatherOverlay, els.monthOverlay, els.configOverlay,
+        els.dangerOverlay, els.videoQrOverlay, els.videoPlayerOverlay]
+        .filter(Boolean)
+        .forEach(element => observer.observe(element, { attributes: true, attributeFilter: ['class'] }));
+      document.addEventListener('visibilitychange', weatherFxSync);
+      wxReducedMotion.addEventListener?.('change', weatherFxSync);
+      return true;
+    }
+
+    function measureWeatherFx() {
+      const fx = weatherFx;
+      const card = els.weatherCard;
+      const shell = els.displayView;
+      const cardRect = card.getBoundingClientRect();
+      const shellRect = shell.getBoundingClientRect();
+      if (cardRect.width < 40 || cardRect.height < 40) return false;
+      const W = cardRect.width;
+      const H = cardRect.height;
+      const dpr = Math.min(WX_FX_MAX_DPR, window.devicePixelRatio || 1);
+      // The spill canvas is placed in the frame's padding box, around the
+      // card, and reaches far enough down for a drip to fall under the next
+      // card.
+      const ox = cardRect.left - shellRect.left - shell.clientLeft;
+      const oy = cardRect.top - shellRect.top - shell.clientTop;
+      const left = Math.max(0, Math.floor(ox - WX_FX_PAD_X));
+      const top = Math.max(0, Math.floor(oy - WX_FX_PAD_TOP));
+      const right = Math.min(shell.clientWidth, Math.ceil(ox + W + WX_FX_PAD_X));
+      const bottom = Math.min(shell.clientHeight, Math.ceil(oy + H + WX_FX_PAD_BOTTOM));
+      const spillW = Math.max(1, right - left);
+      const spillH = Math.max(1, bottom - top);
+      // The neighbouring cards, in card coordinates. Anything that slides
+      // under one of them fades out over its first few pixels.
+      const covers = [els.clockCard, els.heroEvent, document.querySelector('.upcoming-card')]
+        .filter(element => element && element.getClientRects().length)
+        .map(element => {
+          const rect = element.getBoundingClientRect();
+          return { l: rect.left - cardRect.left, t: rect.top - cardRect.top, r: rect.right - cardRect.left, b: rect.bottom - cardRect.top };
+        })
+        .filter(cover => cover.r > cover.l && cover.b > cover.t);
+      // How far the lowest fully visible line of the readout sits above the
+      // bottom of the card. Water and snow stop below it.
+      let textBottom = 0;
+      els.weatherContent?.querySelectorAll('.weather-desc, .forecast-day, .hourly-title, .hourly-row').forEach(element => {
+        const rect = element.getBoundingClientRect();
+        if (!rect.height) return;
+        const font = parseFloat(getComputedStyle(element).fontSize) || 14;
+        const bottomOfText = Math.min(rect.bottom, rect.top + rect.height / 2 + font * 0.62) - cardRect.top;
+        if (bottomOfText > H) return;
+        textBottom = Math.max(textBottom, bottomOfText);
+      });
+      fx.geo = {
+        W,
+        H,
+        dpr,
+        textSafe: textBottom ? Math.max(0, H - textBottom) : H * 0.12,
+        radius: parseFloat(getComputedStyle(card).borderTopLeftRadius) || 20,
+        sx: ox - left,
+        sy: oy - top,
+        spillW,
+        spillH,
+        covers,
+        scale: wxClamp(Math.sqrt(W * H) / 450, 0.72, 1.3)
+      };
+
+      const cw = Math.max(1, Math.round(W * dpr));
+      const ch = Math.max(1, Math.round(H * dpr));
+      if (fx.cardCanvas.width !== cw || fx.cardCanvas.height !== ch) {
+        fx.cardCanvas.width = cw;
+        fx.cardCanvas.height = ch;
+      }
+      const spill = fx.spillCanvas;
+      spill.style.left = `${left}px`;
+      spill.style.top = `${top}px`;
+      spill.style.width = `${spillW}px`;
+      spill.style.height = `${spillH}px`;
+      const sw = Math.max(1, Math.round(spillW * dpr));
+      const sh = Math.max(1, Math.round(spillH * dpr));
+      if (spill.width !== sw || spill.height !== sh) {
+        spill.width = sw;
+        spill.height = sh;
+      }
+      fx.spillClean = false;
+      fx.sprites.glow = null;
+      return true;
+    }
+
+    // How much of something at (x, y), in card coordinates, still shows: it
+    // fades out over its first pixels under a neighbouring card, and fades
+    // back in if it comes out from under one.
+    function wxCoverFade(x, y) {
+      let fade = 1;
+      for (const cover of weatherFx.geo.covers) {
+        if (x <= cover.l || x >= cover.r || y <= cover.t || y >= cover.b) continue;
+        const depth = Math.min(x - cover.l, cover.r - x, y - cover.t, cover.b - y);
+        fade = Math.min(fade, Math.max(0, 1 - depth / WX_FX_COVER_FADE_PX));
+      }
+      return fade;
+    }
+
+    // Where the first card below the weather card starts, under x.
+    function wxCoverTopBelow(x) {
+      const g = weatherFx.geo;
+      let top = g.H + WX_FX_PAD_BOTTOM;
+      for (const cover of g.covers) {
+        if (x > cover.l && x < cover.r && cover.t >= g.H - 1) top = Math.min(top, cover.t);
+      }
+      return top;
+    }
+
+    // Which side has a neighbouring card for a gust to blow snow under.
+    function wxGustDirection() {
+      const g = weatherFx.geo;
+      const overlaps = cover => cover.b > g.H * 0.2 && cover.t < g.H * 0.9;
+      const right = g.covers.some(cover => cover.l >= g.W - 2 && overlaps(cover));
+      const left = g.covers.some(cover => cover.r <= 2 && overlaps(cover));
+      if (right && !left) return 1;
+      if (left && !right) return -1;
+      return Math.random() < 0.5 ? -1 : 1;
+    }
+
+    // Inside the card a flake is white on a blue sky. Outside it lands on the
+    // pale frame, where plain white vanishes, so that one carries a faint
+    // blue-grey shadow, like the CSS flakes.
+    function wxFlakeSprite(outside = false) {
+      const key = outside ? 'flakeOut' : 'flake';
+      if (weatherFx.sprites[key]) return weatherFx.sprites[key];
+      const sprite = document.createElement('canvas');
+      sprite.width = sprite.height = 48;
+      const ctx = sprite.getContext('2d');
+      if (outside) {
+        const shadow = ctx.createRadialGradient(24, 27, 0, 24, 27, 15);
+        shadow.addColorStop(0, 'rgba(40,66,102,.3)');
+        shadow.addColorStop(0.6, 'rgba(40,66,102,.12)');
+        shadow.addColorStop(1, 'rgba(40,66,102,0)');
+        ctx.fillStyle = shadow;
+        ctx.fillRect(0, 0, 48, 48);
+      }
+      const glow = ctx.createRadialGradient(24, 24, 0, 24, 24, outside ? 14 : 24);
+      glow.addColorStop(0, 'rgba(255,255,255,1)');
+      glow.addColorStop(0.32, 'rgba(255,255,255,.95)');
+      glow.addColorStop(0.5, 'rgba(255,255,255,.42)');
+      glow.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, 48, 48);
+      weatherFx.sprites[key] = sprite;
+      return sprite;
+    }
+
+    function wxFogSprite(night) {
+      const key = night ? 'fogNight' : 'fog';
+      if (weatherFx.sprites[key]) return weatherFx.sprites[key];
+      const sprite = document.createElement('canvas');
+      sprite.width = sprite.height = 128;
+      const ctx = sprite.getContext('2d');
+      // Grey, not white: the frame around the card is pale, and white mist
+      // would vanish on it.
+      const tone = night ? '140,150,172' : '190,194,200';
+      const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      gradient.addColorStop(0, `rgba(${tone},.9)`);
+      gradient.addColorStop(0.4, `rgba(${tone},.55)`);
+      gradient.addColorStop(1, `rgba(${tone},0)`);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 128, 128);
+      weatherFx.sprites[key] = sprite;
+      return sprite;
+    }
+
+    // The halo a lightning flash throws around the card, drawn once per size.
+    function wxGlowSprite() {
+      const fx = weatherFx;
+      if (fx.sprites.glow) return fx.sprites.glow;
+      const g = fx.geo;
+      const sprite = document.createElement('canvas');
+      sprite.width = Math.max(1, Math.round(g.spillW * g.dpr));
+      sprite.height = Math.max(1, Math.round(g.spillH * g.dpr));
+      const ctx = sprite.getContext('2d');
+      ctx.scale(g.dpr, g.dpr);
+      ctx.shadowColor = 'rgba(150,168,255,1)';
+      ctx.shadowBlur = 46 * g.dpr;
+      ctx.fillStyle = 'rgba(150,168,255,1)';
+      ctx.beginPath();
+      wxRoundRectPath(ctx, g.sx, g.sy, g.W, g.H, g.radius);
+      ctx.fill();
+      fx.sprites.glow = sprite;
+      return sprite;
+    }
+
+    function wxFlashLevel() {
+      const fx = weatherFx;
+      if (fx.effect !== 'thunder') return 0;
+      if (!fx.flashEl || !fx.flashEl.isConnected) fx.flashEl = els.weatherEffect?.querySelector('.flash') || null;
+      const animation = fx.flashEl?.getAnimations?.()[0];
+      if (!animation) return 0;
+      const phase = ((Number(animation.currentTime) || 0) % WX_FLASH_PERIOD_MS) / WX_FLASH_PERIOD_MS;
+      for (let index = 1; index < WX_FLASH_KEYS.length; index++) {
+        const [p1, v1] = WX_FLASH_KEYS[index];
+        if (phase > p1) continue;
+        const [p0, v0] = WX_FLASH_KEYS[index - 1];
+        return v0 + (v1 - v0) * ((phase - p0) / Math.max(1e-6, p1 - p0));
+      }
+      return 0;
+    }
+
+    // --- State ---------------------------------------------------------
+
+    function newWaterState(level) {
+      return {
+        level,
+        phase: 'fill',
+        phaseT: 0,
+        holes: [],
+        ripples: [],
+        splashes: [],
+        bubbles: [],
+        drops: [],
+        rippleClock: 0,
+        bubbleClock: 0,
+        slosh: 0,
+        stain: 0,
+        stainAlpha: 0
+      };
+    }
+
+    function newSnowState(level) {
+      const profile = new Float32Array(WX_SNOW_COLS);
+      const a = Math.random() * 6.28;
+      const b = Math.random() * 6.28;
+      const c = Math.random() * 6.28;
+      for (let index = 0; index < WX_SNOW_COLS; index++) {
+        const u = index / (WX_SNOW_COLS - 1);
+        profile[index] = 0.76 + 0.09 * Math.sin(u * 7.1 + a) + 0.07 * Math.sin(u * 15.3 + b) + 0.05 * Math.sin(u * 37 + c)
+          + wxRand(-0.035, 0.035);
+      }
+      // Its highest point under the readout is exactly the full height, so a
+      // full pile meets the lowest line of text and no more. Only right at
+      // the card's sides, where there is no text, is it banked up higher.
+      let peak = 0;
+      for (let index = 0; index < WX_SNOW_COLS; index++) peak = Math.max(peak, profile[index]);
+      for (let index = 0; index < WX_SNOW_COLS; index++) {
+        const u = index / (WX_SNOW_COLS - 1);
+        profile[index] = profile[index] / peak + 0.3 * Math.exp(-u * 40) + 0.3 * Math.exp(-(1 - u) * 40);
+      }
+      const cols = profile.map(value => value * level);
+      const glints = Array.from({ length: 16 }, () => ({
+        u: wxRand(0.04, 0.96),
+        depth: wxRand(2, 7),
+        speed: wxRand(0.35, 0.9),
+        phase: Math.random() * 6.28
+      }));
+      const speckles = Array.from({ length: 260 }, () => ({
+        u: Math.random(),
+        v: Math.random(),
+        r: wxRand(0.6, 1.3),
+        bright: Math.random() < 0.3
+      }));
+      return {
+        profile,
+        cols,
+        speckles,
+        pileDrawnKey: '',
+        pileDrawnAvg: -1,
+        pileStripH: 0,
+        phase: 'fill',
+        phaseT: 0,
+        wait: 0,
+        sift: null,
+        powder: [],
+        flakes: [],
+        nextFlake: wxRand(0.6, 2),
+        nextGust: wxRand(14, 24),
+        glints
+      };
+    }
+
+    function weatherFxUpdate({ effect, code, night, windy }) {
+      const fx = weatherFx;
+      if (!initWeatherFx()) return;
+      const family = weatherFxFamily(effect);
+      fx.effect = effect;
+      fx.night = night;
+      fx.windy = windy;
+      fx.intensity = weatherFxIntensity(code);
+      fx.flashEl = null;
+      if (family !== fx.family) {
+        fx.family = family;
+        // Rain starts part way up, so a fresh page does not wait minutes for
+        // anything to happen; drizzle, rain and thunder share the water.
+        fx.water = family === 'water' ? newWaterState(0.38) : null;
+        fx.snow = family === 'snow' ? newSnowState(0.42) : null;
+        fx.fog = family === 'fog' ? { puffs: [], clock: 0 } : null;
+      }
+      // The readout was just re-rendered: its lowest line may have moved.
+      if (fx.running) measureWeatherFx();
+      weatherFxSync();
+    }
+
+    function weatherFxSync() {
+      const fx = weatherFx;
+      if (!fx.ready) return;
+      const show = Boolean(fx.family)
+        && !wxReducedMotion.matches
+        && document.visibilityState === 'visible'
+        && !els.displayView.classList.contains('hidden')
+        && !els.displayView.classList.contains('daily-calendar-mode')
+        && !els.weatherCard.classList.contains('show-selected-event')
+        && !document.body.classList.contains('motion-dimmed')
+        && !anyDisplayOverlayOpen();
+      els.weatherCard.classList.toggle('wx-fx-water', show && fx.family === 'water');
+      fx.cardCanvas.classList.toggle('is-on', show);
+      fx.spillCanvas.classList.toggle('is-on', show);
+      clearTimeout(fx.clearTimer);
+      if (show && !fx.running) {
+        if (!measureWeatherFx()) return;
+        fx.running = true;
+        fx.last = 0;
+        fx.raf = requestAnimationFrame(weatherFxFrame);
+      } else if (!show && fx.running) {
+        fx.running = false;
+        cancelAnimationFrame(fx.raf);
+        fx.raf = 0;
+        // Let the last frame fade out with the canvas, then let it go.
+        fx.clearTimer = setTimeout(() => {
+          if (fx.running) return;
+          fx.cardCtx.clearRect(0, 0, fx.cardCanvas.width, fx.cardCanvas.height);
+          fx.spillCtx.clearRect(0, 0, fx.spillCanvas.width, fx.spillCanvas.height);
+          fx.spillClean = true;
+        }, 1000);
+      }
+    }
+
+    function weatherFxFrame(now) {
+      const fx = weatherFx;
+      fx.raf = 0;
+      if (!fx.running) return;
+      // Capped, so a frame held back by a busy page does not jump the sky.
+      const dt = fx.last ? Math.min(0.05, (now - fx.last) / 1000) : 1 / 60;
+      fx.last = now;
+      fx.time += dt;
+      fx.flash = wxFlashLevel();
+      if (fx.family === 'water') stepWater(dt);
+      else if (fx.family === 'snow') stepSnow(dt);
+      else if (fx.family === 'fog') stepFog(dt);
+      drawWeatherFxCard();
+      drawWeatherFxSpill();
+      fx.raf = requestAnimationFrame(weatherFxFrame);
+    }
+
+    // --- Water ---------------------------------------------------------
+
+    function wxWaterMaxPx() {
+      const g = weatherFx.geo;
+      return Math.min(g.H * 0.13, Math.max(16, g.textSafe - 1));
+    }
+
+    function startWaterLeak() {
+      const fx = weatherFx;
+      const w = fx.water;
+      const g = fx.geo;
+      const count = fx.effect === 'drizzle' ? (g.W > 460 ? 2 : 1) : (g.W > 460 ? 3 : 2);
+      const holes = [];
+      for (let attempt = 0; holes.length < count && attempt < 40; attempt++) {
+        const x = g.W * wxRand(0.16, 0.84);
+        if (holes.every(hole => Math.abs(hole.x - x) > 70)) {
+          holes.push({ x, open: 0, flow: 0, phase: Math.random() * 6.28, dripClock: 0, bead: 0, beadDur: wxRand(0.4, 0.8), beadsUntil: 0 });
+        }
+      }
+      w.holes = holes;
+      w.phase = 'leak';
+      w.phaseT = 0;
+      w.stain = w.level;
+      w.stainAlpha = 1;
+      w.slosh = 1;
+    }
+
+    function waterSurfaceY(x, base, t, amp) {
+      const w = weatherFx.water;
+      let y = base
+        + Math.sin(x * 0.021 + t * 1.7) * 1.5 * amp
+        + Math.sin(x * 0.047 - t * 2.3 + 1.3) * 0.9 * amp
+        + Math.sin(x * 0.11 + t * 3.9 + 0.4) * 0.35 * amp
+        + Math.sin(x * 0.012 - t * 2.6) * 2.2 * w.slosh;
+      for (const ripple of w.ripples) {
+        const distance = Math.abs(x - ripple.x);
+        if (distance > ripple.age * 70 + 4) continue;
+        y += Math.cos(distance * 0.42 - ripple.age * 14) * ripple.amp * 1.2 * Math.exp(-ripple.age * 2.6) * Math.exp(-distance / 18);
+      }
+      // The water dips over a hole that is draining.
+      for (const hole of w.holes) {
+        if (hole.flow <= 0) continue;
+        const d = (x - hole.x) / 15;
+        y += (1.5 + 5 * hole.flow) * Math.exp(-d * d);
+      }
+      return y;
+    }
+
+    function stepWater(dt) {
+      const fx = weatherFx;
+      const w = fx.water;
+      const g = fx.geo;
+      const fillS = WX_WATER_FILL_S * (fx.effect === 'drizzle' ? 1.5 : fx.effect === 'thunder' ? 0.85 : 1) / Math.max(0.3, fx.intensity);
+      const fill = 1 / fillS;
+      w.phaseT += dt;
+      w.slosh = Math.max(0, w.slosh - dt * 0.5);
+      w.stainAlpha = Math.max(0, w.stainAlpha - dt / 24);
+
+      if (w.phase === 'fill') {
+        w.level = Math.min(1, w.level + fill * fx.speed * dt);
+        if (w.level >= 1) {
+          w.phase = 'brim';
+          w.phaseT = 0;
+        }
+      } else if (w.phase === 'brim') {
+        if (w.phaseT >= WX_WATER_BRIM_S) startWaterLeak();
+      } else if (w.phase === 'leak') {
+        // Water runs out of a hole at a speed that goes with the square root
+        // of its depth, so the streams slow down as the card empties. The
+        // rain keeps falling meanwhile.
+        let opening = 0;
+        w.holes.forEach(hole => {
+          hole.open = Math.min(1, hole.open + dt / WX_WATER_HOLE_OPEN_S);
+          opening += hole.open;
+        });
+        opening /= Math.max(1, w.holes.length);
+        const drain = opening * Math.sqrt(Math.max(0, w.level)) / WX_WATER_DRAIN_S;
+        w.level = Math.max(0, w.level + (fill * 0.5 - drain) * dt);
+        w.holes.forEach(hole => { hole.flow = hole.open * Math.sqrt(w.level); });
+        if (w.level <= 0.07) {
+          w.phase = 'fill';
+          w.phaseT = 0;
+          w.holes.forEach(hole => {
+            hole.flow = 0;
+            hole.open = 0;
+            hole.beadsUntil = fx.time + WX_WATER_BEADS_S * wxRand(0.7, 1.2);
+          });
+        }
+      }
+
+      // Drips: from a hole that is only trickling, and afterwards from the
+      // beads left hanging under the card, slower and slower.
+      w.holes.forEach(hole => {
+        let interval = 0;
+        if (w.phase === 'leak' && hole.flow > 0 && hole.flow < WX_WATER_STREAM_MIN) {
+          interval = 0.12 + 0.9 * (1 - hole.flow / WX_WATER_STREAM_MIN);
+        } else if (w.phase !== 'leak' && fx.time < hole.beadsUntil) {
+          const left = (hole.beadsUntil - fx.time) / WX_WATER_BEADS_S;
+          interval = 1.6 + 5.5 * (1 - left);
+        }
+        if (!interval) {
+          hole.bead = Math.max(0, hole.bead - dt * 2);
+          return;
+        }
+        hole.bead += dt / hole.beadDur;
+        if (hole.bead >= 1) {
+          const r = (2.2 + Math.random() * 1.2) * g.scale;
+          w.drops.push({ x: hole.x + wxRand(-0.6, 0.6), y: g.H + r * 1.6, vy: 30, r });
+          hole.bead = 0;
+          hole.beadDur = interval * wxRand(0.75, 1.25);
+        }
+      });
+      w.holes = w.holes.filter(hole => w.phase === 'leak' || hole.bead > 0 || fx.time < hole.beadsUntil);
+
+      // Raindrops meeting the water.
+      const levelPx = w.level * wxWaterMaxPx();
+      if (levelPx > 2.5) {
+        const rate = (fx.effect === 'drizzle' ? 3 : fx.effect === 'thunder' ? 10 : 7) * fx.intensity * (g.W / 420);
+        w.rippleClock += dt * rate;
+        while (w.rippleClock >= 1) {
+          w.rippleClock -= 1;
+          if (w.ripples.length >= 26) continue;
+          const x = Math.random() * g.W;
+          w.ripples.push({ x, age: 0, amp: wxRand(0.6, 1.4) });
+          if (fx.effect !== 'drizzle' && Math.random() < 0.55) {
+            const y = g.H - levelPx;
+            const count = 1 + Math.floor(Math.random() * 3);
+            for (let index = 0; index < count; index++) {
+              w.splashes.push({ x, y: y - 1, floor: y, vx: wxRand(-26, 26), vy: -wxRand(45, 110) * g.scale, r: wxRand(0.8, 1.5) });
+            }
+          }
+        }
+      }
+      if (levelPx > 10) {
+        w.bubbleClock += dt * 0.7 * fx.intensity;
+        while (w.bubbleClock >= 1) {
+          w.bubbleClock -= 1;
+          if (w.bubbles.length < 7) w.bubbles.push({ x: wxRand(0.05, 0.95) * g.W, y: g.H - 2, r: wxRand(0.8, 2.1), vy: -wxRand(12, 24), phase: Math.random() * 6.28 });
+        }
+      }
+
+      w.ripples.forEach(ripple => { ripple.age += dt; });
+      w.ripples = w.ripples.filter(ripple => ripple.age < 1.1);
+      w.splashes.forEach(splash => {
+        splash.vy += 700 * dt;
+        splash.x += splash.vx * dt;
+        splash.y += splash.vy * dt;
+      });
+      w.splashes = w.splashes.filter(splash => splash.y < splash.floor + 1);
+      const surface = g.H - levelPx;
+      w.bubbles.forEach(bubble => {
+        bubble.y += bubble.vy * dt;
+        bubble.x += Math.sin(fx.time * 5 + bubble.phase) * 6 * dt;
+      });
+      w.bubbles = w.bubbles.filter(bubble => {
+        if (bubble.y > surface + 1.5) return true;
+        if (w.ripples.length < 26) w.ripples.push({ x: bubble.x, age: 0.2, amp: 0.4 });
+        return false;
+      });
+      w.drops.forEach(drop => {
+        drop.vy += WX_WATER_GRAVITY * dt;
+        drop.y += drop.vy * dt;
+      });
+      w.drops = w.drops.filter(drop => drop.y < g.H + WX_FX_PAD_BOTTOM + 20);
+    }
+
+    function drawWater(ctx) {
+      const fx = weatherFx;
+      const w = fx.water;
+      const g = fx.geo;
+      const t = fx.time;
+      const maxPx = wxWaterMaxPx();
+      const levelPx = w.level * maxPx;
+      const dark = fx.night || fx.effect === 'thunder';
+
+      // The tide mark the water left behind, a dotted line of droplets on
+      // the glass that dries up.
+      if (w.stainAlpha > 0.01 && w.stain * maxPx > levelPx + 4) {
+        ctx.save();
+        ctx.setLineDash([1.2, 5.5]);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = `rgba(255,255,255,${(0.42 * w.stainAlpha).toFixed(3)})`;
+        ctx.beginPath();
+        const y = g.H - w.stain * maxPx;
+        ctx.moveTo(0, y);
+        for (let x = 0; x <= g.W; x += 24) ctx.lineTo(x, y + Math.sin(x * 0.05) * 0.8);
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (levelPx < 0.5) return;
+
+      const base = g.H - levelPx;
+      const band = Math.min(5.5 * g.scale, Math.max(1, levelPx * 0.35));
+      const amp = (fx.windy ? 1.8 : 1) * (0.6 + 0.4 * fx.intensity) * (w.phase === 'brim' ? 1.25 : 1);
+      const step = 5;
+      const count = Math.ceil(g.W / step) + 1;
+      if (fx.surface.front.length !== count) {
+        fx.surface.front = new Float32Array(count);
+        fx.surface.back = new Float32Array(count);
+      }
+      const front = fx.surface.front;
+      const back = fx.surface.back;
+      for (let index = 0; index < count; index++) {
+        const x = Math.min(g.W, index * step);
+        front[index] = waterSurfaceY(x, base, t, amp);
+        back[index] = Math.min(front[index] - 0.6, base - band + Math.sin(x * 0.018 - t * 1.3 + 2) * 1.1 * amp + Math.sin(x * 0.05 + t * 2.1) * 0.5 * amp);
+      }
+      const bodyPath = () => {
+        ctx.beginPath();
+        ctx.moveTo(0, g.H + 2);
+        for (let index = 0; index < count; index++) ctx.lineTo(Math.min(g.W, index * step), back[index]);
+        ctx.lineTo(g.W, g.H + 2);
+        ctx.closePath();
+      };
+
+      // Body: clear near the top, deepening towards the bottom.
+      const body = ctx.createLinearGradient(0, base - band - 2, 0, g.H);
+      if (dark) {
+        body.addColorStop(0, 'rgba(126,166,218,.4)');
+        body.addColorStop(0.35, 'rgba(58,96,152,.56)');
+        body.addColorStop(1, 'rgba(10,26,62,.8)');
+      } else {
+        body.addColorStop(0, 'rgba(178,216,246,.5)');
+        body.addColorStop(0.35, 'rgba(96,156,216,.6)');
+        body.addColorStop(1, 'rgba(30,80,150,.78)');
+      }
+      bodyPath();
+      ctx.fillStyle = body;
+      ctx.fill();
+
+      // Light through the water: slow, slanted shafts.
+      ctx.save();
+      bodyPath();
+      ctx.clip();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let index = 0; index < 3; index++) {
+        const width = (28 + index * 12) * g.scale;
+        const cx = ((t * (8 + index * 5) + index * 173) % (g.W + width * 2)) - width;
+        const shaft = ctx.createLinearGradient(cx - width / 2, 0, cx + width / 2, 0);
+        shaft.addColorStop(0, 'rgba(255,255,255,0)');
+        shaft.addColorStop(0.5, `rgba(255,255,255,${dark ? 0.05 : 0.08})`);
+        shaft.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = shaft;
+        ctx.setTransform(g.dpr, 0, -0.32 * g.dpr, g.dpr, 0.32 * (base - band) * g.dpr, 0);
+        ctx.fillRect(cx - width / 2, base - band - 4, width, levelPx + band + 8);
+        ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
+      }
+      if (fx.flash > 0.01) {
+        ctx.fillStyle = `rgba(220,228,255,${(fx.flash * 0.28).toFixed(3)})`;
+        ctx.fillRect(0, base - band - 4, g.W, levelPx + band + 8);
+      }
+      ctx.restore();
+
+      // The surface, seen from just above: a lighter band between the far
+      // and the near edge of the water.
+      ctx.beginPath();
+      for (let index = 0; index < count; index++) ctx.lineTo(Math.min(g.W, index * step), back[index]);
+      for (let index = count - 1; index >= 0; index--) ctx.lineTo(Math.min(g.W, index * step), front[index]);
+      ctx.closePath();
+      ctx.fillStyle = dark ? 'rgba(176,204,244,.22)' : 'rgba(236,246,255,.34)';
+      ctx.fill();
+
+      const surfaceLine = (offset = 0) => {
+        ctx.beginPath();
+        for (let index = 0; index < count; index++) ctx.lineTo(Math.min(g.W, index * step), front[index] + offset);
+      };
+      // A soft glow along the surface, which still reads through the frosted
+      // table in front of it.
+      surfaceLine(1.5);
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'rgba(255,255,255,.16)';
+      ctx.stroke();
+      surfaceLine();
+      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = `rgba(255,255,255,${dark ? 0.7 : 0.88})`;
+      ctx.stroke();
+      ctx.beginPath();
+      for (let index = 0; index < count; index++) ctx.lineTo(Math.min(g.W, index * step), back[index]);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,.32)';
+      ctx.stroke();
+
+      // Rings where drops land, flattened by the low angle.
+      ctx.lineWidth = 1;
+      w.ripples.forEach(ripple => {
+        if (ripple.age > 0.9) return;
+        const index = Math.min(count - 1, Math.max(0, Math.round(ripple.x / step)));
+        const y = (front[index] + back[index]) / 2;
+        const rx = (2 + ripple.age * 30) * g.scale;
+        const ry = Math.max(0.6, Math.min(band * 0.55, rx * 0.2));
+        ctx.beginPath();
+        ctx.ellipse(ripple.x, y, rx, ry, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,255,255,${(0.55 * (1 - ripple.age / 0.9) * ripple.amp / 1.4).toFixed(3)})`;
+        ctx.stroke();
+      });
+
+      ctx.fillStyle = 'rgba(236,246,255,.85)';
+      w.splashes.forEach(splash => {
+        ctx.beginPath();
+        ctx.arc(splash.x, splash.y, splash.r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      ctx.lineWidth = 0.9;
+      ctx.strokeStyle = 'rgba(255,255,255,.5)';
+      w.bubbles.forEach(bubble => {
+        ctx.beginPath();
+        ctx.arc(bubble.x, bubble.y, bubble.r, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+
+      // A pale funnel of water being drawn down into each hole.
+      w.holes.forEach(hole => {
+        if (hole.flow < 0.04) return;
+        const radius = (3 + 5 * hole.flow) * g.scale;
+        const funnel = ctx.createLinearGradient(0, base, 0, g.H);
+        funnel.addColorStop(0, 'rgba(255,255,255,0)');
+        funnel.addColorStop(1, `rgba(255,255,255,${(0.22 * hole.flow).toFixed(3)})`);
+        ctx.fillStyle = funnel;
+        ctx.beginPath();
+        ctx.moveTo(hole.x - radius * 0.9, base + 2);
+        ctx.quadraticCurveTo(hole.x - 1, g.H - 6, hole.x - 1.2, g.H);
+        ctx.lineTo(hole.x + 1.2, g.H);
+        ctx.quadraticCurveTo(hole.x + 1, g.H - 6, hole.x + radius * 0.9, base + 2);
+        ctx.closePath();
+        ctx.fill();
+      });
+    }
+
+    function drawWaterSpill(ctx) {
+      const fx = weatherFx;
+      const w = fx.water;
+      const g = fx.geo;
+      const t = fx.time;
+      const dark = fx.night || fx.effect === 'thunder';
+      const top = dark ? '178,206,240' : '206,232,252';
+      const low = dark ? '128,162,212' : '150,198,238';
+      let drew = false;
+
+      w.holes.forEach(hole => {
+        // A stream out of the bottom edge, thinning as it speeds up.
+        if (w.phase === 'leak' && hole.flow >= WX_WATER_STREAM_MIN) {
+          drew = true;
+          const y0 = g.H - 0.5;
+          const coverTop = wxCoverTopBelow(hole.x);
+          const y1 = Math.min(g.H + WX_FX_PAD_BOTTOM, coverTop + WX_FX_COVER_FADE_PX + 2);
+          const half0 = ((1.3 + 4.4 * hole.flow) * g.scale) / 2;
+          const halfAt = y => half0 * Math.pow(1 + (y - y0) / 9, -0.25) * (1 + 0.22 * Math.sin(y * 0.55 - t * 32 + hole.phase) * Math.min(1, (y - y0) / 8));
+          const wobble = y => Math.sin(y * 0.12 - t * 18 + hole.phase) * 0.4 * hole.flow;
+          const gradient = ctx.createLinearGradient(0, y0, 0, y1);
+          const fadeFrom = wxClamp((coverTop - y0) / Math.max(1, y1 - y0), 0, 1);
+          gradient.addColorStop(0, `rgba(${top},.95)`);
+          gradient.addColorStop(Math.min(fadeFrom, 0.25), `rgba(${low},.82)`);
+          gradient.addColorStop(fadeFrom, `rgba(${low},.78)`);
+          gradient.addColorStop(1, `rgba(${low},0)`);
+          ctx.beginPath();
+          ctx.moveTo(hole.x - half0 + wobble(y0), y0);
+          for (let y = y0; y <= y1; y += 4) ctx.lineTo(hole.x - halfAt(y) + wobble(y), y);
+          for (let y = y1; y >= y0; y -= 4) ctx.lineTo(hole.x + halfAt(y) + wobble(y), y);
+          ctx.closePath();
+          ctx.fillStyle = gradient;
+          ctx.fill();
+          // The meniscus where it leaves the card.
+          ctx.beginPath();
+          ctx.ellipse(hole.x, y0, half0 + 1.8 * g.scale, (1.4 + 2.2 * hole.flow) * g.scale, 0, 0, Math.PI);
+          ctx.fillStyle = `rgba(${top},.92)`;
+          ctx.fill();
+          // A glint down its side.
+          const shine = ctx.createLinearGradient(0, y0, 0, y1);
+          shine.addColorStop(0, 'rgba(255,255,255,.9)');
+          shine.addColorStop(fadeFrom, 'rgba(255,255,255,.5)');
+          shine.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.beginPath();
+          for (let y = y0; y <= y1; y += 4) ctx.lineTo(hole.x - halfAt(y) * 0.35 + wobble(y), y);
+          ctx.lineWidth = Math.max(0.6, half0 * 0.45);
+          ctx.strokeStyle = shine;
+          ctx.stroke();
+        }
+        // A bead hanging from the edge, swelling until it lets go.
+        if (hole.bead > 0.02) {
+          drew = true;
+          const r = (0.6 + 2.8 * Math.pow(hole.bead, 0.7)) * g.scale;
+          const sag = hole.bead > 0.82 ? (hole.bead - 0.82) / 0.18 : 0;
+          const neck = Math.max(0.6, r * (0.55 - sag * 0.3));
+          const cy = g.H + r * (0.9 + sag * 0.9);
+          ctx.beginPath();
+          ctx.moveTo(hole.x - neck, g.H - 0.5);
+          ctx.quadraticCurveTo(hole.x - neck, cy - r * 0.5, hole.x - r, cy);
+          ctx.arc(hole.x, cy, r, Math.PI, 0, true);
+          ctx.quadraticCurveTo(hole.x + neck, cy - r * 0.5, hole.x + neck, g.H - 0.5);
+          ctx.closePath();
+          ctx.fillStyle = `rgba(${top},.9)`;
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(hole.x - r * 0.35, cy - r * 0.2, r * 0.3, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255,255,255,.9)';
+          ctx.fill();
+        }
+      });
+
+      w.drops.forEach(drop => {
+        const fade = wxCoverFade(drop.x, drop.y);
+        if (fade <= 0) return;
+        drew = true;
+        const stretch = 1 + Math.min(2.4, drop.vy / 380);
+        ctx.globalAlpha = fade;
+        ctx.beginPath();
+        ctx.ellipse(drop.x, drop.y - drop.r * (stretch - 1) * 0.6, drop.r * 0.8, drop.r * stretch, 0, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${top},.9)`;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(drop.x - drop.r * 0.28, drop.y - drop.r * 0.3, drop.r * 0.28, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,.9)';
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+      return drew;
+    }
+
+    // --- Snow ----------------------------------------------------------
+
+    // The profile rises to about 1.0 under the readout and banks up higher
+    // only at the card's sides, where there is no text.
+    function wxSnowMaxPx() {
+      const g = weatherFx.geo;
+      return Math.round(Math.min(g.H * 0.13, Math.max(12, g.textSafe - 3)));
+    }
+
+    function startSnowSift() {
+      const s = weatherFx.snow;
+      s.sift = { c: wxRand(0.26, 0.74), hw: wxRand(0.13, 0.22), depth: wxRand(0.55, 0.8), t: 0, clock: 0 };
+      s.phase = 'sift';
+      s.phaseT = 0;
+    }
+
+    function spawnSnowFlake(s, g, { gust = 0 } = {}) {
+      const windDrift = weatherFx.windy ? wxRand(16, 40) * (Math.random() < 0.7 ? 1 : -1) : wxRand(-5, 5);
+      s.flakes.push({
+        bx: gust ? wxRand(0.15, 0.85) * g.W : wxRand(0.03, 0.97) * g.W,
+        y: gust ? wxRand(0.12, 0.62) * g.H : -8,
+        vx: gust ? gust * wxRand(55, 95) : windDrift,
+        vy: wxRand(26, 42) * Math.sqrt(g.H / 300),
+        size: wxRand(3, 6) * g.scale,
+        sway: wxRand(7, 18),
+        freq: wxRand(0.45, 1),
+        phase: Math.random() * 6.28,
+        alpha: wxRand(0.82, 1),
+        age: gust ? 0 : 1,
+        gust: Boolean(gust)
+      });
+    }
+
+    function stepSnow(dt) {
+      const fx = weatherFx;
+      const s = fx.snow;
+      const g = fx.geo;
+      s.phaseT += dt;
+
+      if (s.phase === 'fill') {
+        const rate = fx.speed * fx.intensity / WX_SNOW_FILL_S;
+        let total = 0;
+        for (let index = 0; index < WX_SNOW_COLS; index++) {
+          s.cols[index] = Math.min(s.profile[index], s.cols[index] + rate * s.profile[index] * dt);
+          total += s.cols[index] / s.profile[index];
+        }
+        if (total / WX_SNOW_COLS >= 0.985) {
+          s.phase = 'full';
+          s.phaseT = 0;
+          s.wait = wxRand(3, 8);
+        }
+      } else if (s.phase === 'full') {
+        if (s.phaseT * fx.speed >= s.wait) startSnowSift();
+      } else if (s.phase === 'sift') {
+        // Part of the pile drains out through the bottom edge: the column
+        // heights drop under a bell-shaped bite while powder pours out below.
+        const sift = s.sift;
+        sift.t += dt;
+        const p = Math.min(1, sift.t / WX_SNOW_SIFT_S);
+        const envelope = Math.sin(Math.PI * p);
+        for (let index = 0; index < WX_SNOW_COLS; index++) {
+          const d = Math.abs(index / (WX_SNOW_COLS - 1) - sift.c);
+          if (d >= sift.hw) continue;
+          const bite = sift.depth * 0.5 * (1 + Math.cos(Math.PI * d / sift.hw));
+          s.cols[index] = Math.max(0, s.cols[index] - bite * s.profile[index] * (Math.PI / 2) * envelope * (dt / WX_SNOW_SIFT_S));
+        }
+        sift.clock += dt * 70 * envelope * (sift.hw / 0.17) * g.scale;
+        while (sift.clock >= 1) {
+          sift.clock -= 1;
+          // Spread like the bite: most from its middle.
+          const u = sift.c + sift.hw * (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
+          const chunk = Math.random() < 0.06;
+          s.powder.push({
+            x: u * g.W,
+            y: g.H + wxRand(-1, 2),
+            vx: wxRand(-9, 9) + (fx.windy ? 14 : 0),
+            vy: wxRand(10, 38),
+            r: chunk ? wxRand(2.4, 3.4) : wxRand(0.7, 1.9),
+            a: wxRand(0.7, 1),
+            phase: Math.random() * 6.28
+          });
+        }
+        if (p >= 1) {
+          s.sift = null;
+          s.phase = 'fill';
+          s.phaseT = 0;
+        }
+      }
+
+      // Flakes that leave the card on their own, and the odd gust.
+      s.nextFlake -= dt;
+      if (s.nextFlake <= 0) {
+        spawnSnowFlake(s, g);
+        s.nextFlake = fx.windy ? wxRand(1.1, 3) : wxRand(2.2, 5.5);
+      }
+      s.nextGust -= dt;
+      if (s.nextGust <= 0) {
+        const direction = wxGustDirection();
+        const count = 3 + Math.floor(Math.random() * 4);
+        for (let index = 0; index < count; index++) spawnSnowFlake(s, g, { gust: direction });
+        s.nextGust = fx.windy ? wxRand(12, 22) : wxRand(24, 42);
+      }
+
+      s.flakes.forEach(flake => {
+        flake.age += dt;
+        if (flake.gust) flake.vx *= 1 - Math.min(1, dt * 0.35);
+        flake.bx += flake.vx * dt;
+        flake.y += flake.vy * dt;
+        flake.x = flake.bx + Math.sin(fx.time * flake.freq * 2 * Math.PI * 0.5 + flake.phase) * flake.sway;
+      });
+      s.flakes = s.flakes.filter(flake => flake.y < g.H + WX_FX_PAD_BOTTOM + 10 && flake.x > -WX_FX_PAD_X - 10 && flake.x < g.W + WX_FX_PAD_X + 10);
+
+      s.powder.forEach(grain => {
+        grain.vy = Math.min(130, grain.vy + 160 * dt);
+        grain.vx *= 1 - Math.min(1, dt * 0.8);
+        grain.x += (grain.vx + Math.sin(fx.time * 3 + grain.phase) * 6) * dt;
+        grain.y += grain.vy * dt;
+      });
+      s.powder = s.powder.filter(grain => grain.y < g.H + WX_FX_PAD_BOTTOM + 10);
+    }
+
+    function snowPileHeights() {
+      const fx = weatherFx;
+      const s = fx.snow;
+      const maxPx = wxSnowMaxPx();
+      // Wind banks the snow up on its downwind side.
+      const tilt = fx.windy ? 0.3 : 0;
+      const heights = new Float32Array(WX_SNOW_COLS);
+      for (let index = 0; index < WX_SNOW_COLS; index++) {
+        heights[index] = s.cols[index] * maxPx * (1 + tilt * (index / (WX_SNOW_COLS - 1) - 0.5));
+      }
+      return heights;
+    }
+
+    function snowContour(ctx, heights, W, floor) {
+      const xs = index => (index / (WX_SNOW_COLS - 1)) * W;
+      ctx.moveTo(0, floor - heights[0]);
+      for (let index = 0; index < WX_SNOW_COLS - 1; index++) {
+        const xm = (xs(index) + xs(index + 1)) / 2;
+        const ym = floor - (heights[index] + heights[index + 1]) / 2;
+        ctx.quadraticCurveTo(xs(index), floor - heights[index], xm, ym);
+      }
+      ctx.lineTo(W, floor - heights[WX_SNOW_COLS - 1]);
+    }
+
+    // The pile is drawn into a strip of its own and only redrawn when it has
+    // grown visibly (or while it sifts out): the soft edge and the grain
+    // are blurs and hundreds of specks, too much for every frame.
+    function renderSnowPile(heights) {
+      const fx = weatherFx;
+      const s = fx.snow;
+      const g = fx.geo;
+      const maxPx = wxSnowMaxPx();
+      const stripH = Math.ceil(maxPx * 1.5 + 12);
+      let strip = fx.sprites.pile;
+      if (!strip) strip = fx.sprites.pile = document.createElement('canvas');
+      const cw = Math.max(1, Math.round(g.W * g.dpr));
+      const ch = Math.max(1, Math.round(stripH * g.dpr));
+      if (strip.width !== cw || strip.height !== ch) {
+        strip.width = cw;
+        strip.height = ch;
+      }
+      const ctx = strip.getContext('2d');
+      ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
+      ctx.clearRect(0, 0, g.W, stripH);
+      const floor = stripH;
+      const pilePath = () => {
+        ctx.beginPath();
+        ctx.moveTo(0, floor + 2);
+        ctx.lineTo(0, floor - heights[0]);
+        snowContour(ctx, heights, g.W, floor);
+        ctx.lineTo(g.W, floor + 2);
+        ctx.closePath();
+      };
+
+      // A soft halo, so the edge reads as powder and not as a cut-out.
+      ctx.filter = `blur(${(2 * g.scale).toFixed(1)}px)`;
+      pilePath();
+      ctx.fillStyle = fx.night ? 'rgba(220,232,255,.45)' : 'rgba(255,255,255,.6)';
+      ctx.fill();
+      ctx.filter = 'none';
+
+      const fill = ctx.createLinearGradient(0, floor - maxPx * 1.2, 0, floor);
+      if (fx.night) {
+        fill.addColorStop(0, 'rgba(236,243,255,.95)');
+        fill.addColorStop(1, 'rgba(160,182,222,.94)');
+      } else {
+        fill.addColorStop(0, 'rgba(255,255,255,.98)');
+        fill.addColorStop(1, 'rgba(214,227,245,.96)');
+      }
+      pilePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+
+      ctx.save();
+      pilePath();
+      ctx.clip();
+      // Blue shade a little under the crest: the pile's rounded front.
+      ctx.filter = `blur(${(3 * g.scale).toFixed(1)}px)`;
+      ctx.translate(0, 5 * g.scale);
+      ctx.beginPath();
+      snowContour(ctx, heights, g.W, floor);
+      ctx.lineWidth = 6 * g.scale;
+      ctx.strokeStyle = fx.night ? 'rgba(104,132,186,.4)' : 'rgba(140,170,210,.34)';
+      ctx.stroke();
+      ctx.filter = 'none';
+      ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
+      // Grain: faint blue specks and bright crystals through the snow.
+      s.speckles.forEach(speck => {
+        const index = Math.min(WX_SNOW_COLS - 1, Math.round(speck.u * (WX_SNOW_COLS - 1)));
+        const h = heights[index];
+        if (h < 3) return;
+        const y = floor - h + 1.5 + speck.v * (h - 1.5);
+        ctx.fillStyle = speck.bright ? 'rgba(255,255,255,.85)' : (fx.night ? 'rgba(96,124,176,.28)' : 'rgba(120,152,196,.22)');
+        ctx.fillRect(speck.u * g.W, y, speck.r, speck.r);
+      });
+      ctx.restore();
+
+      s.pileStripH = stripH;
+      s.pileDrawnAvg = heights.reduce((sum, value) => sum + value, 0) / WX_SNOW_COLS;
+      s.pileDrawnKey = `${g.W}|${g.H}|${g.dpr}|${maxPx}|${fx.night}|${fx.windy}`;
+    }
+
+    function drawSnowPile(ctx) {
+      const fx = weatherFx;
+      const s = fx.snow;
+      const g = fx.geo;
+      const heights = snowPileHeights();
+      const avg = heights.reduce((sum, value) => sum + value, 0) / WX_SNOW_COLS;
+      const key = `${g.W}|${g.H}|${g.dpr}|${wxSnowMaxPx()}|${fx.night}|${fx.windy}`;
+      if (!fx.sprites.pile || s.sift || key !== s.pileDrawnKey || Math.abs(avg - s.pileDrawnAvg) > 0.25) {
+        renderSnowPile(heights);
+      }
+      if (avg < 0.2) return;
+      ctx.drawImage(fx.sprites.pile, 0, g.H - s.pileStripH, g.W, s.pileStripH);
+
+      // Glints: a crystal catching the light now and then.
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      s.glints.forEach(glint => {
+        const brightness = Math.pow(Math.max(0, Math.sin(fx.time * glint.speed + glint.phase)), 14);
+        if (brightness < 0.05) return;
+        const index = Math.round(glint.u * (WX_SNOW_COLS - 1));
+        const h = heights[index];
+        if (h < glint.depth + 2) return;
+        const x = glint.u * g.W;
+        const y = g.H - h + glint.depth;
+        const arm = (1.6 + 2.2 * brightness) * g.scale;
+        ctx.strokeStyle = `rgba(255,255,255,${(0.9 * brightness).toFixed(3)})`;
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(x - arm, y);
+        ctx.lineTo(x + arm, y);
+        ctx.moveTo(x, y - arm);
+        ctx.lineTo(x, y + arm);
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+
+    function drawSnowFlakes(ctx, outside) {
+      const fx = weatherFx;
+      const s = fx.snow;
+      const sprite = wxFlakeSprite(outside);
+      let drew = false;
+      s.flakes.forEach(flake => {
+        let alpha = flake.alpha * Math.min(1, flake.age / 0.7);
+        if (outside) alpha *= wxCoverFade(flake.x, flake.y);
+        if (alpha <= 0.01) return;
+        drew = true;
+        const size = flake.size * (outside ? 3.2 : 2.2);
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(sprite, flake.x - size / 2, flake.y - size / 2, size, size);
+      });
+      ctx.globalAlpha = 1;
+      return drew;
+    }
+
+    function drawSnowSpill(ctx) {
+      const s = weatherFx.snow;
+      let drew = drawSnowFlakes(ctx, true);
+      const sprite = wxFlakeSprite(true);
+      s.powder.forEach(grain => {
+        const alpha = grain.a * wxCoverFade(grain.x, grain.y);
+        if (alpha <= 0.01) return;
+        drew = true;
+        const size = grain.r * 5;
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(sprite, grain.x - size / 2, grain.y - size / 2, size, size);
+      });
+      ctx.globalAlpha = 1;
+      return drew;
+    }
+
+    // --- Fog -----------------------------------------------------------
+
+    function stepFog(dt) {
+      const fx = weatherFx;
+      const fog = fx.fog;
+      const g = fx.geo;
+      // Many faint puffs rather than a few strong ones: together they make
+      // an even haze instead of separate smudges.
+      fog.clock += dt * 6 * (g.W / 420);
+      while (fog.clock >= 1) {
+        fog.clock -= 1;
+        if (fog.puffs.length >= 80) continue;
+        const side = Math.random() < 0.22 ? (Math.random() < 0.5 ? -1 : 1) : 0;
+        fog.puffs.push(side
+          ? { x: side < 0 ? 2 : g.W - 2, y: wxRand(0.55, 0.95) * g.H, vx: side * wxRand(3, 8), vy: wxRand(2, 6), r: wxRand(20, 40) * g.scale, age: 0, life: wxRand(8, 12) }
+          : { x: wxRand(0.02, 0.98) * g.W, y: g.H - wxRand(4, 14), vx: wxRand(-4, 4) + (fx.windy ? 8 : 0), vy: wxRand(3, 8), r: wxRand(28, 54) * g.scale, age: 0, life: wxRand(8, 13) });
+      }
+      fog.puffs.forEach(puff => {
+        puff.age += dt;
+        puff.x += puff.vx * dt;
+        puff.y += puff.vy * dt;
+        puff.r += 2.2 * g.scale * dt;
+      });
+      fog.puffs = fog.puffs.filter(puff => puff.age < puff.life);
+    }
+
+    function drawFogSpill(ctx) {
+      const fx = weatherFx;
+      const sprite = wxFogSprite(fx.night);
+      fx.fog.puffs.forEach(puff => {
+        const alpha = 0.24 * Math.sin(Math.PI * puff.age / puff.life) * wxCoverFade(puff.x, puff.y);
+        if (alpha <= 0.01) return;
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(sprite, puff.x - puff.r, puff.y - puff.r, puff.r * 2, puff.r * 2);
+      });
+      ctx.globalAlpha = 1;
+      return fx.fog.puffs.length > 0;
+    }
+
+    // --- Drawing -------------------------------------------------------
+
+    function drawWeatherFxCard() {
+      const fx = weatherFx;
+      const g = fx.geo;
+      const ctx = fx.cardCtx;
+      ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
+      ctx.clearRect(0, 0, g.W, g.H);
+      if (fx.family === 'water') drawWater(ctx);
+      else if (fx.family === 'snow') {
+        drawSnowPile(ctx);
+        drawSnowFlakes(ctx, false);
+      }
+    }
+
+    function drawWeatherFxSpill() {
+      const fx = weatherFx;
+      const g = fx.geo;
+      const ctx = fx.spillCtx;
+      ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
+      if (!fx.spillClean) ctx.clearRect(0, 0, g.spillW, g.spillH);
+      ctx.save();
+      // Never inside the weather card: that is the other canvas's job.
+      ctx.beginPath();
+      ctx.rect(0, 0, g.spillW, g.spillH);
+      wxRoundRectPath(ctx, g.sx, g.sy, g.W, g.H, g.radius);
+      ctx.clip('evenodd');
+      let drew = false;
+      if (fx.flash > 0.02) {
+        ctx.globalAlpha = Math.min(1, fx.flash * 0.8);
+        ctx.drawImage(wxGlowSprite(), 0, 0, g.spillW, g.spillH);
+        ctx.globalAlpha = 1;
+        drew = true;
+      }
+      ctx.translate(g.sx, g.sy);
+      if (fx.family === 'water') drew = drawWaterSpill(ctx) || drew;
+      else if (fx.family === 'snow') drew = drawSnowSpill(ctx) || drew;
+      else if (fx.family === 'fog') drew = drawFogSpill(ctx) || drew;
+      ctx.restore();
+      fx.spillClean = !drew;
+    }
+
+    // --- Weather test panel (Q) ------------------------------------------
+
+    const WX_DEBUG_CODES = { clear: 0, partly: 2, clouds: 3, fog: 45, drizzle: 53, rain: 63, snow: 73, thunder: 95 };
+    const weatherDebug = { open: false, sky: null, night: false, windy: false, statusTimer: null, live: { effect: 'partly', night: false, windy: false } };
+
+    function weatherDebugActive() {
+      return Boolean(weatherDebug.sky);
+    }
+
+    // What renderWeather should paint the card's sky with: the live weather,
+    // or the test the panel has set.
+    function weatherDebugOverride(code, isDay, wind) {
+      weatherDebug.live = { effect: weatherCodeToEffect(code), night: !isDay, windy: Number(wind) >= WEATHER_WINDY_MS };
+      if (!weatherDebug.sky) return { code, isDay, wind };
+      return {
+        code: WX_DEBUG_CODES[weatherDebug.sky],
+        isDay: !weatherDebug.night,
+        wind: weatherDebug.windy ? WEATHER_WINDY_MS + 4 : 0
+      };
+    }
+
+    function setWeatherDebugSky(sky) {
+      if (sky === 'live') {
+        weatherDebug.sky = null;
+      } else {
+        if (!weatherDebug.sky) {
+          weatherDebug.night = weatherDebug.live.night;
+          weatherDebug.windy = weatherDebug.live.windy;
+        }
+        weatherDebug.sky = sky;
+      }
+      renderWeather();
+      renderWeatherDebug();
+    }
+
+    function toggleWeatherDebugFlag(flag) {
+      // A toggle on the live sky starts a test of that same sky.
+      if (!weatherDebug.sky) {
+        weatherDebug.sky = weatherDebug.live.effect;
+        weatherDebug.night = weatherDebug.live.night;
+        weatherDebug.windy = weatherDebug.live.windy;
+      }
+      weatherDebug[flag] = !weatherDebug[flag];
+      renderWeather();
+      renderWeatherDebug();
+    }
+
+    function fillWeatherFxNow() {
+      const fx = weatherFx;
+      if (fx.water) {
+        fx.water.level = 1;
+        fx.water.phase = 'brim';
+        fx.water.phaseT = 0;
+        fx.water.slosh = 0.6;
+      } else if (fx.snow) {
+        fx.snow.cols = fx.snow.profile.map(value => value);
+        fx.snow.phase = 'full';
+        fx.snow.phaseT = 0;
+        fx.snow.wait = 2.5;
+      }
+      renderWeatherDebug();
+    }
+
+    function spillWeatherFxNow() {
+      const fx = weatherFx;
+      if (fx.water) {
+        if (fx.water.phase === 'leak') return;
+        fx.water.level = Math.max(fx.water.level, 0.85);
+        startWaterLeak();
+      } else if (fx.snow) {
+        if (fx.snow.phase === 'sift') return;
+        fx.snow.cols = fx.snow.cols.map((value, index) => Math.max(value, fx.snow.profile[index] * 0.85));
+        startSnowSift();
+      } else if (fx.fog && fx.geo) {
+        for (let index = 0; index < 12; index++) fx.fog.clock += 1;
+      }
+      renderWeatherDebug();
+    }
+
+    function weatherDebugStatusText() {
+      const fx = weatherFx;
+      const sky = weatherDebug.sky || weatherDebug.live.effect;
+      const parts = [`${weatherDebug.sky ? 'Test' : 'Live'}: ${sky}${(weatherDebug.sky ? weatherDebug.night : weatherDebug.live.night) ? ', night' : ''}${(weatherDebug.sky ? weatherDebug.windy : weatherDebug.live.windy) ? ', windy' : ''}`];
+      if (wxReducedMotion.matches) parts.push('reduced motion is on, nothing moves');
+      else if (fx.water) {
+        const phase = { fill: 'filling', brim: 'full', leak: 'leaking' }[fx.water.phase] || fx.water.phase;
+        parts.push(`water ${Math.round(fx.water.level * 100)}% · ${phase}`);
+      } else if (fx.snow) {
+        const total = fx.snow.cols.reduce((sum, value, index) => sum + value / fx.snow.profile[index], 0);
+        const phase = { fill: 'piling up', full: 'full', sift: 'spilling' }[fx.snow.phase] || fx.snow.phase;
+        parts.push(`snow ${Math.round((total / WX_SNOW_COLS) * 100)}% · ${phase}`);
+      } else if (fx.fog) parts.push('mist pours over the edge');
+      else parts.push('nothing leaves the card in this sky');
+      if (!fx.running && fx.family && !wxReducedMotion.matches) parts.push('paused while the card is hidden');
+      return parts.join(' · ');
+    }
+
+    function renderWeatherDebug() {
+      if (!els.wxDebug) return;
+      const sky = weatherDebug.sky || 'live';
+      els.wxDebug.querySelectorAll('[data-wx-sky]').forEach(button => {
+        button.classList.toggle('is-on', button.dataset.wxSky === sky);
+      });
+      const night = weatherDebug.sky ? weatherDebug.night : weatherDebug.live.night;
+      const windy = weatherDebug.sky ? weatherDebug.windy : weatherDebug.live.windy;
+      els.wxDebugNight.classList.toggle('is-on', night);
+      els.wxDebugWind.classList.toggle('is-on', windy);
+      const fills = Boolean(weatherFx.water || weatherFx.snow);
+      els.wxDebugFill.disabled = !fills;
+      els.wxDebugSpill.disabled = !weatherFx.family;
+      els.wxDebugSpill.textContent = weatherFx.snow ? 'Spill snow now' : weatherFx.fog ? 'Pour mist now' : 'Leak now';
+      els.wxDebug.querySelectorAll('[data-wx-speed]').forEach(button => {
+        button.classList.toggle('is-on', Number(button.dataset.wxSpeed) === weatherFx.speed);
+      });
+      els.wxDebugStatus.textContent = weatherDebugStatusText();
+      if (weatherDebug.sky) {
+        els.wxDebugBadge.textContent = `Weather test: ${weatherDebug.sky}${weatherDebug.night ? ' · night' : ''}${weatherDebug.windy ? ' · windy' : ''}${weatherFx.speed !== 1 ? ` · ${weatherFx.speed}×` : ''} — Q`;
+        els.wxDebugBadge.classList.remove('hidden');
+      } else {
+        els.wxDebugBadge.classList.add('hidden');
+      }
+    }
+
+    function openWeatherDebug() {
+      if (adminMode || !els.wxDebug) return;
+      weatherDebug.open = true;
+      els.wxDebug.classList.remove('hidden');
+      renderWeatherDebug();
+      clearInterval(weatherDebug.statusTimer);
+      weatherDebug.statusTimer = setInterval(() => {
+        els.wxDebugStatus.textContent = weatherDebugStatusText();
+      }, 250);
+    }
+
+    function closeWeatherDebug({ backToLive = false } = {}) {
+      if (!els.wxDebug) return;
+      weatherDebug.open = false;
+      els.wxDebug.classList.add('hidden');
+      clearInterval(weatherDebug.statusTimer);
+      weatherDebug.statusTimer = null;
+      if (backToLive && (weatherDebug.sky || weatherFx.speed !== 1)) {
+        weatherDebug.sky = null;
+        weatherFx.speed = 1;
+        renderWeather();
+      }
+      renderWeatherDebug();
+    }
+
+    function bindWeatherDebug() {
+      if (adminMode || !els.wxDebug) return;
+      window.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && weatherDebug.open) {
+          closeWeatherDebug();
+          return;
+        }
+        if (event.key !== 'q' && event.key !== 'Q') return;
+        if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+        if (event.target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+        if (weatherDebug.open) closeWeatherDebug();
+        else openWeatherDebug();
+      });
+      els.wxDebugClose.addEventListener('click', () => closeWeatherDebug());
+      els.wxDebug.addEventListener('click', event => {
+        const sky = event.target.closest('[data-wx-sky]');
+        if (sky) setWeatherDebugSky(sky.dataset.wxSky);
+        const speed = event.target.closest('[data-wx-speed]');
+        if (speed) {
+          weatherFx.speed = Number(speed.dataset.wxSpeed) || 1;
+          renderWeatherDebug();
+        }
+      });
+      els.wxDebugNight.addEventListener('click', () => toggleWeatherDebugFlag('night'));
+      els.wxDebugWind.addEventListener('click', () => toggleWeatherDebugFlag('windy'));
+      els.wxDebugFill.addEventListener('click', fillWeatherFxNow);
+      els.wxDebugSpill.addEventListener('click', spillWeatherFxNow);
     }
 
     function weatherEffectRank(code) {
@@ -8579,10 +10240,9 @@
         wind >= WEATHER_WINDY_MS ? `windy ${Math.round(wind)} m/s` : '',
         WEATHER_CONFIG.name
       ].filter(Boolean).join(' · ');
-      renderWeatherEffect(chooseWeatherEffectCode(weather, code), {
-        isDay: isDaylightNow(weather),
-        wind
-      });
+      // The Q panel can put a test sky on the card; the readout stays live.
+      const sky = weatherDebugOverride(chooseWeatherEffectCode(weather, code), isDaylightNow(weather), wind);
+      renderWeatherEffect(sky.code, { isDay: sky.isDay, wind: sky.wind });
 
       const rows = (weather.daily?.time || []).slice(1, 5).map((day, index) => {
         const dayDate = new Date(`${day}T12:00:00`);
@@ -8985,7 +10645,7 @@
       });
 
       const startHold = event => {
-        if (event.target.closest?.('.month-modal, .config-modal, .weather-modal, .danger-modal, .task-action-sheet, .edge-panel, .video-overlay, .tent-view, input, textarea, button, select, a')) return;
+        if (event.target.closest?.('.month-modal, .config-modal, .weather-modal, .danger-modal, .task-action-sheet, .edge-panel, .video-overlay, .tent-view, .wx-debug, input, textarea, button, select, a')) return;
         if (els.monthOverlay && !els.monthOverlay.classList.contains('hidden')) return;
         state.longPressOpened = false;
         clearTimeout(state.longPressTimer);
@@ -10542,6 +12202,10 @@ Cancel = choose whether to delete the whole series.`);
     const EDGE_PANEL_PEEK_MS = 650;
     const EDGE_PANEL_OPEN_X = 14;
     const EDGE_PANEL_DRAG_SLOP_PX = 6;
+    // A tap this close to the screen edge is a tap on the grip and peeks the
+    // panel. Further in, the grab area lies over the clock, so a tap there is
+    // handed on to whatever is underneath.
+    const EDGE_PANEL_GRIP_TAP_PX = 30;
     // Pulled on past open, the panel follows the finger stiffly and tilts as
     // if coming loose; a finger this far past open pulls it off.
     const EDGE_PANEL_STRETCH = 0.45;
@@ -10778,9 +12442,12 @@ Cancel = choose whether to delete the whole series.`);
       if (!drag || event.pointerId !== drag.id) return;
       edgePanel.drag = null;
       if (!drag.moved) {
-        // A tap on the handle does not open the panel: it peeks out to show
-        // that it wants pulling.
-        if (!drag.fromOpen && event.type === 'pointerup') peekEdgePanel();
+        // A tap on the grip does not open the panel: it peeks out to show
+        // that it wants pulling. A tap further in was meant for the clock.
+        if (!drag.fromOpen && event.type === 'pointerup') {
+          if (event.clientX <= EDGE_PANEL_GRIP_TAP_PX) peekEdgePanel();
+          else passTapThroughEdgeHandle(event);
+        }
         return;
       }
       let open = drag.fromOpen;
@@ -10802,6 +12469,31 @@ Cancel = choose whether to delete the whole series.`);
       els.edgePanel.classList.remove('is-dragging');
       els.edgePanelTray.style.transform = '';
       setEdgePanelOpen(open);
+    }
+
+    // The grab area is wide enough to cover the left part of the clock. A tap
+    // there (no pull) is replayed on whatever lies under the handle, so the
+    // clock's own tap and double-tap keep working right up to its edge.
+    function passTapThroughEdgeHandle(event) {
+      const below = document.elementsFromPoint(event.clientX, event.clientY)
+        .find(element => !els.edgePanel.contains(element));
+      if (!below || below === document.documentElement || below === document.body) return;
+      const init = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        screenX: event.screenX,
+        screenY: event.screenY,
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        isPrimary: event.isPrimary,
+        button: 0
+      };
+      below.dispatchEvent(new PointerEvent('pointerdown', { ...init, buttons: 1 }));
+      below.dispatchEvent(new PointerEvent('pointerup', { ...init, buttons: 0 }));
+      below.dispatchEvent(new MouseEvent('click', { ...init, buttons: 0 }));
     }
 
     function bindEdgePanel() {
@@ -11812,6 +13504,7 @@ Cancel = choose whether to delete the whole series.`);
       bindMotionDimmer();
       bindEdgePanel();
       bindVideoOverlays();
+      bindWeatherDebug();
       els.returnToDisplayBtn?.addEventListener('click', goToDisplayMode);
       document.addEventListener('click', event => {
         handleHeroBackActionClick(event);

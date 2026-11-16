@@ -378,6 +378,14 @@ out and back to show that it wants pulling, so a stray touch on the edge opens
 nothing. Tap beside the panel, push it back left, or leave it for ten seconds and
 it slides away again.
 
+The pull does not have to start on the very edge. The grab area is 112px wide
+and about a third of the screen tall, so the finger can start well inside the
+screen: a swipe that starts right on the edge is taken by Windows (Widgets /
+Task View) and never reaches the page. Past the first 30px the grab area lies
+over the clock, so a tap there (no pull) is handed on to the clock, and its tap
+and double tap still work right up to its edge. Only a tap on the grip itself
+peeks the panel.
+
 The panel has one button, **YouTube**, which shows a QR code. Scan it and the
 phone opens a small page (this same site with `?ytsend=<session>`) with a field
 for a link. Paste a YouTube link — watch, youtu.be share, Shorts, live or
@@ -497,3 +505,68 @@ The weather card paints an ambience layer (`#weatherEffect`) behind the readout:
 - Wind above 7.5 m/s adds gust streaks and appends the speed to the description line.
 - Particles move in container-query units so they cross the card itself, and they are only rebuilt when the sky actually changes — the minute-by-minute re-render no longer restarts every animation.
 - `prefers-reduced-motion` keeps the wash and static sky but drops everything that moves.
+
+### Weather that leaves the card
+
+Some weather does not stay inside the weather card. Two canvases, drawn by one
+animation loop (`weatherFx` in the script), sit on top of the CSS sky:
+
+- `#weatherFx` is inside the card, in front of the readout. Water and snow on it
+  stop just below the lowest line of text that is fully on the card, so the
+  readout stays dry. (Behind the frosted hourly table they could hardly be seen.)
+- `#weatherSpill` lies in the dashboard frame, over the weather card but under
+  every other card (clock, photo, Upcoming), and is clipped so it only ever
+  paints outside the weather card. Something crossing the card edge is drawn on
+  both, so it leaves without a seam, and fades out over its first 16px under a
+  neighbouring card: it slides *under* the photo or the Upcoming strip.
+
+What each sky does:
+
+- **Rain and drizzle** fill the bottom of the card with water: a surface seen
+  from just above, rings where the drops land, the odd splash and bubble, slow
+  light shafts. Full, it trembles for three seconds and then springs two or
+  three leaks. Thin streams pour out of the bottom edge, where the surface dips
+  over each hole, and fall under the Upcoming strip. Water drains with the
+  square root of its depth, so the streams slow down, break into drips, and
+  leave beads hanging under the card that drip for about half a minute. A
+  dotted tide mark shows where the water stood and dries up. Steady rain takes
+  about three minutes to fill the card (heavier rain faster, drizzle about
+  twice as long); the leak takes about twenty seconds.
+- **Thunder** is rain, plus the lightning flash lights up the frame around the
+  card in step with the flash inside it.
+- **Snow** piles up on the bottom of the card (lumpy, banked up at the sides,
+  with the odd glinting crystal). Once full, part of it sifts out through the
+  bottom edge in a powdery fall. Every few seconds a flake falls out of the
+  card, and every half minute or so a gust blows a few out sideways, towards
+  the photo (or towards the clock, when no task is shown) and under it. Wind
+  banks the pile up on one side and blows more flakes out.
+- **Fog** pours over the bottom edge as a grey haze that pools under the card.
+- Clear, partly cloudy and cloudy skies stay in the card.
+
+The loop runs only while the card shows the weather, the page is in view, no
+overlay (weekly weather, month view, config, YouTube) covers it and the camera
+dimmer has not dimmed the screen; an overlay's blurred backdrop would otherwise
+have to be re-blurred every frame. `prefers-reduced-motion` turns it off. The
+snow pile is drawn into a strip of its own and only redrawn when it has grown
+visibly or while it sifts out.
+
+### Weather test panel (press Q)
+
+On the wall display, press **Q** to open a small panel in the top right corner:
+
+- **Sky**: Live, or one of clear, partly, clouds, fog, drizzle, rain, snow,
+  thunder. Only the card's sky changes; the temperature and description stay
+  live.
+- **Night** and **Windy** switch on the dark sky and the wind gusts. Used on the
+  live sky, they start a test of that same sky.
+- **Fill up now** fills the water or the snow pile to full, so the leak or the
+  spill follows a few seconds later. **Leak now** (or *Spill snow now* / *Pour
+  mist now*) starts it straight away.
+- **Speed** (1×, 4×, 12×, 40×) only speeds up the filling. The leak and the
+  spill always run at their real speed, so they can be judged as they will look.
+- A status line shows the sky, how full the card is and what it is doing.
+
+Q or Esc closes the panel and the test stays on; a dark pill at the top of the
+screen says so. Live ends it. A test left on also ends with the five-minute idle
+reset, or with a reload, so a forgotten one cannot keep the wall on the wrong
+weather. Q is ignored while typing in a field.
