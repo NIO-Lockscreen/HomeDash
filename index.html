@@ -888,8 +888,48 @@
       transition: opacity 900ms ease;
     }
 
+    /* In front of the whole dashboard, under the overlays (40 and up): what
+       stands out of the card over its border. */
+    canvas.weather-pop {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 30;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 900ms ease;
+    }
+
+    /* Inside the Upcoming strip, between its background and its content:
+       water and snow that spill over its top edge run down here, behind the
+       title and under the photos. */
+    .upcoming-card > canvas.upcoming-fx {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 900ms ease;
+    }
+
+    .upcoming-card > :not(canvas) {
+      position: relative;
+      z-index: 2;
+    }
+
     .weather-card > canvas.weather-fx.is-on,
-    .kiosk-shell > canvas.weather-spill.is-on { opacity: 1; }
+    .kiosk-shell > canvas.weather-spill.is-on,
+    canvas.weather-pop.is-on,
+    .upcoming-card > canvas.upcoming-fx.is-on { opacity: 1; }
+
+    /* The pop-out layer draws its own sun, moon and lightning. */
+    .weather-card.wx-pop-sky .weather-effect .sun-glow,
+    .weather-card.wx-pop-sky .weather-effect .sun-rays,
+    .weather-card.wx-pop-sky .weather-effect .moon,
+    .weather-card.wx-pop-bolt .weather-effect .bolt { display: none; }
 
     /* The canvas draws ripples where the drops meet the water instead. */
     .weather-card.wx-fx-water .weather-effect .splash { display: none; }
@@ -897,6 +937,8 @@
     .weather-card.show-selected-event > canvas.weather-fx,
     .kiosk-shell.daily-calendar-mode canvas.weather-fx,
     .kiosk-shell.daily-calendar-mode canvas.weather-spill { display: none; }
+
+    .wx-debug > #wxDebugPop { width: 100%; }
 
     /* Weather test panel (press Q on the wall display). */
     .wx-debug {
@@ -4590,6 +4632,7 @@
     </section>
 
     <section class="upcoming-card">
+      <canvas id="upcomingFx" class="upcoming-fx" aria-hidden="true"></canvas>
       <div class="upcoming-head">
         <h2 class="section-title">Upcoming</h2>
         <div id="upcomingPager" class="upcoming-pager" aria-label="Upcoming task navigation"></div>
@@ -4996,11 +5039,12 @@
       <button type="button" id="wxDebugNight">Night</button>
       <button type="button" id="wxDebugWind">Windy</button>
     </div>
-    <div class="wx-debug-label">Water and snow</div>
+    <div class="wx-debug-label">Effects</div>
     <div class="wx-debug-grid two">
       <button type="button" id="wxDebugFill">Fill up now</button>
       <button type="button" id="wxDebugSpill">Leak / spill now</button>
     </div>
+    <button type="button" id="wxDebugPop">Pop-out now</button>
     <div class="wx-debug-label">Speed of fill and leak</div>
     <div class="wx-debug-grid four" id="wxDebugSpeed">
       <button type="button" data-wx-speed="1">1×</button>
@@ -5011,6 +5055,7 @@
     <div id="wxDebugStatus" class="wx-debug-status"></div>
   </section>
   <div id="wxDebugBadge" class="wx-debug-badge hidden"></div>
+  <canvas id="weatherPop" class="weather-pop" aria-hidden="true"></canvas>
 
   <div id="edgePanel" class="edge-panel hidden">
     <div id="edgePanelScrim" class="edge-panel-scrim"></div>
@@ -5359,6 +5404,7 @@
       wxDebugWind: document.getElementById('wxDebugWind'),
       wxDebugFill: document.getElementById('wxDebugFill'),
       wxDebugSpill: document.getElementById('wxDebugSpill'),
+      wxDebugPop: document.getElementById('wxDebugPop'),
       wxDebugStatus: document.getElementById('wxDebugStatus'),
       wxDebugBadge: document.getElementById('wxDebugBadge'),
       edgePanel: document.getElementById('edgePanel'),
@@ -8753,6 +8799,18 @@
       spillCanvas: null,
       spillCtx: null,
       spillClean: true,
+      cardClean: true,
+      popCanvas: null,
+      popCtx: null,
+      upCanvas: null,
+      upCtx: null,
+      upClean: true,
+      popKey: '',
+      popSprites: new Map(),
+      fogLayer: null,
+      capCanvas: null,
+      pop: null,
+      ledgeState: null,
       sprites: { flake: null, flakeOut: null, fog: null, fogNight: null, glow: null, pile: null },
       surface: { front: new Float32Array(0), back: new Float32Array(0) },
       water: null,
@@ -8797,7 +8855,11 @@
       fx.spillCanvas = document.getElementById('weatherSpill');
       fx.cardCtx = fx.cardCanvas?.getContext?.('2d') || null;
       fx.spillCtx = fx.spillCanvas?.getContext?.('2d') || null;
-      if (!fx.cardCtx || !fx.spillCtx) return false;
+      fx.popCanvas = document.getElementById('weatherPop');
+      fx.popCtx = fx.popCanvas?.getContext?.('2d') || null;
+      fx.upCanvas = document.getElementById('upcomingFx');
+      fx.upCtx = fx.upCanvas?.getContext?.('2d') || null;
+      if (!fx.cardCtx || !fx.spillCtx || !fx.popCtx) return false;
       fx.ready = true;
 
       const remeasure = () => {
@@ -8897,6 +8959,56 @@
       }
       fx.spillClean = false;
       fx.sprites.glow = null;
+
+      // Which side of the card has a neighbouring card: gusts, side clouds
+      // and shooting stars head that way.
+      const sideways = cover => cover.b > H * 0.2 && cover.t < H * 0.9;
+      const hasRight = covers.some(cover => cover.l >= W - 2 && sideways(cover));
+      const hasLeft = covers.some(cover => cover.r <= 2 && sideways(cover));
+      fx.geo.side = hasRight || !hasLeft ? 1 : -1;
+      // The pop-out layer covers the whole window; it works in card
+      // coordinates shifted by the card's place in the window.
+      fx.geo.vx = cardRect.left;
+      fx.geo.vy = cardRect.top;
+      const pw = Math.max(1, Math.round(window.innerWidth * dpr));
+      const ph = Math.max(1, Math.round(window.innerHeight * dpr));
+      if (fx.popCanvas.width !== pw || fx.popCanvas.height !== ph) {
+        fx.popCanvas.width = pw;
+        fx.popCanvas.height = ph;
+      }
+      // The Upcoming strip under the card is the ledge water and snow land on.
+      const upcoming = document.querySelector('.upcoming-card');
+      const upRect = upcoming?.getClientRects().length ? upcoming.getBoundingClientRect() : null;
+      fx.geo.ledge = null;
+      if (upRect && upRect.top >= cardRect.bottom - 1 && upRect.left < cardRect.right && upRect.right > cardRect.left) {
+        const grid = els.upcomingGrid?.getBoundingClientRect();
+        fx.geo.ledge = {
+          l: upRect.left - cardRect.left,
+          r: upRect.right - cardRect.left,
+          t: upRect.top - cardRect.top,
+          b: upRect.bottom - cardRect.top,
+          radius: parseFloat(getComputedStyle(upcoming).borderTopLeftRadius) || 24,
+          picTop: grid ? grid.top - upRect.top : 60
+        };
+        if (fx.upCanvas) {
+          const uw = Math.max(1, Math.round(upRect.width * dpr));
+          const uh = Math.max(1, Math.round(upRect.height * dpr));
+          if (fx.upCanvas.width !== uw || fx.upCanvas.height !== uh) {
+            fx.upCanvas.width = uw;
+            fx.upCanvas.height = uh;
+          }
+          fx.upClean = false;
+        }
+      }
+      const key = `${Math.round(W)}|${Math.round(H)}|${dpr}`;
+      if (key !== fx.popKey) {
+        fx.popKey = key;
+        fx.popSprites.clear();
+        if (fx.pop) {
+          fx.pop.beads = null;
+          fx.pop.icicles = null;
+        }
+      }
       return true;
     }
 
@@ -9001,20 +9113,23 @@
       return sprite;
     }
 
-    function wxFlashLevel() {
+    // Where the card's CSS flash is in its cycle: { level, phase, cycle }.
+    function wxFlashState() {
       const fx = weatherFx;
-      if (fx.effect !== 'thunder') return 0;
+      if (fx.effect !== 'thunder') return null;
       if (!fx.flashEl || !fx.flashEl.isConnected) fx.flashEl = els.weatherEffect?.querySelector('.flash') || null;
       const animation = fx.flashEl?.getAnimations?.()[0];
-      if (!animation) return 0;
-      const phase = ((Number(animation.currentTime) || 0) % WX_FLASH_PERIOD_MS) / WX_FLASH_PERIOD_MS;
+      if (!animation) return null;
+      const time = Number(animation.currentTime) || 0;
+      const phase = (time % WX_FLASH_PERIOD_MS) / WX_FLASH_PERIOD_MS;
+      const cycle = Math.floor(time / WX_FLASH_PERIOD_MS);
       for (let index = 1; index < WX_FLASH_KEYS.length; index++) {
         const [p1, v1] = WX_FLASH_KEYS[index];
         if (phase > p1) continue;
         const [p0, v0] = WX_FLASH_KEYS[index - 1];
-        return v0 + (v1 - v0) * ((phase - p0) / Math.max(1e-6, p1 - p0));
+        return { level: v0 + (v1 - v0) * ((phase - p0) / Math.max(1e-6, p1 - p0)), phase, cycle };
       }
-      return 0;
+      return { level: 0, phase, cycle };
     }
 
     // --- State ---------------------------------------------------------
@@ -9104,7 +9219,10 @@
         fx.water = family === 'water' ? newWaterState(0.38) : null;
         fx.snow = family === 'snow' ? newSnowState(0.42) : null;
         fx.fog = family === 'fog' ? { puffs: [], clock: 0 } : null;
+        fx.ledgeState = family === 'water' || family === 'snow' ? newLedgeState() : null;
       }
+      const popKind = weatherPopKind(effect, night);
+      if (popKind !== fx.pop?.kind) fx.pop = popKind ? newPopState(popKind) : null;
       // The readout was just re-rendered: its lowest line may have moved.
       if (fx.running) measureWeatherFx();
       weatherFxSync();
@@ -9113,7 +9231,7 @@
     function weatherFxSync() {
       const fx = weatherFx;
       if (!fx.ready) return;
-      const show = Boolean(fx.family)
+      const show = Boolean(fx.family || fx.pop)
         && !wxReducedMotion.matches
         && document.visibilityState === 'visible'
         && !els.displayView.classList.contains('hidden')
@@ -9121,9 +9239,12 @@
         && !els.weatherCard.classList.contains('show-selected-event')
         && !document.body.classList.contains('motion-dimmed')
         && !anyDisplayOverlayOpen();
+      const kind = fx.pop?.kind;
       els.weatherCard.classList.toggle('wx-fx-water', show && fx.family === 'water');
-      fx.cardCanvas.classList.toggle('is-on', show);
-      fx.spillCanvas.classList.toggle('is-on', show);
+      // The pop-out layer draws its own sun, moon and bolt.
+      els.weatherCard.classList.toggle('wx-pop-sky', show && ['sun', 'sun-cloud', 'moon', 'moon-cloud'].includes(kind));
+      els.weatherCard.classList.toggle('wx-pop-bolt', show && kind === 'thunder');
+      [fx.cardCanvas, fx.spillCanvas, fx.popCanvas, fx.upCanvas].forEach(canvas => canvas?.classList.toggle('is-on', show));
       clearTimeout(fx.clearTimer);
       if (show && !fx.running) {
         if (!measureWeatherFx()) return;
@@ -9137,9 +9258,14 @@
         // Let the last frame fade out with the canvas, then let it go.
         fx.clearTimer = setTimeout(() => {
           if (fx.running) return;
-          fx.cardCtx.clearRect(0, 0, fx.cardCanvas.width, fx.cardCanvas.height);
-          fx.spillCtx.clearRect(0, 0, fx.spillCanvas.width, fx.spillCanvas.height);
+          [[fx.cardCtx, fx.cardCanvas], [fx.spillCtx, fx.spillCanvas], [fx.popCtx, fx.popCanvas], [fx.upCtx, fx.upCanvas]].forEach(([ctx, canvas]) => {
+            if (!ctx) return;
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+          });
           fx.spillClean = true;
+          fx.cardClean = true;
+          fx.upClean = true;
         }, 1000);
       }
     }
@@ -9148,16 +9274,28 @@
       const fx = weatherFx;
       fx.raf = 0;
       if (!fx.running) return;
+      // A calm sky (sun, moon, clouds, fog) moves slowly: 30 frames a second
+      // is plenty, except while a flare, a shooting star or a gust is on.
+      const calm = !fx.family || fx.family === 'fog';
+      if (calm && !weatherPopBusy() && fx.last && now - fx.last < WX_POP_CALM_MS - 2) {
+        fx.raf = requestAnimationFrame(weatherFxFrame);
+        return;
+      }
       // Capped, so a frame held back by a busy page does not jump the sky.
       const dt = fx.last ? Math.min(0.05, (now - fx.last) / 1000) : 1 / 60;
       fx.last = now;
       fx.time += dt;
-      fx.flash = wxFlashLevel();
+      const flashState = wxFlashState();
+      fx.flash = flashState ? flashState.level : 0;
       if (fx.family === 'water') stepWater(dt);
       else if (fx.family === 'snow') stepSnow(dt);
       else if (fx.family === 'fog') stepFog(dt);
+      stepLedge(dt);
+      stepPop(dt, flashState);
       drawWeatherFxCard();
       drawWeatherFxSpill();
+      drawLedgeFace();
+      drawWeatherFxPop();
       fx.raf = requestAnimationFrame(weatherFxFrame);
     }
 
@@ -9165,7 +9303,8 @@
 
     function wxWaterMaxPx() {
       const g = weatherFx.geo;
-      return Math.min(g.H * 0.13, Math.max(16, g.textSafe - 1));
+      // Waves and the surface band rise about 8px above the level itself.
+      return Math.min(g.H * 0.13, Math.max(14, g.textSafe - 8));
     }
 
     function startWaterLeak() {
@@ -9324,7 +9463,20 @@
         drop.vy += WX_WATER_GRAVITY * dt;
         drop.y += drop.vy * dt;
       });
-      w.drops = w.drops.filter(drop => drop.y < g.H + WX_FX_PAD_BOTTOM + 20);
+      const ledge = wxLedge();
+      w.drops = w.drops.filter(drop => {
+        if (ledge && overLedge(drop.x) && drop.y >= ledge.t - 1) {
+          ledgeLand('water', drop.x, drop.r * 0.45, drop.vy);
+          return false;
+        }
+        return drop.y < g.H + WX_FX_PAD_BOTTOM + 20;
+      });
+      // A stream pours onto the edge all the time it runs.
+      if (w.phase === 'leak' && ledge) {
+        w.holes.forEach(hole => {
+          if (hole.flow >= WX_WATER_STREAM_MIN && overLedge(hole.x)) ledgeLand('stream', hole.x, hole.flow * 7 * dt, 700);
+        });
+      }
     }
 
     function drawWater(ctx) {
@@ -9506,8 +9658,11 @@
         if (w.phase === 'leak' && hole.flow >= WX_WATER_STREAM_MIN) {
           drew = true;
           const y0 = g.H - 0.5;
-          const coverTop = wxCoverTopBelow(hole.x);
-          const y1 = Math.min(g.H + WX_FX_PAD_BOTTOM, coverTop + WX_FX_COVER_FADE_PX + 2);
+          // Onto the Upcoming strip's edge if it is there, else on under the
+          // next card.
+          const lands = overLedge(hole.x);
+          const coverTop = lands ? wxLedge().t + 40 : wxCoverTopBelow(hole.x);
+          const y1 = lands ? wxLedge().t : Math.min(g.H + WX_FX_PAD_BOTTOM, coverTop + WX_FX_COVER_FADE_PX + 2);
           const half0 = ((1.3 + 4.4 * hole.flow) * g.scale) / 2;
           const halfAt = y => half0 * Math.pow(1 + (y - y0) / 9, -0.25) * (1 + 0.22 * Math.sin(y * 0.55 - t * 32 + hole.phase) * Math.min(1, (y - y0) / 8));
           const wobble = y => Math.sin(y * 0.12 - t * 18 + hole.phase) * 0.4 * hole.flow;
@@ -9524,6 +9679,13 @@
           ctx.closePath();
           ctx.fillStyle = gradient;
           ctx.fill();
+          if (lands) {
+            // Where it hits the edge it fans out.
+            ctx.beginPath();
+            ctx.ellipse(hole.x, y1, half0 * 2.6 + 1.5, (1.2 + hole.flow * 1.6) * g.scale, 0, Math.PI, Math.PI * 2);
+            ctx.fillStyle = `rgba(${top},.85)`;
+            ctx.fill();
+          }
           // The meniscus where it leaves the card.
           ctx.beginPath();
           ctx.ellipse(hole.x, y0, half0 + 1.8 * g.scale, (1.4 + 2.2 * hole.flow) * g.scale, 0, 0, Math.PI);
@@ -9691,7 +9853,14 @@
         flake.y += flake.vy * dt;
         flake.x = flake.bx + Math.sin(fx.time * flake.freq * 2 * Math.PI * 0.5 + flake.phase) * flake.sway;
       });
-      s.flakes = s.flakes.filter(flake => flake.y < g.H + WX_FX_PAD_BOTTOM + 10 && flake.x > -WX_FX_PAD_X - 10 && flake.x < g.W + WX_FX_PAD_X + 10);
+      const ledge = wxLedge();
+      s.flakes = s.flakes.filter(flake => {
+        if (ledge && flake.y > g.H && overLedge(flake.x) && flake.y >= ledge.t - 1) {
+          ledgeLand('snow', flake.x, 0.5 * g.scale);
+          return false;
+        }
+        return flake.y < g.H + WX_FX_PAD_BOTTOM + 10 && flake.x > -WX_FX_PAD_X - 10 && flake.x < g.W + WX_FX_PAD_X + 10;
+      });
 
       s.powder.forEach(grain => {
         grain.vy = Math.min(130, grain.vy + 160 * dt);
@@ -9699,7 +9868,13 @@
         grain.x += (grain.vx + Math.sin(fx.time * 3 + grain.phase) * 6) * dt;
         grain.y += grain.vy * dt;
       });
-      s.powder = s.powder.filter(grain => grain.y < g.H + WX_FX_PAD_BOTTOM + 10);
+      s.powder = s.powder.filter(grain => {
+        if (ledge && overLedge(grain.x) && grain.y >= ledge.t - 1) {
+          ledgeLand('snow', grain.x, grain.r * 0.32);
+          return false;
+        }
+        return grain.y < g.H + WX_FX_PAD_BOTTOM + 10;
+      });
     }
 
     function snowPileHeights() {
@@ -9914,6 +10089,1783 @@
       return fx.fog.puffs.length > 0;
     }
 
+    // --- The Upcoming strip as a ledge ------------------------------------
+    //
+    // Water and snow that fall out of the bottom of the weather card land on
+    // the top edge of the Upcoming strip instead of vanishing under it. Water
+    // splashes, gathers along the edge in a thin film and, where the film
+    // gets too thick, spills over: rivulets run down the face of the strip,
+    // behind its title and on under the photos (#upcomingFx lies inside the
+    // strip, between its background and its content). Snow builds a small
+    // drift on the edge; where it grows too tall a piece slides over and
+    // tumbles down the face, under the photos. The film dries and the drift
+    // settles slowly.
+    const WX_LEDGE_STEP = 4;
+    const WX_LEDGE_SPILL_PX = 1.6;
+    const WX_LEDGE_DRY_PX_S = 0.05;
+    const WX_LEDGE_SNOW_SETTLE_PX_S = 0.012;
+
+    function newLedgeState() {
+      return { cols: 0, water: null, snow: null, scratch: null, rivulets: [], grains: [], splashes: [], snowMax: 0, snowAt: [], wet: 0 };
+    }
+
+    function wxLedge() {
+      return weatherFx.geo?.ledge || null;
+    }
+
+    function ledgeArrays() {
+      const fx = weatherFx;
+      const L = wxLedge();
+      const s = fx.ledgeState;
+      const cols = Math.max(2, Math.ceil((L.r - L.l) / WX_LEDGE_STEP) + 1);
+      if (s.cols !== cols) {
+        s.cols = cols;
+        s.water = new Float32Array(cols);
+        s.snow = new Float32Array(cols);
+        s.scratch = new Float32Array(cols);
+        s.snowAt = Array.from({ length: cols }, () => wxRand(0.75, 1.25));
+      }
+      return s;
+    }
+
+    // Over the flat part of the edge, clear of the strip's rounded corners.
+    function overLedge(x) {
+      const L = wxLedge();
+      return Boolean(L) && x > L.l + L.radius * 0.7 && x < L.r - L.radius * 0.7;
+    }
+
+    function ledgeIndex(x) {
+      const L = wxLedge();
+      return Math.round((x - L.l) / WX_LEDGE_STEP);
+    }
+
+    // Something landed on the edge at x (card coordinates).
+    function ledgeLand(kind, x, amount = 1, speed = 400) {
+      const fx = weatherFx;
+      const L = wxLedge();
+      if (!L || !fx.ledgeState) return;
+      const s = ledgeArrays();
+      const centre = ledgeIndex(x);
+      const spread = kind === 'snow' ? 2 : 3;
+      for (let k = -spread * 2; k <= spread * 2; k++) {
+        const index = centre + k;
+        if (index < 0 || index >= s.cols) continue;
+        const share = Math.exp(-(k * k) / (spread * spread)) / (spread * 1.77);
+        if (kind === 'water' || kind === 'stream') s.water[index] += amount * share;
+        else if (kind === 'snow') s.snow[index] += amount * share;
+      }
+      if (kind === 'snow') return;
+      // A splash: droplets thrown up off the edge, back down onto it.
+      const count = kind === 'stream' ? (Math.random() < 0.5 ? 1 : 0) : 2 + Math.floor(Math.random() * 3);
+      for (let index = 0; index < count && s.splashes.length < 60; index++) {
+        s.splashes.push({
+          x: x + wxRand(-1.5, 1.5),
+          y: L.t - 0.5,
+          vx: wxRand(-60, 60),
+          vy: -wxRand(35, 95) * Math.min(1.5, speed / 450) * fx.geo.scale,
+          r: wxRand(0.7, 1.4) * fx.geo.scale
+        });
+      }
+    }
+
+    function feedRivulet(s, x, volume) {
+      const L = wxLedge();
+      const ux = x - L.l;
+      let rivulet = s.rivulets.find(item => item.fedAt > weatherFx.time - 1.5 && Math.abs(item.x0 - ux) < 7);
+      if (!rivulet) {
+        if (s.rivulets.length >= 18) return;
+        rivulet = {
+          x0: ux,
+          x: ux,
+          y: 0.5,
+          pts: [ux, 0],
+          vol: 0,
+          feed: 0,
+          fedAt: weatherFx.time,
+          drift: wxRand(-0.25, 0.25),
+          slip: 0,
+          slipT: 0,
+          dryT: 0
+        };
+        s.rivulets.push(rivulet);
+      }
+      rivulet.vol += volume;
+      rivulet.feed = Math.min(1, rivulet.feed + volume * 0.6);
+      rivulet.fedAt = weatherFx.time;
+    }
+
+    function stepLedge(dt) {
+      const fx = weatherFx;
+      const L = wxLedge();
+      if (!L || !fx.ledgeState) return;
+      const s = ledgeArrays();
+      const g = fx.geo;
+
+      // The film spreads along the edge, dries, and spills over where it is
+      // too thick to hold.
+      let wet = 0;
+      const w = s.water;
+      const tmp = s.scratch;
+      const spread = Math.min(0.45, 2.5 * dt);
+      for (let index = 0; index < s.cols; index++) {
+        const left = w[Math.max(0, index - 1)];
+        const right = w[Math.min(s.cols - 1, index + 1)];
+        tmp[index] = w[index] + (left + right - 2 * w[index]) * spread;
+      }
+      for (let index = 0; index < s.cols; index++) {
+        let value = Math.max(0, tmp[index] - WX_LEDGE_DRY_PX_S * dt);
+        if (value > WX_LEDGE_SPILL_PX) {
+          const excess = (value - WX_LEDGE_SPILL_PX * 0.85) * Math.min(1, dt * 6);
+          value -= excess;
+          feedRivulet(s, L.l + index * WX_LEDGE_STEP, excess);
+        }
+        w[index] = value;
+        wet = Math.max(wet, value);
+      }
+      s.wet = wet;
+
+      // Rivulets crawl down the face in fits and starts, leaving a wet
+      // trail that dries behind them.
+      s.rivulets.forEach(rivulet => {
+        rivulet.feed = Math.max(0, rivulet.feed - dt * 0.5);
+        rivulet.slipT -= dt;
+        if (rivulet.slipT <= 0) {
+          rivulet.slip = Math.random() < 0.55 ? wxRand(55, 120) : wxRand(4, 16);
+          rivulet.slipT = wxRand(0.15, 0.6);
+        }
+        if (rivulet.vol > 0.02 && rivulet.y < L.b - L.t + 20) {
+          const speed = (rivulet.slip + 50 * rivulet.feed) * g.scale;
+          const step = speed * dt;
+          rivulet.y += step;
+          // Water on a surface wanders: it keeps a heading that drifts.
+          rivulet.drift = wxClamp(rivulet.drift + wxRand(-1, 1) * step * 0.04, -0.7, 0.7);
+          rivulet.x += (rivulet.drift + wxRand(-0.4, 0.4)) * step * 0.35;
+          rivulet.vol -= step * 0.006;
+          const last = rivulet.pts.length - 2;
+          if (rivulet.y - rivulet.pts[last + 1] > 3) rivulet.pts.push(rivulet.x, rivulet.y);
+        } else {
+          rivulet.vol = Math.max(0, rivulet.vol);
+        }
+        if (fx.time - rivulet.fedAt > 1.5) rivulet.dryT += dt;
+      });
+      s.rivulets = s.rivulets.filter(rivulet => rivulet.dryT < 12);
+
+      // The drift settles a little, keeps to a natural slope, and lets go
+      // where it has grown too tall.
+      const snow = s.snow;
+      const max = wxClamp(g.H * 0.03, 6, 11) * g.scale;
+      s.snowMax = max;
+      for (let index = 0; index < s.cols; index++) snow[index] = Math.max(0, snow[index] - WX_LEDGE_SNOW_SETTLE_PX_S * dt);
+      for (let index = 0; index < s.cols - 1; index++) {
+        const diff = snow[index] - snow[index + 1];
+        if (Math.abs(diff) > 2.2) {
+          const move = (Math.abs(diff) - 2.2) * 0.25 * Math.sign(diff);
+          snow[index] -= move;
+          snow[index + 1] += move;
+        }
+      }
+      for (let index = 0; index < s.cols; index++) {
+        if (snow[index] < max * s.snowAt[index]) continue;
+        // A lump slides over the edge.
+        const from = Math.max(0, index - 3);
+        const to = Math.min(s.cols - 1, index + 3);
+        let fallen = 0;
+        for (let k = from; k <= to; k++) {
+          const take = snow[k] * wxRand(0.35, 0.6);
+          snow[k] -= take;
+          fallen += take;
+        }
+        s.snowAt[index] = wxRand(0.75, 1.25);
+        const ux = index * WX_LEDGE_STEP;
+        const count = Math.min(40, Math.round(fallen * 2.2));
+        for (let k = 0; k < count && s.grains.length < 220; k++) {
+          const chunk = Math.random() < 0.12;
+          s.grains.push({
+            x: ux + wxRand(-10, 10),
+            y: wxRand(-1, 3),
+            vx: wxRand(-12, 12),
+            vy: wxRand(8, 40),
+            r: chunk ? wxRand(2.2, 3.2) : wxRand(0.7, 1.7),
+            a: wxRand(0.75, 1),
+            phase: Math.random() * 6.28
+          });
+        }
+      }
+      s.grains.forEach(grain => {
+        grain.vy = Math.min(120, grain.vy + 150 * dt);
+        grain.vx *= 1 - Math.min(1, dt * 0.9);
+        grain.x += (grain.vx + Math.sin(fx.time * 3 + grain.phase) * 5) * dt;
+        grain.y += grain.vy * dt;
+      });
+      s.grains = s.grains.filter(grain => grain.y < L.b - L.t + 10);
+
+      s.splashes.forEach(splash => {
+        splash.vy += 900 * dt;
+        splash.x += splash.vx * dt;
+        splash.y += splash.vy * dt;
+      });
+      s.splashes = s.splashes.filter(splash => splash.y < L.t + 0.5);
+    }
+
+    // The film and the splashes, in the gap above the edge (spill layer).
+    function drawLedgeSpill(ctx) {
+      const fx = weatherFx;
+      const L = wxLedge();
+      const s = fx.ledgeState;
+      if (!L || !s || !s.cols) return false;
+      let drew = false;
+      const dark = fx.night || fx.effect === 'thunder';
+      if (s.wet > 0.08) {
+        drew = true;
+        ctx.beginPath();
+        let open = false;
+        for (let index = 0; index < s.cols; index++) {
+          const x = L.l + index * WX_LEDGE_STEP;
+          const h = Math.min(3.6, s.water[index] * 1.1);
+          if (h < 0.12 || !overLedge(x)) {
+            if (open) {
+              ctx.lineTo(x, L.t + 0.6);
+              open = false;
+            }
+            continue;
+          }
+          if (!open) {
+            ctx.moveTo(x, L.t + 0.6);
+            open = true;
+          }
+          ctx.lineTo(x, L.t - h);
+        }
+        if (open) ctx.lineTo(L.r, L.t + 0.6);
+        ctx.fillStyle = dark ? 'rgba(130,166,214,.78)' : 'rgba(150,190,232,.8)';
+        ctx.fill();
+        ctx.lineWidth = 0.8;
+        ctx.strokeStyle = 'rgba(255,255,255,.75)';
+        ctx.stroke();
+      }
+      if (s.splashes.length) {
+        drew = true;
+        ctx.fillStyle = dark ? 'rgba(170,200,240,.9)' : 'rgba(150,186,228,.9)';
+        s.splashes.forEach(splash => {
+          ctx.beginPath();
+          ctx.arc(splash.x, splash.y, splash.r, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+      return drew;
+    }
+
+    // Rivulets and falling snow on the face of the strip (#upcomingFx).
+    function drawLedgeFace() {
+      const fx = weatherFx;
+      const L = wxLedge();
+      const ctx = fx.upCtx;
+      if (!ctx) return;
+      const s = fx.ledgeState;
+      const busy = L && s && (s.rivulets.length || s.grains.length || s.wet > 0.08);
+      if (!busy) {
+        if (!fx.upClean) {
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, fx.upCanvas.width, fx.upCanvas.height);
+          fx.upClean = true;
+        }
+        return;
+      }
+      const g = fx.geo;
+      ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
+      ctx.clearRect(0, 0, L.r - L.l, L.b - L.t);
+      fx.upClean = false;
+      const dark = fx.night || fx.effect === 'thunder';
+
+      // A wet sheen just under the edge where the film sits.
+      if (s.wet > 0.08) {
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        for (let index = 0; index < s.cols; index++) ctx.lineTo(index * WX_LEDGE_STEP, Math.min(8, s.water[index] * 4));
+        ctx.lineTo((s.cols - 1) * WX_LEDGE_STEP, 0);
+        ctx.closePath();
+        const sheen = ctx.createLinearGradient(0, 0, 0, 8);
+        sheen.addColorStop(0, 'rgba(120,160,214,.34)');
+        sheen.addColorStop(1, 'rgba(120,160,214,0)');
+        ctx.fillStyle = sheen;
+        ctx.fill();
+      }
+
+      s.rivulets.forEach(rivulet => {
+        const alpha = 1 - wxClamp(rivulet.dryT / 12, 0, 1);
+        if (alpha <= 0.01 || rivulet.pts.length < 4) return;
+        const width = (1.3 + 1.8 * rivulet.feed) * g.scale;
+        ctx.beginPath();
+        ctx.moveTo(rivulet.pts[0], rivulet.pts[1]);
+        for (let index = 2; index < rivulet.pts.length; index += 2) ctx.lineTo(rivulet.pts[index], rivulet.pts[index + 1]);
+        ctx.lineTo(rivulet.x, rivulet.y);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = width;
+        ctx.strokeStyle = `rgba(${dark ? '110,146,200' : '120,162,214'},${(0.55 * alpha).toFixed(3)})`;
+        ctx.stroke();
+        ctx.save();
+        ctx.translate(-width * 0.22, 0);
+        ctx.lineWidth = Math.max(0.5, width * 0.32);
+        ctx.strokeStyle = `rgba(255,255,255,${(0.6 * alpha).toFixed(3)})`;
+        ctx.stroke();
+        ctx.restore();
+        if (rivulet.vol > 0.02 || rivulet.dryT < 2) {
+          const r = width * 0.95 + 0.6;
+          ctx.beginPath();
+          ctx.ellipse(rivulet.x, rivulet.y, r * 0.9, r * 1.2, 0, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${dark ? '130,166,214' : '140,180,226'},${(0.85 * alpha).toFixed(3)})`;
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(rivulet.x - r * 0.3, rivulet.y - r * 0.35, r * 0.32, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,255,255,${(0.9 * alpha).toFixed(3)})`;
+          ctx.fill();
+        }
+      });
+
+      if (s.grains.length) {
+        const sprite = wxFlakeSprite(true);
+        s.grains.forEach(grain => {
+          const size = grain.r * 5;
+          ctx.globalAlpha = grain.a;
+          ctx.drawImage(sprite, grain.x - size / 2, grain.y - size / 2, size, size);
+        });
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // The drift on the edge, in front of everything (pop layer).
+    function drawLedgeSnow(ctx) {
+      const fx = weatherFx;
+      const L = wxLedge();
+      const s = fx.ledgeState;
+      if (!L || !s || !s.cols) return;
+      let any = false;
+      for (let index = 0; index < s.cols; index++) if (s.snow[index] > 0.4) { any = true; break; }
+      if (!any) return;
+      const heightAt = index => {
+        const x = L.l + index * WX_LEDGE_STEP;
+        return overLedge(x) ? s.snow[index] : 0;
+      };
+      const path = () => {
+        ctx.beginPath();
+        ctx.moveTo(L.l, L.t + 1.4);
+        for (let index = 0; index < s.cols; index++) {
+          const x = L.l + index * WX_LEDGE_STEP;
+          const h = (heightAt(Math.max(0, index - 1)) + heightAt(index) * 2 + heightAt(Math.min(s.cols - 1, index + 1))) / 4;
+          ctx.lineTo(x, L.t + 1.4 - h);
+        }
+        ctx.lineTo(L.r, L.t + 1.4);
+        ctx.closePath();
+      };
+      // Its shadow on the face of the strip, just under the edge.
+      const shade = ctx.createLinearGradient(0, L.t + 1, 0, L.t + 7);
+      shade.addColorStop(0, 'rgba(50,76,116,.16)');
+      shade.addColorStop(1, 'rgba(50,76,116,0)');
+      ctx.save();
+      path();
+      ctx.translate(0, 4);
+      ctx.fillStyle = shade;
+      ctx.fill();
+      ctx.restore();
+      path();
+      const fill = ctx.createLinearGradient(0, L.t - s.snowMax * 1.3, 0, L.t + 1.4);
+      fill.addColorStop(0, fx.night ? 'rgba(236,243,255,.96)' : '#ffffff');
+      fill.addColorStop(1, fx.night ? 'rgba(170,190,226,.95)' : 'rgba(220,231,246,.97)');
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = 'rgba(110,140,182,.35)';
+      ctx.stroke();
+    }
+
+    // --- Out of the frame: the pop-out layer -------------------------------
+    //
+    // A third canvas, #weatherPop, lies in front of the whole dashboard (under
+    // the overlays, the edge panel and the screen controls). On it each sky
+    // gets something that breaks out over the weather card's border, the old
+    // out-of-bounds trick: drawn over the border, with a soft shadow on
+    // whatever lies behind it, it seems to stand out of the card.
+    //
+    // - Clear day: the sun bulges out of the top corner, its beams shine on
+    //   over the neighbouring cards, and every half minute or so a lens flare
+    //   shoots out across the dashboard.
+    // - Clear night: the moon floats out of the corner, casting a shadow;
+    //   shooting stars streak out of the card.
+    // - Partly cloudy: the sun or the moon, with a cloud in front of it that
+    //   hangs over the top edge.
+    // - Cloudy: clouds hang over a corner, the top and a side, each with its
+    //   shadow; now and then a small one drifts off over the next card.
+    // - Fog: banks of mist roll along the top and bottom edges.
+    // - Rain and drizzle: drops splash on the card's top edge, beads sit on
+    //   it, and now and then one runs down a side and drips off.
+    // - Thunder: each flash brings a bolt that strikes from above the card
+    //   down into the water.
+    // - Snow: a cap of snow on top of the card, icicles under it, and large
+    //   soft flakes falling past close to the eye.
+    // - Wind: streaks blow out of the card's side, on top of any sky.
+    const WX_POP_CALM_MS = 1000 / 30;
+    const WX_FLARE_S = 4.2;
+    const WX_FLARE_GHOSTS = [
+      { t: 0.36, r: 0.55, kind: 'disc', c: '255,196,110', a: 0.22 },
+      { t: 0.55, r: 0.28, kind: 'disc', c: '140,226,196', a: 0.24 },
+      { t: 0.78, r: 0.95, kind: 'ring', c: '130,170,255', a: 0.24 },
+      { t: 1.02, r: 0.42, kind: 'hex', c: '196,150,255', a: 0.2 },
+      { t: 1.3, r: 0.7, kind: 'hex', c: '255,172,120', a: 0.16 },
+      { t: 1.62, r: 1.2, kind: 'disc', c: '110,186,255', a: 0.12 },
+      { t: 1.95, r: 0.34, kind: 'disc', c: '255,226,150', a: 0.24 }
+    ];
+
+    const wxSmooth = (edge0, edge1, value) => {
+      const t = wxClamp((value - edge0) / (edge1 - edge0), 0, 1);
+      return t * t * (3 - 2 * t);
+    };
+
+    function wxMulberry(seed) {
+      let a = seed >>> 0;
+      return () => {
+        a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function weatherPopKind(effect, night) {
+      if (effect === 'clear') return night ? 'moon' : 'sun';
+      if (effect === 'partly') return night ? 'moon-cloud' : 'sun-cloud';
+      if (effect === 'clouds' || effect === 'fog' || effect === 'snow' || effect === 'thunder') return effect;
+      if (effect === 'rain' || effect === 'drizzle') return 'rain';
+      return null;
+    }
+
+    function newPopState(kind) {
+      const moonish = kind === 'moon' || kind === 'moon-cloud';
+      return {
+        kind,
+        flare: null,
+        nextFlare: kind === 'sun' ? wxRand(5, 10) : wxRand(14, 24),
+        stars: [],
+        nextStar: moonish ? wxRand(3, 8) : Infinity,
+        wisps: [],
+        nextWisp: wxRand(18, 30),
+        drops: [],
+        splashes: [],
+        flashes: [],
+        dropClock: 0,
+        runners: [],
+        nextRunner: wxRand(3, 7),
+        beads: null,
+        bolt: null,
+        boltCycle: -1,
+        bokeh: [],
+        nextBokeh: wxRand(0.5, 2),
+        icicles: null,
+        iceDrops: [],
+        cap: 0.42,
+        capProfile: null,
+        capDrawn: -1,
+        capKey: '',
+        streaks: [],
+        nextStreak: wxRand(0.4, 1.5),
+        surge: 0
+      };
+    }
+
+    function weatherPopBusy() {
+      const pop = weatherFx.pop;
+      return Boolean(pop && (pop.flare || pop.stars.length || pop.streaks.length || pop.bolt));
+    }
+
+    // How far the card's outline dips at x because of its rounded corners:
+    // the top edge is at y = inset, the bottom one at H - inset.
+    function wxEdgeInset(x) {
+      const g = weatherFx.geo;
+      const r = g.radius;
+      const d = x < r ? r - x : x > g.W - r ? x - (g.W - r) : 0;
+      if (d <= 0) return 0;
+      const c = Math.min(d, r);
+      return r - Math.sqrt(Math.max(0, r * r - c * c));
+    }
+
+    function wxPopSprite(key, w, h, draw) {
+      const fx = weatherFx;
+      const cached = fx.popSprites.get(key);
+      if (cached) return cached;
+      const dpr = fx.geo.dpr;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.ceil(w * dpr));
+      canvas.height = Math.max(1, Math.ceil(h * dpr));
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      draw(ctx, w, h);
+      const sprite = { canvas, w, h };
+      fx.popSprites.set(key, sprite);
+      return sprite;
+    }
+
+    function wxDrawSprite(ctx, sprite, cx, cy, scale = 1) {
+      const w = sprite.w * scale;
+      const h = sprite.h * scale;
+      ctx.drawImage(sprite.canvas, cx - w / 2, cy - h / 2, w, h);
+    }
+
+    // --- Sun and moon ----------------------------------------------------
+
+    function wxSunGeom() {
+      const fx = weatherFx;
+      const g = fx.geo;
+      const kind = fx.pop?.kind;
+      const shared = kind === 'sun-cloud' || kind === 'moon-cloud';
+      const r = Math.round(wxClamp(Math.min(g.W, g.H) * 0.11, 24, 50) * (shared ? 0.92 : 1));
+      return { x: g.W - r * 0.5, y: r * 0.42, r };
+    }
+
+    function wxSunDisc(r) {
+      return wxPopSprite(`sun-disc|${r}`, r * 2 + 4, r * 2 + 4, (ctx, w, h) => {
+        const cx = w / 2;
+        const cy = h / 2;
+        const body = ctx.createRadialGradient(cx - r * 0.32, cy - r * 0.34, r * 0.04, cx, cy, r * 1.04);
+        body.addColorStop(0, '#fffef4');
+        body.addColorStop(0.3, '#fff2b6');
+        body.addColorStop(0.62, '#ffd45e');
+        body.addColorStop(0.86, '#ffb23c');
+        body.addColorStop(1, '#ff9628');
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = body;
+        ctx.fill();
+        const rim = ctx.createRadialGradient(cx, cy, r * 0.74, cx, cy, r);
+        rim.addColorStop(0, 'rgba(255,246,206,0)');
+        rim.addColorStop(1, 'rgba(255,240,180,.6)');
+        ctx.fillStyle = rim;
+        ctx.fill();
+      });
+    }
+
+    function wxSunCorona(r) {
+      const size = r * 7;
+      return wxPopSprite(`sun-corona|${r}`, size, size, (ctx, w, h) => {
+        const glow = ctx.createRadialGradient(w / 2, h / 2, r * 0.9, w / 2, h / 2, w / 2);
+        glow.addColorStop(0, 'rgba(255,214,120,.62)');
+        glow.addColorStop(0.16, 'rgba(255,200,104,.32)');
+        glow.addColorStop(0.42, 'rgba(255,188,96,.1)');
+        glow.addColorStop(1, 'rgba(255,188,96,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, w, h);
+      });
+    }
+
+    function wxSunRays(r, variant) {
+      const size = r * 15;
+      return wxPopSprite(`sun-rays${variant}|${r}`, size, size, (ctx, w, h) => {
+        const rnd = wxMulberry(variant ? 77 : 31);
+        const cx = w / 2;
+        const cy = h / 2;
+        const count = variant ? 7 : 12;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.filter = 'blur(1.5px)';
+        for (let index = 0; index < count; index++) {
+          const angle = (index / count) * Math.PI * 2 + rnd() * 0.35;
+          const length = r * (variant ? 2.8 + rnd() * 2 : 3.6 + rnd() * 3.6);
+          const spread = (variant ? 0.17 : 0.075) * (0.7 + rnd() * 0.6);
+          const inner = spread * 0.35;
+          const beam = ctx.createRadialGradient(cx, cy, r * 0.85, cx, cy, length);
+          beam.addColorStop(0, `rgba(255,222,140,${variant ? 0.3 : 0.42})`);
+          beam.addColorStop(0.45, 'rgba(255,212,128,.13)');
+          beam.addColorStop(1, 'rgba(255,212,128,0)');
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(angle - inner) * r * 0.85, cy + Math.sin(angle - inner) * r * 0.85);
+          ctx.lineTo(cx + Math.cos(angle - spread) * length, cy + Math.sin(angle - spread) * length);
+          ctx.lineTo(cx + Math.cos(angle + spread) * length, cy + Math.sin(angle + spread) * length);
+          ctx.lineTo(cx + Math.cos(angle + inner) * r * 0.85, cy + Math.sin(angle + inner) * r * 0.85);
+          ctx.closePath();
+          ctx.fillStyle = beam;
+          ctx.fill();
+        }
+      });
+    }
+
+    function wxMoonDisc(r) {
+      return wxPopSprite(`moon-disc|${r}`, r * 2 + 4, r * 2 + 4, (ctx, w, h) => {
+        const cx = w / 2;
+        const cy = h / 2;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.clip();
+        const body = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.32, r * 0.05, cx, cy, r * 1.05);
+        body.addColorStop(0, '#fffdf6');
+        body.addColorStop(0.55, '#efebdd');
+        body.addColorStop(1, '#d2cdbb');
+        ctx.fillStyle = body;
+        ctx.fillRect(0, 0, w, h);
+        const rnd = wxMulberry(19);
+        for (let index = 0; index < 8; index++) {
+          const a = rnd() * Math.PI * 2;
+          const d = Math.sqrt(rnd()) * r * 0.7;
+          const cr = r * (0.07 + rnd() * 0.15);
+          const x = cx + Math.cos(a) * d;
+          const y = cy + Math.sin(a) * d;
+          const crater = ctx.createRadialGradient(x + cr * 0.2, y + cr * 0.2, 0, x, y, cr);
+          crater.addColorStop(0, 'rgba(150,144,128,.32)');
+          crater.addColorStop(0.75, 'rgba(160,154,138,.18)');
+          crater.addColorStop(1, 'rgba(160,154,138,0)');
+          ctx.fillStyle = crater;
+          ctx.beginPath();
+          ctx.arc(x, y, cr, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Rounded: shade towards the lower right.
+        const shade = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.4, cx - r * 0.1, cy - r * 0.1, r * 1.35);
+        shade.addColorStop(0, 'rgba(60,72,110,0)');
+        shade.addColorStop(1, 'rgba(60,72,110,.45)');
+        ctx.fillStyle = shade;
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+        ctx.beginPath();
+        ctx.arc(cx, cy, r - 0.6, Math.PI * 0.9, Math.PI * 1.6);
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = 'rgba(255,255,255,.75)';
+        ctx.stroke();
+      });
+    }
+
+    function wxMoonGlow(r) {
+      const size = r * 7;
+      return wxPopSprite(`moon-glow|${r}`, size, size, (ctx, w, h) => {
+        const glow = ctx.createRadialGradient(w / 2, h / 2, r * 0.9, w / 2, h / 2, w / 2);
+        glow.addColorStop(0, 'rgba(206,220,255,.55)');
+        glow.addColorStop(0.2, 'rgba(190,206,250,.22)');
+        glow.addColorStop(1, 'rgba(190,206,250,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, w, h);
+      });
+    }
+
+    function wxSoftShadow(key, r) {
+      const size = r * 3.2;
+      return wxPopSprite(`shadow-${key}|${r}`, size, size, (ctx, w, h) => {
+        ctx.filter = `blur(${(r * 0.24).toFixed(1)}px)`;
+        ctx.beginPath();
+        ctx.arc(w / 2, h / 2, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(18,28,56,1)';
+        ctx.fill();
+      });
+    }
+
+    function drawPopSun(ctx) {
+      const fx = weatherFx;
+      const sun = wxSunGeom();
+      const t = fx.time;
+      ctx.globalAlpha = 0.9;
+      wxDrawSprite(ctx, wxSunCorona(sun.r), sun.x, sun.y, 1 + Math.sin(t * 1.05) * 0.04);
+      [[0, 0.052, 0.85], [1, -0.037, 0.7]].forEach(([variant, speed, alpha]) => {
+        ctx.save();
+        ctx.translate(sun.x, sun.y);
+        ctx.rotate(t * speed + variant);
+        ctx.globalAlpha = alpha * (0.85 + 0.15 * Math.sin(t * 0.7 + variant * 2));
+        wxDrawSprite(ctx, wxSunRays(sun.r, variant), 0, 0);
+        ctx.restore();
+      });
+      ctx.globalAlpha = 1;
+      wxDrawSprite(ctx, wxSunDisc(sun.r), sun.x, sun.y);
+    }
+
+    function drawPopMoon(ctx) {
+      const fx = weatherFx;
+      const moon = wxSunGeom();
+      const y = moon.y + Math.sin(fx.time * 0.6) * 1.5;
+      ctx.globalAlpha = 0.85;
+      wxDrawSprite(ctx, wxMoonGlow(moon.r), moon.x, y);
+      ctx.globalAlpha = 0.3;
+      wxDrawSprite(ctx, wxSoftShadow('moon', moon.r), moon.x + moon.r * 0.22, y + moon.r * 0.32);
+      ctx.globalAlpha = 1;
+      wxDrawSprite(ctx, wxMoonDisc(moon.r), moon.x, y);
+    }
+
+    function startSunFlare() {
+      weatherFx.pop.flare = { t: 0 };
+    }
+
+    function drawPopFlare(ctx) {
+      const fx = weatherFx;
+      const flare = fx.pop.flare;
+      const g = fx.geo;
+      const sun = wxSunGeom();
+      const p = Math.min(1, flare.t / WX_FLARE_S);
+      const env = wxSmooth(0, 0.12, p) * (1 - wxSmooth(0.55, 1, p));
+      if (env <= 0.005) return;
+      const shoot = 1 - Math.pow(1 - Math.min(1, p / 0.2), 3);
+      const length = (g.W * 0.75 + 240 * g.scale) * shoot;
+      // The streak shoots out sideways, past the card on both sides.
+      [[16, '255,186,96', 0.22], [6, '150,192,255', 0.32], [2, '255,250,236', 0.95]].forEach(([half, colour, alpha]) => {
+        ctx.save();
+        ctx.translate(sun.x, sun.y);
+        ctx.scale(Math.max(1, length), half * g.scale);
+        const streak = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+        streak.addColorStop(0, `rgba(${colour},${(alpha * env).toFixed(3)})`);
+        streak.addColorStop(0.35, `rgba(${colour},${(alpha * env * 0.45).toFixed(3)})`);
+        streak.addColorStop(1, `rgba(${colour},0)`);
+        ctx.fillStyle = streak;
+        ctx.beginPath();
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+      // A starburst on the sun itself.
+      ctx.save();
+      ctx.translate(sun.x, sun.y);
+      ctx.rotate(fx.time * 0.12);
+      for (let index = 0; index < 6; index++) {
+        ctx.rotate(Math.PI / 6);
+        const spike = sun.r * (index % 2 ? 2.4 : 4) * (0.6 + 0.4 * shoot);
+        const beam = ctx.createLinearGradient(-spike, 0, spike, 0);
+        beam.addColorStop(0, 'rgba(255,248,226,0)');
+        beam.addColorStop(0.5, `rgba(255,248,226,${(0.85 * env).toFixed(3)})`);
+        beam.addColorStop(1, 'rgba(255,248,226,0)');
+        ctx.fillStyle = beam;
+        ctx.fillRect(-spike, -0.7, spike * 2, 1.4);
+      }
+      ctx.restore();
+      // Ghosts down the line from the sun through the card and beyond it.
+      const ax = g.W / 2 - sun.x;
+      const ay = g.H / 2 - sun.y;
+      const unit = sun.r * 1.5;
+      WX_FLARE_GHOSTS.forEach((ghost, index) => {
+        const t = ghost.t + 0.07 * p;
+        const x = sun.x + ax * t;
+        const y = sun.y + ay * t;
+        const r = ghost.r * unit;
+        const alpha = ghost.a * env * wxSmooth(0.03 * index, 0.03 * index + 0.18, p);
+        if (alpha <= 0.004) return;
+        if (ghost.kind === 'disc') {
+          const disc = ctx.createRadialGradient(x, y, 0, x, y, r);
+          disc.addColorStop(0, `rgba(${ghost.c},${(alpha * 0.7).toFixed(3)})`);
+          disc.addColorStop(0.78, `rgba(${ghost.c},${alpha.toFixed(3)})`);
+          disc.addColorStop(1, `rgba(${ghost.c},0)`);
+          ctx.fillStyle = disc;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (ghost.kind === 'ring') {
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.lineWidth = r * 0.12;
+          ctx.strokeStyle = `rgba(${ghost.c},${alpha.toFixed(3)})`;
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          for (let k = 0; k < 6; k++) {
+            const a = 0.3 + (k / 6) * Math.PI * 2;
+            ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+          }
+          ctx.closePath();
+          ctx.fillStyle = `rgba(${ghost.c},${(alpha * 0.55).toFixed(3)})`;
+          ctx.fill();
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = `rgba(${ghost.c},${alpha.toFixed(3)})`;
+          ctx.stroke();
+        }
+      });
+    }
+
+    function spawnShootingStar() {
+      const fx = weatherFx;
+      const g = fx.geo;
+      const dir = g.side;
+      const angle = wxRand(0.3, 0.55);
+      const speed = wxRand(620, 820) * g.scale;
+      const travel = g.W * 0.75 + 170 * g.scale;
+      fx.pop.stars.push({
+        x: dir > 0 ? wxRand(0.18, 0.45) * g.W : wxRand(0.55, 0.82) * g.W,
+        y: wxRand(0.04, 0.2) * g.H,
+        vx: Math.cos(angle) * speed * dir,
+        vy: Math.sin(angle) * speed,
+        age: 0,
+        life: travel / speed,
+        tail: wxRand(80, 120) * g.scale
+      });
+    }
+
+    function drawPopStars(ctx) {
+      weatherFx.pop.stars.forEach(star => {
+        const p = star.age / star.life;
+        const alpha = wxSmooth(0, 0.08, p) * (1 - wxSmooth(0.7, 1, p));
+        if (alpha <= 0.01) return;
+        const speed = Math.hypot(star.vx, star.vy);
+        const tx = star.x - (star.vx / speed) * star.tail;
+        const ty = star.y - (star.vy / speed) * star.tail;
+        const outline = ctx.createLinearGradient(tx, ty, star.x, star.y);
+        outline.addColorStop(0, 'rgba(50,70,130,0)');
+        outline.addColorStop(1, `rgba(50,70,130,${(0.3 * alpha).toFixed(3)})`);
+        const core = ctx.createLinearGradient(tx, ty, star.x, star.y);
+        core.addColorStop(0, 'rgba(225,235,255,0)');
+        core.addColorStop(1, `rgba(240,246,255,${(0.95 * alpha).toFixed(3)})`);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(star.x, star.y);
+        ctx.lineWidth = 3.4;
+        ctx.strokeStyle = outline;
+        ctx.stroke();
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = core;
+        ctx.stroke();
+        const head = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, 7);
+        head.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(3)})`);
+        head.addColorStop(1, 'rgba(200,220,255,0)');
+        ctx.fillStyle = head;
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, 7, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    // --- Clouds ----------------------------------------------------------
+
+    function wxCloudPuffs(width, seed, pad) {
+      const rnd = wxMulberry(seed);
+      const height = width * 0.62;
+      const base = pad + height * 0.74;
+      const puffs = [];
+      for (let index = 0; index < 5; index++) {
+        const r = width * (0.12 + rnd() * 0.05);
+        puffs.push({ x: pad + width * (0.14 + index * 0.18) + (rnd() - 0.5) * width * 0.05, y: base - r * 0.45, r });
+      }
+      puffs.push({ x: pad + width * (0.32 + rnd() * 0.08), y: base - width * 0.2, r: width * (0.2 + rnd() * 0.04) });
+      puffs.push({ x: pad + width * (0.58 + rnd() * 0.1), y: base - width * 0.16, r: width * (0.17 + rnd() * 0.04) });
+      if (rnd() > 0.4) puffs.push({ x: pad + width * (0.45 + rnd() * 0.1), y: base - width * 0.29, r: width * 0.13 });
+      puffs.sort((a, b) => a.y - b.y);
+      return { puffs, base, height };
+    }
+
+    function wxCloudSprite(width, seed, night) {
+      width = Math.round(width);
+      const pad = Math.round(width * 0.16);
+      const height = Math.round(width * 0.62);
+      return wxPopSprite(`cloud|${width}|${seed}|${night ? 'n' : 'd'}`, width + pad * 2, height + pad * 2, (ctx, w, h) => {
+        const { puffs, base } = wxCloudPuffs(width, seed, pad);
+        const top = Math.min(...puffs.map(puff => puff.y - puff.r));
+        // Drawn on a layer of its own first, then softened onto the sprite.
+        const layer = document.createElement('canvas');
+        const dpr = weatherFx.geo.dpr;
+        layer.width = Math.ceil(w * dpr);
+        layer.height = Math.ceil(h * dpr);
+        const lc = layer.getContext('2d');
+        lc.scale(dpr, dpr);
+        lc.beginPath();
+        lc.rect(0, 0, w, base + width * 0.07);
+        lc.clip();
+        // One light for the whole cloud: bright on top, grey-blue at the base.
+        const body = lc.createLinearGradient(0, top, 0, base + width * 0.07);
+        if (night) {
+          body.addColorStop(0, '#e4ebf8');
+          body.addColorStop(0.5, '#b7c3da');
+          body.addColorStop(1, '#6d7a96');
+        } else {
+          body.addColorStop(0, '#ffffff');
+          body.addColorStop(0.55, '#f3f6fa');
+          body.addColorStop(1, '#c6d0dd');
+        }
+        lc.fillStyle = body;
+        puffs.forEach(puff => {
+          lc.beginPath();
+          lc.arc(puff.x, puff.y, puff.r, 0, Math.PI * 2);
+          lc.fill();
+        });
+        lc.globalCompositeOperation = 'source-atop';
+        // Soft creases where a lobe sits in front of another one, and a
+        // sunlit top on each lobe.
+        puffs.forEach((puff, index) => {
+          if (index > 0) {
+            const crease = lc.createRadialGradient(puff.x, puff.y, puff.r * 0.55, puff.x, puff.y, puff.r * 1.02);
+            crease.addColorStop(0, 'rgba(140,156,184,0)');
+            crease.addColorStop(0.82, night ? 'rgba(60,72,104,.2)' : 'rgba(140,156,184,.13)');
+            crease.addColorStop(1, 'rgba(140,156,184,0)');
+            lc.fillStyle = crease;
+            lc.beginPath();
+            lc.arc(puff.x, puff.y, puff.r * 1.02, Math.PI * 1.05, Math.PI * 1.95);
+            lc.lineTo(puff.x, puff.y);
+            lc.closePath();
+            lc.fill();
+          }
+          const light = lc.createRadialGradient(puff.x - puff.r * 0.2, puff.y - puff.r * 0.45, 0, puff.x - puff.r * 0.2, puff.y - puff.r * 0.45, puff.r * 0.85);
+          light.addColorStop(0, night ? 'rgba(240,246,255,.5)' : 'rgba(255,255,255,.75)');
+          light.addColorStop(1, 'rgba(255,255,255,0)');
+          lc.fillStyle = light;
+          lc.beginPath();
+          lc.arc(puff.x, puff.y, puff.r, 0, Math.PI * 2);
+          lc.fill();
+        });
+        const under = lc.createLinearGradient(0, base - width * 0.12, 0, base + width * 0.07);
+        under.addColorStop(0, 'rgba(120,138,165,0)');
+        under.addColorStop(1, night ? 'rgba(36,46,72,.55)' : 'rgba(120,138,165,.42)');
+        lc.fillStyle = under;
+        lc.fillRect(0, 0, w, h);
+        ctx.filter = 'blur(0.9px)';
+        ctx.drawImage(layer, 0, 0, w, h);
+      });
+    }
+
+    function wxCloudShadow(width, seed) {
+      width = Math.round(width);
+      const pad = Math.round(width * 0.16);
+      const height = Math.round(width * 0.62);
+      return wxPopSprite(`cloud-shadow|${width}|${seed}`, width + pad * 2, height + pad * 2, (ctx, w) => {
+        const { puffs, base } = wxCloudPuffs(width, seed, pad);
+        ctx.beginPath();
+        ctx.rect(0, 0, w, base + width * 0.07);
+        ctx.clip();
+        ctx.filter = `blur(${(width * 0.045).toFixed(1)}px)`;
+        ctx.fillStyle = 'rgba(26,40,66,1)';
+        puffs.forEach(puff => {
+          ctx.beginPath();
+          ctx.arc(puff.x, puff.y, puff.r, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      });
+    }
+
+    // Where the clouds hang, kept clear of the temperature and its icon.
+    function wxCloudLayout() {
+      const fx = weatherFx;
+      const g = fx.geo;
+      const kind = fx.pop.kind;
+      const side = g.side;
+      const cw = wxClamp(g.W * 0.34, 120, 200);
+      if (kind === 'clouds') {
+        return [
+          { x: (side > 0 ? 0.05 : 0.95) * g.W, y: 0.02 * g.H, w: cw, seed: 11, amp: 0.022, period: 92, phase: 0 },
+          { x: (side > 0 ? 1.01 : -0.01) * g.W, y: 0.16 * g.H, w: cw * 0.78, seed: 23, amp: 0.018, period: 74, phase: 2.1 },
+          { x: (side > 0 ? 0.78 : 0.22) * g.W, y: -0.04 * g.H, w: cw * 0.62, seed: 37, amp: 0.026, period: 110, phase: 4.2 }
+        ];
+      }
+      if (kind === 'sun-cloud' || kind === 'moon-cloud') {
+        const sun = wxSunGeom();
+        return [
+          { x: sun.x - sun.r * 1.05, y: sun.y + sun.r * 0.4, w: sun.r * 3.1, seed: 5, amp: 0.012, period: 64, phase: 1 },
+          { x: 0.06 * g.W, y: 0, w: cw * 0.55, seed: 41, amp: 0.02, period: 88, phase: 3 }
+        ];
+      }
+      return [];
+    }
+
+    function drawPopCloud(ctx, cloud, x, y, alpha = 1, scale = 1) {
+      const fx = weatherFx;
+      const width = cloud.w;
+      ctx.globalAlpha = 0.2 * alpha;
+      wxDrawSprite(ctx, wxCloudShadow(width, cloud.seed), x + width * 0.05, y + width * 0.08, scale);
+      ctx.globalAlpha = alpha;
+      wxDrawSprite(ctx, wxCloudSprite(width, cloud.seed, fx.night), x, y, scale);
+      ctx.globalAlpha = 1;
+    }
+
+    function drawPopClouds(ctx) {
+      const fx = weatherFx;
+      const g = fx.geo;
+      const t = fx.time;
+      wxCloudLayout().forEach(cloud => {
+        const x = cloud.x + cloud.amp * g.W * Math.sin((2 * Math.PI * t) / cloud.period + cloud.phase);
+        const y = cloud.y + Math.sin(t * 0.55 + cloud.phase) * 1.6;
+        drawPopCloud(ctx, cloud, x, y);
+      });
+      fx.pop.wisps.forEach(wisp => {
+        const p = wisp.age / wisp.life;
+        const alpha = wxSmooth(0, 0.12, p) * (1 - wxSmooth(0.75, 1, p));
+        drawPopCloud(ctx, wisp, wisp.x, wisp.y, alpha, 1 + 0.15 * p);
+      });
+    }
+
+    function spawnCloudWisp() {
+      const fx = weatherFx;
+      const g = fx.geo;
+      const side = g.side;
+      fx.pop.wisps.push({
+        x: side > 0 ? g.W * 0.93 : g.W * 0.07,
+        y: g.H * wxRand(0.3, 0.42),
+        vx: side * wxRand(6, 10) * g.scale,
+        w: wxClamp(g.W * 0.34, 120, 200) * 0.42,
+        seed: 50 + Math.floor(Math.random() * 40),
+        age: 0,
+        life: 28
+      });
+    }
+
+    // --- Fog -------------------------------------------------------------
+
+    const WX_POP_FOG_X = 90;
+    const WX_POP_FOG_Y = 70;
+
+    function wxFogBand(width, height, seed, night) {
+      width = Math.round(width);
+      height = Math.round(height);
+      return wxPopSprite(`fog-band|${width}|${height}|${seed}|${night ? 'n' : 'd'}`, width, height, (ctx, w, h) => {
+        const rnd = wxMulberry(seed);
+        const tone = night ? '150,160,182' : '200,204,210';
+        // One continuous soft strip, with big faint billows rolling in it.
+        const strip = ctx.createLinearGradient(0, 0, 0, h);
+        strip.addColorStop(0, `rgba(${tone},0)`);
+        strip.addColorStop(0.5, `rgba(${tone},.24)`);
+        strip.addColorStop(1, `rgba(${tone},0)`);
+        ctx.fillStyle = strip;
+        ctx.fillRect(0, 0, w, h);
+        ctx.filter = 'blur(5px)';
+        for (let index = 0; index < 26; index++) {
+          const x = rnd() * w;
+          const y = h / 2 + (rnd() - 0.5) * h * 0.25;
+          const r = h * (0.32 + rnd() * 0.28);
+          [x - w, x, x + w].forEach(px => {
+            const puff = ctx.createRadialGradient(px, y, 0, px, y, r);
+            puff.addColorStop(0, `rgba(${tone},.16)`);
+            puff.addColorStop(1, `rgba(${tone},0)`);
+            ctx.fillStyle = puff;
+            ctx.beginPath();
+            ctx.arc(px, y, r, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        }
+      });
+    }
+
+    function drawPopFog(ctx) {
+      const fx = weatherFx;
+      const g = fx.geo;
+      const layerW = Math.ceil(g.W + WX_POP_FOG_X * 2);
+      const layerH = Math.ceil(g.H + WX_POP_FOG_Y * 2);
+      let layer = fx.fogLayer;
+      if (!layer) layer = fx.fogLayer = document.createElement('canvas');
+      if (layer.width !== Math.round(layerW * g.dpr) || layer.height !== Math.round(layerH * g.dpr)) {
+        layer.width = Math.round(layerW * g.dpr);
+        layer.height = Math.round(layerH * g.dpr);
+      }
+      const lc = layer.getContext('2d');
+      lc.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
+      lc.globalCompositeOperation = 'source-over';
+      lc.clearRect(0, 0, layerW, layerH);
+      const surge = 1 + fx.pop.surge;
+      const bands = [
+        { y: g.H + 4, h: 70, speed: 7, seed: 3, a: 1 },
+        { y: g.H + 14, h: 56, speed: -5, seed: 9, a: 0.8 },
+        { y: -8, h: 50, speed: 4, seed: 15, a: 0.55 }
+      ];
+      bands.forEach(band => {
+        const sprite = wxFogBand(layerW, band.h * g.scale, band.seed, fx.night);
+        const offset = ((fx.time * band.speed * g.scale) % layerW + layerW) % layerW;
+        const y = WX_POP_FOG_Y + band.y - sprite.h / 2;
+        lc.globalAlpha = Math.min(1, band.a * surge);
+        lc.drawImage(sprite.canvas, offset - layerW, y, layerW, sprite.h);
+        lc.drawImage(sprite.canvas, offset, y, layerW, sprite.h);
+      });
+      lc.globalAlpha = 1;
+      // Only around the card: fade out sideways.
+      lc.globalCompositeOperation = 'destination-in';
+      const mask = lc.createLinearGradient(0, 0, layerW, 0);
+      mask.addColorStop(0, 'rgba(0,0,0,0)');
+      mask.addColorStop(WX_POP_FOG_X / layerW, 'rgba(0,0,0,1)');
+      mask.addColorStop(1 - WX_POP_FOG_X / layerW, 'rgba(0,0,0,1)');
+      mask.addColorStop(1, 'rgba(0,0,0,0)');
+      lc.fillStyle = mask;
+      lc.fillRect(0, 0, layerW, layerH);
+      lc.globalCompositeOperation = 'source-over';
+      ctx.drawImage(layer, -WX_POP_FOG_X, -WX_POP_FOG_Y, layerW, layerH);
+    }
+
+    // --- Rain on the card ------------------------------------------------
+
+    function stepPopRain(dt) {
+      const fx = weatherFx;
+      const pop = fx.pop;
+      const g = fx.geo;
+      const drizzle = fx.effect === 'drizzle';
+      if (!pop.beads) {
+        const count = Math.max(4, Math.round(g.W / 60));
+        pop.beads = Array.from({ length: count }, (_, index) => ({
+          u: wxClamp((index + 0.5 + wxRand(-0.35, 0.35)) / count, 0.08, 0.92),
+          r: wxRand(1.4, 2.8)
+        }));
+      }
+      // Drops falling onto the top edge from just above it.
+      const rate = (drizzle ? 4 : fx.effect === 'thunder' ? 12 : 9) * fx.intensity * (g.W / 420);
+      pop.dropClock += dt * rate;
+      while (pop.dropClock >= 1) {
+        pop.dropClock -= 1;
+        if (pop.drops.length >= 40) continue;
+        const vy = 850 * g.scale;
+        const y = -wxRand(36, 70) * g.scale;
+        pop.drops.push({ x: wxRand(0.03, 0.97) * g.W, y, y0: y, vy, vx: -0.06 * vy, len: (drizzle ? wxRand(7, 11) : wxRand(13, 20)) * g.scale });
+      }
+      pop.drops.forEach(drop => {
+        drop.x += drop.vx * dt;
+        drop.y += drop.vy * dt;
+      });
+      pop.drops = pop.drops.filter(drop => {
+        const edge = wxEdgeInset(drop.x);
+        if (drop.y < edge) return true;
+        const count = drizzle ? 1 + Math.floor(Math.random() * 2) : 2 + Math.floor(Math.random() * 3);
+        for (let index = 0; index < count; index++) {
+          pop.splashes.push({ x: drop.x, y: edge - 0.5, floor: edge, vx: wxRand(-80, 80) * g.scale, vy: -wxRand(60, drizzle ? 100 : 150) * g.scale, r: wxRand(0.7, drizzle ? 1 : 1.4) * g.scale });
+        }
+        pop.flashes.push({ x: drop.x, y: edge, age: 0 });
+        return false;
+      });
+      pop.splashes.forEach(splash => {
+        splash.vy += 1100 * dt;
+        splash.x += splash.vx * dt;
+        splash.y += splash.vy * dt;
+      });
+      pop.splashes = pop.splashes.filter(splash => splash.y < wxEdgeInset(splash.x) + (splash.x < 0 || splash.x > g.W ? 40 : 1));
+      pop.flashes.forEach(flash => { flash.age += dt; });
+      pop.flashes = pop.flashes.filter(flash => flash.age < 0.18);
+
+      // Now and then a drop runs down one side and drips off the bottom.
+      pop.nextRunner -= dt;
+      if (pop.nextRunner <= 0) {
+        spawnRunner();
+        pop.nextRunner = drizzle ? wxRand(16, 30) : wxRand(9, 18);
+      }
+      pop.runners.forEach(runner => {
+        if (runner.state === 'run') {
+          runner.slipT -= dt;
+          if (runner.slipT <= 0) {
+            runner.v = (Math.random() < 0.55 ? wxRand(60, 120) : wxRand(6, 18)) * g.scale;
+            runner.slipT = wxRand(0.2, 0.6);
+          }
+          runner.y += runner.v * dt;
+          if (runner.y >= g.H - g.radius) {
+            runner.state = 'trail';
+            // Off it goes, into the gap beside the card and down onto the
+            // Upcoming strip.
+            if (fx.water) fx.water.drops.push({ x: runner.side > 0 ? g.W + 1.5 : -1.5, y: g.H - g.radius + 2, vy: 60, r: runner.r });
+          }
+        } else {
+          runner.fade += dt;
+        }
+      });
+      pop.runners = pop.runners.filter(runner => runner.fade < 4);
+    }
+
+    function spawnRunner() {
+      const fx = weatherFx;
+      const g = fx.geo;
+      fx.pop.runners.push({
+        side: Math.random() < 0.5 ? -1 : 1,
+        y: g.radius,
+        y0: g.radius,
+        v: 30 * g.scale,
+        slipT: 0,
+        r: wxRand(2, 2.8) * g.scale,
+        state: 'run',
+        fade: 0
+      });
+    }
+
+    function drawPopRain(ctx) {
+      const fx = weatherFx;
+      const pop = fx.pop;
+      const g = fx.geo;
+      const dark = fx.night || fx.effect === 'thunder';
+      // A film of water along the top edge, and beads sitting on it.
+      ctx.beginPath();
+      ctx.moveTo(g.radius * 0.5, wxEdgeInset(g.radius * 0.5) + 0.4);
+      for (let x = g.radius * 0.5; x <= g.W - g.radius * 0.5; x += 4) ctx.lineTo(x, wxEdgeInset(x) + 0.4);
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = 'rgba(255,255,255,.7)';
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(0, -1);
+      ctx.lineWidth = 0.7;
+      ctx.strokeStyle = 'rgba(90,122,166,.35)';
+      ctx.stroke();
+      ctx.restore();
+      (pop.beads || []).forEach(bead => {
+        const r = bead.r * g.scale;
+        const x = bead.u * g.W;
+        const y = -r * 0.5;
+        const body = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r);
+        body.addColorStop(0, 'rgba(255,255,255,.95)');
+        body.addColorStop(0.5, dark ? 'rgba(160,190,232,.8)' : 'rgba(176,206,240,.8)');
+        body.addColorStop(1, 'rgba(110,146,196,.85)');
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = body;
+        ctx.fill();
+      });
+      // Falling drops, fading in as they come down onto the edge.
+      ctx.lineCap = 'round';
+      pop.drops.forEach(drop => {
+        const alpha = Math.min(1, (drop.y - drop.y0) / 26);
+        if (alpha <= 0.02) return;
+        const tx = drop.x - (drop.vx / drop.vy) * drop.len;
+        const ty = drop.y - drop.len;
+        const streak = ctx.createLinearGradient(tx, ty, drop.x, drop.y);
+        streak.addColorStop(0, 'rgba(110,146,196,0)');
+        streak.addColorStop(1, `rgba(${dark ? '170,200,240' : '110,146,196'},${(0.7 * alpha).toFixed(3)})`);
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(drop.x, drop.y);
+        ctx.lineWidth = 1.4 * g.scale;
+        ctx.strokeStyle = streak;
+        ctx.stroke();
+      });
+      pop.flashes.forEach(flash => {
+        const p = flash.age / 0.18;
+        ctx.beginPath();
+        ctx.ellipse(flash.x, flash.y - 0.5, (3 + p * 6) * g.scale, 1.2, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,255,255,${(0.8 * (1 - p)).toFixed(3)})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      });
+      ctx.fillStyle = dark ? 'rgba(176,206,244,.9)' : 'rgba(126,162,210,.9)';
+      pop.splashes.forEach(splash => {
+        ctx.beginPath();
+        ctx.arc(splash.x, splash.y, splash.r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      // Drops running down the sides, each with its wet trail.
+      pop.runners.forEach(runner => {
+        const x = runner.side > 0 ? g.W + 0.2 : -0.2;
+        const alpha = 1 - runner.fade / 4;
+        const trail = ctx.createLinearGradient(0, runner.y0, 0, runner.y);
+        trail.addColorStop(0, 'rgba(130,168,216,0)');
+        trail.addColorStop(1, `rgba(130,168,216,${(0.6 * alpha).toFixed(3)})`);
+        ctx.beginPath();
+        ctx.moveTo(x, runner.y0);
+        ctx.lineTo(x, Math.min(runner.y, g.H - g.radius));
+        ctx.lineWidth = 1.3 * g.scale;
+        ctx.strokeStyle = trail;
+        ctx.stroke();
+        if (runner.state !== 'run') return;
+        const stretch = 1 + Math.min(0.8, runner.v / (150 * g.scale));
+        ctx.beginPath();
+        ctx.ellipse(x, runner.y, runner.r * 0.85, runner.r * stretch, 0, 0, Math.PI * 2);
+        ctx.fillStyle = dark ? 'rgba(170,200,240,.92)' : 'rgba(140,176,222,.9)';
+        ctx.fill();
+        ctx.lineWidth = 0.6;
+        ctx.strokeStyle = 'rgba(70,100,146,.4)';
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x - runner.r * 0.3, runner.y - runner.r * 0.4, runner.r * 0.3, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,.9)';
+        ctx.fill();
+      });
+    }
+
+    // --- Lightning -------------------------------------------------------
+
+    function wxBoltPath(x0, y0, x1, y1, rough, depth) {
+      let points = [{ x: x0, y: y0 }, { x: x1, y: y1 }];
+      for (let level = 0; level < depth; level++) {
+        const next = [points[0]];
+        for (let index = 1; index < points.length; index++) {
+          const a = points[index - 1];
+          const b = points[index];
+          const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+          const nx = -(b.y - a.y) / length;
+          const ny = (b.x - a.x) / length;
+          const offset = (Math.random() * 2 - 1) * length * rough;
+          next.push({ x: (a.x + b.x) / 2 + nx * offset, y: (a.y + b.y) / 2 + ny * offset }, b);
+        }
+        points = next;
+      }
+      return points;
+    }
+
+    function strikeBolt(state) {
+      const fx = weatherFx;
+      const g = fx.geo;
+      const levelPx = fx.water ? fx.water.level * wxWaterMaxPx() : 0;
+      const x0 = g.W * wxRand(0.25, 0.8);
+      const y0 = -wxRand(70, 110) * g.scale;
+      const x1 = wxClamp(x0 + wxRand(-0.15, 0.15) * g.W, g.W * 0.1, g.W * 0.9);
+      const y1 = levelPx > 2 ? g.H - levelPx : g.H * wxRand(0.55, 0.75);
+      const main = wxBoltPath(x0, y0, x1, y1, 0.2, 6);
+      const branches = [];
+      for (let index = 0; index < 2; index++) {
+        const from = main[Math.floor(main.length * wxRand(0.22, 0.6))];
+        const angle = Math.PI / 2 + (Math.random() < 0.5 ? -1 : 1) * wxRand(0.45, 0.9);
+        const length = (y1 - from.y) * wxRand(0.3, 0.55);
+        branches.push(wxBoltPath(from.x, from.y, from.x + Math.cos(angle) * length, from.y + Math.sin(angle) * length, 0.25, 4));
+      }
+      fx.pop.bolt = { main, branches, x1, y1 };
+      fx.pop.boltCycle = state.cycle;
+      // It hits the water.
+      if (fx.water && levelPx > 2) {
+        const w = fx.water;
+        for (let index = 0; index < 3; index++) w.ripples.push({ x: x1 + wxRand(-6, 6), age: index * 0.08, amp: 1.6 });
+        for (let index = 0; index < 8; index++) w.splashes.push({ x: x1, y: y1 - 1, floor: y1, vx: wxRand(-70, 70), vy: -wxRand(80, 190) * g.scale, r: wxRand(0.9, 1.7) });
+        w.slosh = Math.max(w.slosh, 0.5);
+      }
+    }
+
+    function drawPopBolt(ctx) {
+      const fx = weatherFx;
+      const bolt = fx.pop.bolt;
+      const alpha = wxClamp((fx.flash - 0.04) / 0.9, 0, 1);
+      if (alpha <= 0.01) return;
+      const stroke = (points, width, colour) => {
+        ctx.beginPath();
+        points.forEach((point, index) => (index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)));
+        ctx.lineWidth = width;
+        ctx.strokeStyle = colour;
+        ctx.stroke();
+      };
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const scale = fx.geo.scale;
+      [[bolt.main, 1], ...bolt.branches.map(branch => [branch, 0.5])].forEach(([points, weight]) => {
+        stroke(points, 11 * scale * weight, `rgba(150,166,255,${(0.16 * alpha).toFixed(3)})`);
+        stroke(points, 5 * scale * weight, `rgba(186,198,255,${(0.38 * alpha).toFixed(3)})`);
+        stroke(points, Math.max(0.8, 1.9 * scale * weight), `rgba(255,255,255,${(0.97 * alpha).toFixed(3)})`);
+      });
+      const impact = ctx.createRadialGradient(bolt.x1, bolt.y1, 0, bolt.x1, bolt.y1, 30 * scale);
+      impact.addColorStop(0, `rgba(255,255,240,${(0.7 * alpha).toFixed(3)})`);
+      impact.addColorStop(1, 'rgba(255,255,240,0)');
+      ctx.fillStyle = impact;
+      ctx.beginPath();
+      ctx.arc(bolt.x1, bolt.y1, 30 * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Fire the card's flash now: the CSS flash and bolts jump to just before
+    // their next strike, and the pop-out bolt follows them.
+    function strikeLightningNow() {
+      const fx = weatherFx;
+      const elements = els.weatherEffect?.querySelectorAll('.flash, .bolt') || [];
+      elements.forEach(element => {
+        (element.getAnimations?.() || []).forEach(animation => {
+          const time = Number(animation.currentTime) || 0;
+          const cycle = Math.floor(time / WX_FLASH_PERIOD_MS) + 1;
+          animation.currentTime = cycle * WX_FLASH_PERIOD_MS + 0.81 * WX_FLASH_PERIOD_MS + (element.classList.contains('bolt-2') ? 160 : 0);
+        });
+      });
+      fx.flashEl = null;
+    }
+
+    // --- Snow on the card ------------------------------------------------
+
+    function wxSnowCapMax() {
+      return wxClamp(weatherFx.geo.H * 0.045, 7, 16);
+    }
+
+    function renderSnowCap() {
+      const fx = weatherFx;
+      const pop = fx.pop;
+      const g = fx.geo;
+      if (!pop.capProfile) {
+        const rnd = wxMulberry(97);
+        pop.capProfile = Float32Array.from({ length: 48 }, (_, index) => 0.72 + 0.14 * Math.sin(index * 0.45 + 1) + 0.1 * Math.sin(index * 1.3) + rnd() * 0.08);
+      }
+      const maxPx = wxSnowCapMax();
+      const top = Math.ceil(maxPx * 1.4 + 8);
+      const bottom = Math.ceil(g.radius + 12);
+      const width = Math.ceil(g.W + 12);
+      const height = top + bottom;
+      let canvas = fx.capCanvas;
+      if (!canvas) canvas = fx.capCanvas = document.createElement('canvas');
+      if (canvas.width !== Math.round(width * g.dpr) || canvas.height !== Math.round(height * g.dpr)) {
+        canvas.width = Math.round(width * g.dpr);
+        canvas.height = Math.round(height * g.dpr);
+      }
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(g.dpr, 0, 0, g.dpr, 6 * g.dpr, top * g.dpr);
+      ctx.clearRect(-6, -top, width, height);
+      const x0 = g.radius * 0.28;
+      const x1 = g.W - g.radius * 0.28;
+      const heightAt = x => {
+        const u = wxClamp(x / g.W, 0, 1) * (pop.capProfile.length - 1);
+        const i = Math.floor(u);
+        const f = u - i;
+        const prof = pop.capProfile[i] * (1 - f) + pop.capProfile[Math.min(pop.capProfile.length - 1, i + 1)] * f;
+        const taper = wxSmooth(x0, x0 + g.radius * 1.2, x) * (1 - wxSmooth(x1 - g.radius * 1.2, x1, x));
+        return pop.cap * maxPx * prof * (0.25 + 0.75 * taper);
+      };
+      const capPath = () => {
+        ctx.beginPath();
+        ctx.moveTo(x0, wxEdgeInset(x0));
+        for (let x = x0; x <= x1; x += 3) ctx.lineTo(x, wxEdgeInset(x) - heightAt(x));
+        ctx.lineTo(x1, wxEdgeInset(x1));
+        for (let x = x1; x >= x0; x -= 3) ctx.lineTo(x, wxEdgeInset(x) + 0.8);
+        ctx.closePath();
+      };
+      // Its shadow, cast onto the card just under the edge.
+      ctx.save();
+      ctx.filter = 'blur(3px)';
+      ctx.beginPath();
+      for (let x = x0; x <= x1; x += 4) ctx.lineTo(x, wxEdgeInset(x) + 3.5);
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'rgba(30,50,86,.2)';
+      ctx.stroke();
+      ctx.restore();
+      // Soft halo, then the snow itself.
+      ctx.save();
+      ctx.filter = 'blur(1.5px)';
+      capPath();
+      ctx.fillStyle = fx.night ? 'rgba(220,232,255,.45)' : 'rgba(255,255,255,.6)';
+      ctx.fill();
+      ctx.restore();
+      capPath();
+      const fill = ctx.createLinearGradient(0, -maxPx, 0, 2);
+      fill.addColorStop(0, fx.night ? 'rgba(238,244,255,.97)' : '#ffffff');
+      fill.addColorStop(1, fx.night ? 'rgba(168,188,224,.95)' : 'rgba(218,230,246,.97)');
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.save();
+      capPath();
+      ctx.clip();
+      ctx.filter = 'blur(2px)';
+      ctx.beginPath();
+      for (let x = x0; x <= x1; x += 3) ctx.lineTo(x, wxEdgeInset(x) - heightAt(x) + 4);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = fx.night ? 'rgba(104,132,186,.38)' : 'rgba(140,170,210,.32)';
+      ctx.stroke();
+      ctx.restore();
+      ctx.beginPath();
+      for (let x = x0; x <= x1; x += 3) ctx.lineTo(x, wxEdgeInset(x) - heightAt(x));
+      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = 'rgba(110,140,182,.32)';
+      ctx.stroke();
+      pop.capDrawn = pop.cap;
+      pop.capKey = `${g.W}|${g.H}|${g.dpr}|${fx.night}`;
+      pop.capTop = top;
+      pop.capW = width;
+      pop.capH = height;
+    }
+
+    function stepPopSnow(dt) {
+      const fx = weatherFx;
+      const pop = fx.pop;
+      const g = fx.geo;
+      pop.cap = Math.min(1, pop.cap + (fx.speed * fx.intensity / WX_SNOW_FILL_S) * dt);
+      if (!pop.icicles) {
+        const count = Math.max(3, Math.round(g.W / 64));
+        const span = g.W - 2 * (g.radius + 6);
+        pop.icicles = Array.from({ length: count }, (_, index) => ({
+          x: g.radius + 6 + span * ((index + 0.5 + wxRand(-0.3, 0.3)) / count),
+          length: wxRand(6, 17),
+          width: wxRand(2.4, 4.4),
+          bend: wxRand(-1.5, 1.5),
+          drip: Math.random(),
+          dripS: wxRand(5, 12)
+        }));
+      }
+      const grown = wxSmooth(0.25, 1, pop.cap);
+      pop.icicles.forEach(icicle => {
+        if (grown < 0.3) return;
+        icicle.drip += dt / icicle.dripS;
+        if (icicle.drip >= 1) {
+          icicle.drip = 0;
+          icicle.dripS = wxRand(5, 12);
+          pop.iceDrops.push({ x: icicle.x + icicle.bend, y: g.H + icicle.length * grown * g.scale + 1.5, vy: 30, r: 1.5 * g.scale });
+        }
+      });
+      pop.iceDrops.forEach(drop => {
+        drop.vy += WX_WATER_GRAVITY * dt;
+        drop.y += drop.vy * dt;
+      });
+      pop.iceDrops = pop.iceDrops.filter(drop => {
+        if (overLedge(drop.x) && drop.y >= wxLedge().t - 1) {
+          ledgeLand('drip', drop.x, 0, drop.vy);
+          return false;
+        }
+        return drop.y < g.H + WX_FX_PAD_BOTTOM + 20;
+      });
+      // Big, soft flakes falling past close to the eye, over the card's sides.
+      pop.nextBokeh -= dt;
+      if (pop.nextBokeh <= 0) {
+        const side = Math.random() < 0.5 ? -1 : 1;
+        pop.bokeh.push({
+          bx: side > 0 ? wxRand(0.86, 1.1) * g.W : wxRand(-0.1, 0.14) * g.W,
+          x: 0,
+          y: -wxRand(20, 60) * g.scale,
+          vy: wxRand(22, 36) * g.scale,
+          vx: (fx.windy ? 22 * g.side : 0) + wxRand(-6, 6),
+          r: wxRand(5, 9) * g.scale,
+          sway: wxRand(6, 14),
+          phase: Math.random() * 6.28
+        });
+        pop.nextBokeh = fx.windy ? wxRand(1.5, 3) : wxRand(2.5, 5);
+      }
+      pop.bokeh.forEach(flake => {
+        flake.bx += flake.vx * dt;
+        flake.y += flake.vy * dt;
+        flake.x = flake.bx + Math.sin(fx.time * 0.8 + flake.phase) * flake.sway;
+      });
+      pop.bokeh = pop.bokeh.filter(flake => flake.y < g.H + 50);
+    }
+
+    function wxBokehSprite() {
+      return wxPopSprite('bokeh', 40, 40, ctx => {
+        const shadow = ctx.createRadialGradient(20, 22, 0, 20, 22, 18);
+        shadow.addColorStop(0, 'rgba(40,66,102,.22)');
+        shadow.addColorStop(1, 'rgba(40,66,102,0)');
+        ctx.fillStyle = shadow;
+        ctx.fillRect(0, 0, 40, 40);
+        const flake = ctx.createRadialGradient(20, 20, 0, 20, 20, 14);
+        flake.addColorStop(0, 'rgba(255,255,255,.95)');
+        flake.addColorStop(0.6, 'rgba(255,255,255,.75)');
+        flake.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = flake;
+        ctx.fillRect(0, 0, 40, 40);
+      });
+    }
+
+    function drawPopSnow(ctx) {
+      const fx = weatherFx;
+      const pop = fx.pop;
+      const g = fx.geo;
+      const key = `${g.W}|${g.H}|${g.dpr}|${fx.night}`;
+      if (!fx.capCanvas || pop.capKey !== key || Math.abs(pop.cap - pop.capDrawn) > 0.02) renderSnowCap();
+      ctx.drawImage(fx.capCanvas, -6, -pop.capTop, pop.capW, pop.capH);
+
+      // Icicles under the card, hanging from an icy lip.
+      const grown = wxSmooth(0.25, 1, pop.cap);
+      if (grown > 0.02 && pop.icicles) {
+        ctx.beginPath();
+        for (let x = g.radius; x <= g.W - g.radius; x += 4) ctx.lineTo(x, g.H - 0.3);
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = 'rgba(255,255,255,.8)';
+        ctx.stroke();
+        ctx.save();
+        ctx.translate(0, 1);
+        ctx.lineWidth = 0.6;
+        ctx.strokeStyle = 'rgba(100,135,180,.35)';
+        ctx.stroke();
+        ctx.restore();
+        pop.icicles.forEach(icicle => {
+          const length = icicle.length * grown * g.scale;
+          if (length < 1) return;
+          const half = (icicle.width * g.scale) / 2;
+          const x = icicle.x;
+          const tipX = x + icicle.bend;
+          const tipY = g.H + length;
+          ctx.beginPath();
+          ctx.moveTo(x - half, g.H - 0.5);
+          ctx.quadraticCurveTo(x - half * 0.4 + icicle.bend * 0.3, g.H + length * 0.55, tipX, tipY);
+          ctx.quadraticCurveTo(x + half * 0.4 + icicle.bend * 0.3, g.H + length * 0.55, x + half, g.H - 0.5);
+          ctx.closePath();
+          const ice = ctx.createLinearGradient(x - half, 0, x + half, 0);
+          ice.addColorStop(0, 'rgba(255,255,255,.95)');
+          ice.addColorStop(0.45, 'rgba(214,234,252,.82)');
+          ice.addColorStop(1, 'rgba(150,186,226,.8)');
+          ctx.fillStyle = ice;
+          ctx.fill();
+          ctx.lineWidth = 0.6;
+          ctx.strokeStyle = 'rgba(84,116,160,.42)';
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(x - half * 0.45, g.H + 1);
+          ctx.lineTo(x - half * 0.1 + icicle.bend * 0.6, g.H + length * 0.75);
+          ctx.lineWidth = 0.7;
+          ctx.strokeStyle = 'rgba(255,255,255,.85)';
+          ctx.stroke();
+          // A drop swelling at the tip.
+          if (icicle.drip > 0.4) {
+            const r = 0.4 + 1.3 * ((icicle.drip - 0.4) / 0.6) * g.scale;
+            ctx.beginPath();
+            ctx.arc(tipX, tipY + r * 0.6, r, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(176,206,240,.9)';
+            ctx.fill();
+          }
+        });
+      }
+
+      const sprite = wxBokehSprite();
+      pop.bokeh.forEach(flake => {
+        const fade = 1 - wxSmooth(g.H, g.H + 50, flake.y);
+        const alpha = 0.62 * fade * Math.min(1, (flake.y + 60) / 40);
+        if (alpha <= 0.01) return;
+        ctx.globalAlpha = alpha;
+        const size = flake.r * 2.9;
+        ctx.drawImage(sprite.canvas, flake.x - size / 2, flake.y - size / 2, size, size);
+      });
+      ctx.globalAlpha = 1;
+      drawLedgeSnow(ctx);
+    }
+
+    // --- Wind ------------------------------------------------------------
+
+    function stepPopWind(dt) {
+      const fx = weatherFx;
+      const pop = fx.pop;
+      const g = fx.geo;
+      if (fx.windy) {
+        pop.nextStreak -= dt;
+        if (pop.nextStreak <= 0) {
+          spawnWindStreak();
+          pop.nextStreak = wxRand(1.2, 2.8);
+        }
+      }
+      pop.streaks.forEach(streak => {
+        streak.age += dt;
+        streak.x += streak.vx * dt;
+      });
+      pop.streaks = pop.streaks.filter(streak => (g.side > 0 ? streak.x - streak.len < g.W + 170 : streak.x + streak.len > -170));
+    }
+
+    function spawnWindStreak() {
+      const fx = weatherFx;
+      const g = fx.geo;
+      fx.pop.streaks.push({
+        x: wxRand(0.25, 0.75) * g.W,
+        y: wxRand(0.12, 0.88) * g.H,
+        vx: g.side * wxRand(520, 720) * g.scale,
+        len: wxRand(70, 140) * g.scale,
+        amp: wxRand(1.5, 4),
+        phase: Math.random() * 6.28,
+        age: 0
+      });
+    }
+
+    function drawPopWind(ctx) {
+      const fx = weatherFx;
+      const g = fx.geo;
+      fx.pop.streaks.forEach(streak => {
+        const beyond = g.side > 0 ? streak.x - g.W : -streak.x;
+        const alpha = Math.min(1, streak.age / 0.12) * (1 - wxSmooth(60, 170, beyond));
+        if (alpha <= 0.01) return;
+        const dir = Math.sign(streak.vx) || 1;
+        const tailX = streak.x - dir * streak.len;
+        const line = () => {
+          ctx.beginPath();
+          for (let k = 0; k <= 10; k++) {
+            const t = k / 10;
+            const x = tailX + (streak.x - tailX) * t;
+            ctx.lineTo(x, streak.y + Math.sin(t * 5 + streak.phase + fx.time * 4) * streak.amp * t);
+          }
+        };
+        const outline = ctx.createLinearGradient(tailX, 0, streak.x, 0);
+        outline.addColorStop(0, 'rgba(70,95,135,0)');
+        outline.addColorStop(1, `rgba(70,95,135,${(0.24 * alpha).toFixed(3)})`);
+        const core = ctx.createLinearGradient(tailX, 0, streak.x, 0);
+        core.addColorStop(0, 'rgba(255,255,255,0)');
+        core.addColorStop(1, `rgba(255,255,255,${(0.8 * alpha).toFixed(3)})`);
+        ctx.lineCap = 'round';
+        line();
+        ctx.lineWidth = 2.8;
+        ctx.strokeStyle = outline;
+        ctx.stroke();
+        line();
+        ctx.lineWidth = 1.1;
+        ctx.strokeStyle = core;
+        ctx.stroke();
+      });
+    }
+
+    // --- The pop-out loop ------------------------------------------------
+
+    function stepPop(dt, flashState) {
+      const fx = weatherFx;
+      const pop = fx.pop;
+      if (!pop) return;
+      const g = fx.geo;
+      const kind = pop.kind;
+      pop.surge = Math.max(0, pop.surge - dt * 0.25);
+      if (kind === 'sun' || kind === 'sun-cloud') {
+        if (pop.flare) {
+          pop.flare.t += dt;
+          if (pop.flare.t >= WX_FLARE_S) pop.flare = null;
+        } else {
+          pop.nextFlare -= dt;
+          if (pop.nextFlare <= 0) {
+            startSunFlare();
+            pop.nextFlare = kind === 'sun' ? wxRand(24, 40) : wxRand(40, 65);
+          }
+        }
+      }
+      if (kind === 'moon' || kind === 'moon-cloud') {
+        pop.nextStar -= dt;
+        if (pop.nextStar <= 0) {
+          spawnShootingStar();
+          pop.nextStar = kind === 'moon' ? wxRand(12, 24) : wxRand(20, 35);
+        }
+      }
+      pop.stars.forEach(star => {
+        star.age += dt;
+        star.x += star.vx * dt;
+        star.y += star.vy * dt;
+      });
+      pop.stars = pop.stars.filter(star => star.age < star.life);
+      if (kind === 'clouds') {
+        pop.nextWisp -= dt;
+        if (pop.nextWisp <= 0) {
+          spawnCloudWisp();
+          pop.nextWisp = wxRand(45, 70);
+        }
+      }
+      pop.wisps.forEach(wisp => {
+        wisp.age += dt;
+        wisp.x += wisp.vx * dt;
+      });
+      pop.wisps = pop.wisps.filter(wisp => wisp.age < wisp.life);
+      if (kind === 'rain' || kind === 'thunder') stepPopRain(dt);
+      if (kind === 'thunder' && flashState) {
+        if (flashState.phase >= 0.8 && flashState.phase < 0.92 && pop.boltCycle !== flashState.cycle) strikeBolt(flashState);
+        if (flashState.phase >= 0.92 || flashState.phase < 0.8) pop.bolt = null;
+      }
+      if (kind === 'snow') stepPopSnow(dt);
+      stepPopWind(dt);
+      void g;
+    }
+
+    function drawWeatherFxPop() {
+      const fx = weatherFx;
+      const ctx = fx.popCtx;
+      const g = fx.geo;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, fx.popCanvas.width, fx.popCanvas.height);
+      const pop = fx.pop;
+      if (!pop) return;
+      ctx.setTransform(g.dpr, 0, 0, g.dpr, g.vx * g.dpr, g.vy * g.dpr);
+      const kind = pop.kind;
+      if (kind === 'sun' || kind === 'sun-cloud') drawPopSun(ctx);
+      if (kind === 'moon' || kind === 'moon-cloud') drawPopMoon(ctx);
+      if (kind === 'clouds' || kind === 'sun-cloud' || kind === 'moon-cloud') drawPopClouds(ctx);
+      if (pop.flare) drawPopFlare(ctx);
+      if (pop.stars.length) drawPopStars(ctx);
+      if (kind === 'fog') drawPopFog(ctx);
+      if (kind === 'rain' || kind === 'thunder') drawPopRain(ctx);
+      if (kind === 'snow') drawPopSnow(ctx);
+      if (pop.bolt) drawPopBolt(ctx);
+      if (pop.streaks.length) drawPopWind(ctx);
+    }
+
+    // The debug panel's "Pop-out now".
+    function popWeatherFxNow() {
+      const fx = weatherFx;
+      const pop = fx.pop;
+      if (!pop || !fx.geo) return;
+      const kind = pop.kind;
+      if (kind === 'sun' || kind === 'sun-cloud') startSunFlare();
+      else if (kind === 'moon' || kind === 'moon-cloud') spawnShootingStar();
+      else if (kind === 'clouds') spawnCloudWisp();
+      else if (kind === 'fog') {
+        pop.surge = 1.2;
+        if (fx.fog) fx.fog.clock += 20;
+      } else if (kind === 'rain') spawnRunner();
+      else if (kind === 'thunder') strikeLightningNow();
+      else if (kind === 'snow') {
+        pop.nextBokeh = 0;
+        if (fx.snow) fx.snow.nextGust = 0;
+      }
+      if (fx.windy) for (let index = 0; index < 3; index++) spawnWindStreak();
+      renderWeatherDebug();
+    }
+
+    function weatherPopLabel() {
+      const kind = weatherFx.pop?.kind;
+      return {
+        sun: 'Sun flare now',
+        'sun-cloud': 'Sun flare now',
+        moon: 'Shooting star now',
+        'moon-cloud': 'Shooting star now',
+        clouds: 'Cloud drifts off',
+        fog: 'Mist rolls in',
+        rain: 'Drop runs down',
+        thunder: 'Lightning now',
+        snow: 'Snow flurry now'
+      }[kind] || 'Pop-out now';
+    }
+
     // --- Drawing -------------------------------------------------------
 
     function drawWeatherFxCard() {
@@ -9921,6 +11873,12 @@
       const g = fx.geo;
       const ctx = fx.cardCtx;
       ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
+      if (fx.family !== 'water' && fx.family !== 'snow') {
+        if (!fx.cardClean) ctx.clearRect(0, 0, g.W, g.H);
+        fx.cardClean = true;
+        return;
+      }
+      fx.cardClean = false;
       ctx.clearRect(0, 0, g.W, g.H);
       if (fx.family === 'water') drawWater(ctx);
       else if (fx.family === 'snow') {
@@ -9935,6 +11893,10 @@
       const ctx = fx.spillCtx;
       ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
       if (!fx.spillClean) ctx.clearRect(0, 0, g.spillW, g.spillH);
+      if (!fx.family && !(fx.flash > 0.02)) {
+        fx.spillClean = true;
+        return;
+      }
       ctx.save();
       // Never inside the weather card: that is the other canvas's job.
       ctx.beginPath();
@@ -9952,6 +11914,18 @@
       if (fx.family === 'water') drew = drawWaterSpill(ctx) || drew;
       else if (fx.family === 'snow') drew = drawSnowSpill(ctx) || drew;
       else if (fx.family === 'fog') drew = drawFogSpill(ctx) || drew;
+      if (fx.ledgeState) drew = drawLedgeSpill(ctx) || drew;
+      if (fx.pop?.iceDrops?.length) {
+        drew = true;
+        ctx.fillStyle = 'rgba(176,206,240,.9)';
+        fx.pop.iceDrops.forEach(drop => {
+          ctx.globalAlpha = wxCoverFade(drop.x, drop.y);
+          ctx.beginPath();
+          ctx.ellipse(drop.x, drop.y, drop.r * 0.8, drop.r * (1 + Math.min(2, drop.vy / 380)), 0, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+      }
       ctx.restore();
       fx.spillClean = !drew;
     }
@@ -10015,6 +11989,7 @@
         fx.snow.phase = 'full';
         fx.snow.phaseT = 0;
         fx.snow.wait = 2.5;
+        if (fx.pop) fx.pop.cap = 1;
       }
       renderWeatherDebug();
     }
@@ -10048,8 +12023,10 @@
         const phase = { fill: 'piling up', full: 'full', sift: 'spilling' }[fx.snow.phase] || fx.snow.phase;
         parts.push(`snow ${Math.round((total / WX_SNOW_COLS) * 100)}% · ${phase}`);
       } else if (fx.fog) parts.push('mist pours over the edge');
-      else parts.push('nothing leaves the card in this sky');
-      if (!fx.running && fx.family && !wxReducedMotion.matches) parts.push('paused while the card is hidden');
+      if (fx.ledgeState?.wet > 0.08 || fx.ledgeState?.rivulets.length) parts.push(`${fx.ledgeState.rivulets.length} rivulets on the Upcoming strip`);
+      if (fx.pop?.flare) parts.push('flare');
+      if (fx.pop?.kind === 'snow') parts.push(`snow cap ${Math.round(fx.pop.cap * 100)}%`);
+      if (!fx.running && (fx.family || fx.pop) && !wxReducedMotion.matches) parts.push('paused while the card is hidden');
       return parts.join(' · ');
     }
 
@@ -10067,6 +12044,8 @@
       els.wxDebugFill.disabled = !fills;
       els.wxDebugSpill.disabled = !weatherFx.family;
       els.wxDebugSpill.textContent = weatherFx.snow ? 'Spill snow now' : weatherFx.fog ? 'Pour mist now' : 'Leak now';
+      els.wxDebugPop.disabled = !weatherFx.pop;
+      els.wxDebugPop.textContent = weatherPopLabel();
       els.wxDebug.querySelectorAll('[data-wx-speed]').forEach(button => {
         button.classList.toggle('is-on', Number(button.dataset.wxSpeed) === weatherFx.speed);
       });
@@ -10131,6 +12110,7 @@
       els.wxDebugWind.addEventListener('click', () => toggleWeatherDebugFlag('windy'));
       els.wxDebugFill.addEventListener('click', fillWeatherFxNow);
       els.wxDebugSpill.addEventListener('click', spillWeatherFxNow);
+      els.wxDebugPop.addEventListener('click', popWeatherFxNow);
     }
 
     function weatherEffectRank(code) {

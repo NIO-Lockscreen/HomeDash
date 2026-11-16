@@ -508,8 +508,8 @@ The weather card paints an ambience layer (`#weatherEffect`) behind the readout:
 
 ### Weather that leaves the card
 
-Some weather does not stay inside the weather card. Two canvases, drawn by one
-animation loop (`weatherFx` in the script), sit on top of the CSS sky:
+Every sky now has something that leaves the weather card. Four canvases, drawn
+by one animation loop (`weatherFx` in the script), sit on top of the CSS sky:
 
 - `#weatherFx` is inside the card, in front of the readout. Water and snow on it
   stop just below the lowest line of text that is fully on the card, so the
@@ -518,37 +518,97 @@ animation loop (`weatherFx` in the script), sit on top of the CSS sky:
   every other card (clock, photo, Upcoming), and is clipped so it only ever
   paints outside the weather card. Something crossing the card edge is drawn on
   both, so it leaves without a seam, and fades out over its first 16px under a
-  neighbouring card: it slides *under* the photo or the Upcoming strip.
+  neighbouring card: it slides *under* the photo or the clock.
+- `#weatherPop` is fixed over the whole window, in front of every card but under
+  the overlays, the edge panel and the screen controls. It holds what stands
+  *out* of the card over its border, the old out-of-bounds trick: drawn across
+  the border, with a soft shadow on whatever lies behind it, an object seems to
+  stand out of the card towards you.
+- `#upcomingFx` is inside the Upcoming strip, between its background and its
+  content. Water and snow that spill over the strip's top edge run down here,
+  behind the title and under the photos.
 
 What each sky does:
+
+- **Clear, day**: the sun is a glowing ball that bulges out of the card's top
+  corner, its long beams slowly turning and shining on over the clock and the
+  photo. Every half minute or so a lens flare shoots out: a bright streak
+  across the dashboard, a starburst on the sun, and a chain of coloured ghosts
+  down the line through the card and out the other side.
+- **Clear, night**: the moon (shaded, with craters) floats out of the corner,
+  casting a soft shadow; every 12 to 24 seconds a shooting star streaks out of
+  the card and over the next card.
+- **Partly cloudy**: the sun or the moon, with a puffy cloud in front of it that
+  hangs over the top edge, and a small cloud over the other corner. Flares and
+  shooting stars come less often.
+- **Cloudy**: clouds hang over a top corner, the top edge and the side facing a
+  neighbouring card, drifting slowly, each with a shadow on whatever is behind
+  it. About once a minute a small cloud breaks off and drifts away over the
+  next card. Clouds are kept clear of the temperature and its icon.
+- **Fog**: soft banks of mist roll along the top and bottom edges, in front of
+  the border, and mist also pours out under the card.
+- **Wind** (any sky): streaks blow out of the card's side, towards the
+  neighbouring card.
 
 - **Rain and drizzle** fill the bottom of the card with water: a surface seen
   from just above, rings where the drops land, the odd splash and bubble, slow
   light shafts. Full, it trembles for three seconds and then springs two or
   three leaks. Thin streams pour out of the bottom edge, where the surface dips
-  over each hole, and fall under the Upcoming strip. Water drains with the
+  over each hole, and land on the top edge of the Upcoming strip (see *The
+  Upcoming strip as a ledge* below).
+  On the outside, drops fall onto the card's top edge and splash, beads of
+  water sit on it, and every 9 to 18 seconds (drizzle: 16 to 30) a drop runs
+  down one of the card's sides in fits and starts, leaving a wet trail, and
+  drips off the bottom. Water drains with the
   square root of its depth, so the streams slow down, break into drips, and
   leave beads hanging under the card that drip for about half a minute. A
   dotted tide mark shows where the water stood and dries up. Steady rain takes
   about three minutes to fill the card (heavier rain faster, drizzle about
   twice as long); the leak takes about twenty seconds.
-- **Thunder** is rain, plus the lightning flash lights up the frame around the
-  card in step with the flash inside it.
+- **Thunder** is rain, plus each lightning flash brings a branching bolt that
+  strikes from above the card, over the border, down into the water, where it
+  splashes. The frame around the card lights up with the flash. The card's own
+  cartoon bolts are hidden while this runs.
 - **Snow** piles up on the bottom of the card (lumpy, banked up at the sides,
   with the odd glinting crystal). Once full, part of it sifts out through the
   bottom edge in a powdery fall. Every few seconds a flake falls out of the
   card, and every half minute or so a gust blows a few out sideways, towards
   the photo (or towards the clock, when no task is shown) and under it. Wind
   banks the pile up on one side and blows more flakes out.
+  On the outside, a cap of snow grows on the card's top edge with a shadow
+  under its overhang, icicles grow from the bottom edge and drip, and large,
+  soft, out-of-focus flakes fall past the card's sides as if close to the eye.
 - **Fog** pours over the bottom edge as a grey haze that pools under the card.
-- Clear, partly cloudy and cloudy skies stay in the card.
+### The Upcoming strip as a ledge
+
+Water and snow that fall out of the bottom of the weather card land on the top
+edge of the Upcoming strip instead of vanishing under it.
+
+- **Water** splashes where it lands and gathers along the edge in a thin film
+  that bulges over the edge and spreads sideways. Where the film gets thicker
+  than about 1.6px it spills over: rivulets crawl down the face of the strip in
+  fits and starts, wandering a little, behind the *Upcoming* title and on under
+  the photos (they show again in the gaps between them). Each leaves a wet
+  trail that dries in about twelve seconds; the film dries slowly too.
+- **Snow** (sifted powder, falling flakes) builds a small drift on the edge.
+  Where it grows too tall, a lump slides over and tumbles down the face, under
+  the photos. The drift keeps a natural slope and settles slowly.
+- Drips from the icicles splash on the edge.
+
+When there is no Upcoming strip under the card, things fall on under whatever
+card is there, as before.
+
+### When it runs
 
 The loop runs only while the card shows the weather, the page is in view, no
 overlay (weekly weather, month view, config, YouTube) covers it and the camera
 dimmer has not dimmed the screen; an overlay's blurred backdrop would otherwise
-have to be re-blurred every frame. `prefers-reduced-motion` turns it off. The
-snow pile is drawn into a strip of its own and only redrawn when it has grown
-visibly or while it sifts out.
+have to be re-blurred every frame. `prefers-reduced-motion` turns it off (the
+card then shows its static CSS sky, sun and moon included). The snow pile and
+the snow cap are drawn into strips of their own and only redrawn when they have
+grown visibly; the sun, moon, clouds and fog banks are drawn once per size and
+then only moved. Calm skies (sun, moon, clouds, fog) run at 30 frames a second
+unless a flare, a shooting star or a gust is on.
 
 ### Weather test panel (press Q)
 
@@ -559,9 +619,13 @@ On the wall display, press **Q** to open a small panel in the top right corner:
   live.
 - **Night** and **Windy** switch on the dark sky and the wind gusts. Used on the
   live sky, they start a test of that same sky.
-- **Fill up now** fills the water or the snow pile to full, so the leak or the
-  spill follows a few seconds later. **Leak now** (or *Spill snow now* / *Pour
-  mist now*) starts it straight away.
+- **Fill up now** fills the water or the snow pile (and the snow cap and
+  icicles) to full, so the leak or the spill follows a few seconds later.
+  **Leak now** (or *Spill snow now* / *Pour mist now*) starts it straight away.
+- The wide button below plays the sky's out-of-the-card effect at once: *Sun
+  flare now*, *Shooting star now*, *Cloud drifts off*, *Mist rolls in*, *Drop
+  runs down*, *Lightning now* (the card's flash jumps to its next strike) or
+  *Snow flurry now*. With wind on, it also sends a few gusts.
 - **Speed** (1×, 4×, 12×, 40×) only speeds up the filling. The leak and the
   spill always run at their real speed, so they can be judged as they will look.
 - A status line shows the sky, how full the card is and what it is doing.
