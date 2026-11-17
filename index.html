@@ -10650,7 +10650,7 @@
     // Water and snow that fall out of the bottom of the weather card land on
     // the top edge of the Upcoming strip instead of vanishing under it. Water
     // splashes, gathers along the edge in a thin film and, where the film
-    // gets too thick, spills over: rivulets run down the face of the strip,
+    // gets too thick, spills over and runs down the face of the strip,
     // behind its title and on under the photos (#upcomingFx lies inside the
     // strip, between its background and its content). Snow builds a small
     // drift on the edge; where it grows too tall a piece slides over and
@@ -10662,7 +10662,7 @@
     const WX_LEDGE_SNOW_SETTLE_PX_S = 0.012;
 
     function newLedgeState() {
-      return { cols: 0, water: null, snow: null, scratch: null, rivulets: [], grains: [], splashes: [], snowMax: 0, snowAt: [], wet: 0 };
+      return { cols: 0, water: null, snow: null, scratch: null, face: null, grains: [], splashes: [], snowMax: 0, snowAt: [], wet: 0 };
     }
 
     function wxLedge() {
@@ -10724,30 +10724,380 @@
       }
     }
 
-    function feedRivulet(s, x, volume) {
+    // --- Water running down the face of the strip -------------------------
+    //
+    // What spills over the edge runs down the face as a sheet, not as lines.
+    // The face is a grid of cells (one ledge column wide, WX_FACE_CELL_H
+    // tall), each holding how thick the water on it is:
+    // - water runs down, the thicker the faster (sheet flow), and is held
+    //   back where it meets a dry cell, so the head of a stream swells into
+    //   a bead and creeps on;
+    // - thick water spreads sideways into a broad sheet; thin water drifts
+    //   towards the face's faint grooves (a fixed field of gentle ridges,
+    //   different on every visit), so a sheet gathers into a few streams
+    //   that wander a little and merge as they go down;
+    // - every cell water has run over keeps a thin film: the wet trail,
+    //   which dries in about ten seconds; it also means a small spill runs
+    //   out of water on the way down and stops;
+    // - at the bottom edge it runs off.
+    // It is drawn as three outlines of the same water (wet, running, a full
+    // sheet), each a smooth shape traced through the grid (marching
+    // squares), filled with the old N64 trick for water: a few tiling
+    // textures of streaks laid over one another, each scrolling down at its
+    // own speed and size, so they slide past each other like layers of
+    // moving water. Its edges catch the light on one side and throw a thin
+    // shadow on the other, and a bright lip shows where it rolls over the
+    // edge.
+    const WX_FACE_CELL_H = 5;
+    const WX_FACE_HOLD = 0.05;
+    const WX_FACE_DRY_PER_S = 0.005;
+    // Damp, then running, then a deeper core, then a full sheet: each is
+    // drawn over the last, so thicker water reads deeper and brighter.
+    const WX_FACE_WET = 0.015;
+    const WX_FACE_DAMP = 0.035;
+    const WX_FACE_RUN = 0.09;
+    const WX_FACE_CORE = 0.16;
+    const WX_FACE_SHEET = 0.25;
+    // Spilled film (px over a ledge column) to water on the face.
+    const WX_FACE_GAIN = 9;
+    // A spill fans out along the edge as it goes over (columns either side).
+    const WX_FACE_FAN = 6;
+
+    function ledgeFace(s) {
       const L = wxLedge();
-      const ux = x - L.l;
-      let rivulet = s.rivulets.find(item => item.fedAt > weatherFx.time - 1.5 && Math.abs(item.x0 - ux) < 7);
-      if (!rivulet) {
-        if (s.rivulets.length >= 18) return;
-        rivulet = {
-          x0: ux,
-          x: ux,
-          y: 0.5,
-          pts: [ux, 0],
-          vol: 0,
-          feed: 0,
-          fedAt: weatherFx.time,
-          drift: wxRand(-0.25, 0.25),
-          slip: 0,
-          slipT: 0,
-          dryT: 0
-        };
-        s.rivulets.push(rivulet);
+      const rows = Math.max(4, Math.ceil((L.b - L.t) / WX_FACE_CELL_H) + 1);
+      let f = s.face;
+      if (f && f.cols === s.cols && f.rows === rows) return f;
+      const size = s.cols * rows;
+      f = s.face = {
+        cols: s.cols,
+        rows,
+        h: new Float32Array(size),
+        next: new Float32Array(size),
+        lean: new Float32Array(size),
+        // A softened copy of h that the outlines are traced through, so the
+        // grid's steps do not show.
+        view: new Float32Array(size),
+        lo: s.cols,
+        hi: -1,
+        any: false
+      };
+      // The grooves: a few long, gently wandering waves across the face.
+      // Water drifts towards their crests.
+      const waves = Array.from({ length: 3 }, () => ({
+        k: (Math.PI * 2) / wxRand(55, 135),
+        p: Math.random() * Math.PI * 2,
+        m: wxRand(0.5, 1.2),
+        q: wxRand(35, 80),
+        r: Math.random() * Math.PI * 2,
+        a: wxRand(0.6, 1)
+      }));
+      for (let j = 0; j < rows; j++) {
+        const y = j * WX_FACE_CELL_H;
+        for (let i = 0; i < s.cols; i++) {
+          const x = i * WX_LEDGE_STEP;
+          // The slope of the field along x: positive leans right.
+          f.lean[j * s.cols + i] = waves.reduce((sum, w) => sum + w.a * w.k * Math.cos(w.k * x + w.p + w.m * Math.sin(y / w.q + w.r)), 0);
+        }
       }
-      rivulet.vol += volume;
-      rivulet.feed = Math.min(1, rivulet.feed + volume * 0.6);
-      rivulet.fedAt = weatherFx.time;
+      return f;
+    }
+
+    function feedLedgeFace(s, index, volume) {
+      const f = ledgeFace(s);
+      if (index < 0 || index >= f.cols || !(volume > 0)) return;
+      const fan = WX_FACE_FAN;
+      const share = (volume * WX_FACE_GAIN) / (fan * 0.6 * Math.sqrt(Math.PI));
+      for (let k = -fan; k <= fan; k++) {
+        const i = index + k;
+        if (i < 0 || i >= f.cols) continue;
+        f.h[i] += share * Math.exp(-((k / (fan * 0.6)) ** 2));
+      }
+      f.lo = Math.max(0, Math.min(f.lo, index - fan));
+      f.hi = Math.min(f.cols - 1, Math.max(f.hi, index + fan));
+      f.any = true;
+    }
+
+    function stepLedgeFace(s, dt) {
+      const f = s.face;
+      if (!f?.any) return;
+      const { cols, rows, h, next, lean } = f;
+      const lo = Math.max(0, f.lo - 1);
+      const hi = Math.min(cols - 1, f.hi + 1);
+      for (let j = 0; j < rows; j++) next.fill(0, j * cols + lo, j * cols + hi + 1);
+      for (let j = 0; j < rows; j++) {
+        const row = j * cols;
+        for (let i = f.lo; i <= f.hi; i++) {
+          const v = h[row + i];
+          if (v <= 0) continue;
+          const free = v - WX_FACE_HOLD;
+          if (free <= 0) {
+            next[row + i] += v;
+            continue;
+          }
+          const last = j + 1 >= rows;
+          const below = last ? 1 : h[row + cols + i];
+          let speed = 45 + 200 * Math.min(1, free / 0.9);
+          if (below < WX_FACE_HOLD * 0.6) speed *= 0.38;
+          const move = free * Math.min(0.9, (speed * dt) / WX_FACE_CELL_H);
+          next[row + i] += v - move;
+          // Off the bottom edge.
+          if (last) continue;
+          const down = row + cols + i;
+          const pull = wxClamp(lean[down] * 2.6, -0.42, 0.42);
+          const spread = Math.min(0.2, 0.22 * free);
+          const toL = i > 0 ? spread + Math.max(0, -pull) : 0;
+          const toR = i + 1 < cols ? spread + Math.max(0, pull) : 0;
+          next[down] += move * (1 - toL - toR);
+          if (toL) next[down - 1] += move * toL;
+          if (toR) next[down + 1] += move * toR;
+        }
+      }
+      // Dries; keeps track of where there is water at all.
+      const dry = WX_FACE_DRY_PER_S * dt;
+      let nlo = cols;
+      let nhi = -1;
+      for (let j = 0; j < rows; j++) {
+        const row = j * cols;
+        for (let i = lo; i <= hi; i++) {
+          const v = next[row + i] - dry;
+          const kept = v > 0.002 ? v : 0;
+          h[row + i] = kept;
+          if (kept) {
+            if (i < nlo) nlo = i;
+            if (i > nhi) nhi = i;
+          }
+        }
+      }
+      f.lo = nlo;
+      f.hi = nhi;
+      f.any = nhi >= 0;
+    }
+
+    // The face's water thicker than level as one smooth shape (marching
+    // squares through the grid points): fill, and, if asked, the outline
+    // (only its sides and front, not where it meets the top edge).
+    // h softened ([1 2 1] each way) into view, around where there is water.
+    function smoothLedgeFace(f) {
+      const { cols, rows, h, next: tmp, view } = f;
+      const lo = Math.max(0, f.lo - 2);
+      const hi = Math.min(cols - 1, f.hi + 2);
+      for (let j = 0; j < rows; j++) {
+        const row = j * cols;
+        for (let i = lo; i <= hi; i++) {
+          const left = h[row + Math.max(0, i - 1)];
+          const right = h[row + Math.min(cols - 1, i + 1)];
+          tmp[row + i] = (left + 2 * h[row + i] + right) / 4;
+        }
+      }
+      for (let j = 0; j < rows; j++) {
+        const row = j * cols;
+        // Above the top row is the edge it pours over: as wet as the top row.
+        const up = Math.max(0, j - 1) * cols;
+        const down = Math.min(rows - 1, j + 1) * cols;
+        for (let i = lo; i <= hi; i++) view[row + i] = (tmp[up + i] + 2 * tmp[row + i] + tmp[down + i]) / 4;
+      }
+      // Clear the columns either side, which may hold an older picture.
+      for (let j = 0; j < rows; j++) {
+        const row = j * cols;
+        if (lo > 0) view[row + lo - 1] = 0;
+        if (hi < cols - 1) view[row + hi + 1] = 0;
+      }
+    }
+
+    function ledgeFaceShape(f, level, withEdge) {
+      const { cols, rows } = f;
+      const h = f.view;
+      const cw = WX_LEDGE_STEP;
+      const ch = WX_FACE_CELL_H;
+      const fill = new Path2D();
+      const edge = withEdge ? new Path2D() : null;
+      const lo = Math.max(0, f.lo - 1);
+      const hi = Math.min(cols - 2, f.hi);
+      let empty = true;
+      const poly = [];
+      for (let j = 0; j < rows - 1; j++) {
+        const top = j * cols;
+        const bottom = top + cols;
+        const y0 = j * ch;
+        const y1 = y0 + ch;
+        let run = -1;
+        for (let i = lo; i <= hi + 1; i++) {
+          const inside = i <= hi;
+          const a = inside ? h[top + i] : 0;
+          const b = inside ? h[top + i + 1] : 0;
+          const c = inside ? h[bottom + i + 1] : 0;
+          const d = inside ? h[bottom + i] : 0;
+          const full = a > level && b > level && c > level && d > level;
+          // Whole cells in a row go in as one rectangle.
+          if (full) {
+            if (run < 0) run = i;
+            continue;
+          }
+          if (run >= 0) {
+            fill.rect(run * cw, y0, (i - run) * cw, ch);
+            run = -1;
+            empty = false;
+          }
+          if (!inside || (a <= level && b <= level && c <= level && d <= level)) continue;
+          const x0 = i * cw;
+          const x1 = x0 + cw;
+          const corners = [[x0, y0, a], [x1, y0, b], [x1, y1, c], [x0, y1, d]];
+          poly.length = 0;
+          for (let k = 0; k < 4; k++) {
+            const [px, py, pv] = corners[k];
+            const [qx, qy, qv] = corners[(k + 1) % 4];
+            if (pv > level) poly.push(px, py, 0);
+            if ((pv > level) !== (qv > level)) {
+              const t = (level - pv) / (qv - pv);
+              poly.push(px + (qx - px) * t, py + (qy - py) * t, 1);
+            }
+          }
+          fill.moveTo(poly[0], poly[1]);
+          for (let k = 3; k < poly.length; k += 3) fill.lineTo(poly[k], poly[k + 1]);
+          fill.closePath();
+          empty = false;
+          if (!edge) continue;
+          // Between two crossings in a row is the water's edge.
+          for (let k = 0; k < poly.length; k += 3) {
+            const n = (k + 3) % poly.length;
+            if (poly[k + 2] && poly[n + 2]) {
+              edge.moveTo(poly[k], poly[k + 1]);
+              edge.lineTo(poly[n], poly[n + 1]);
+            }
+          }
+        }
+      }
+      return empty ? null : { fill, edge };
+    }
+
+    // Tiling textures of streaks for the layers of running water, drawn at
+    // twice the size they are shown at.
+    function wxFaceTextures() {
+      const fx = weatherFx;
+      if (fx.faceTex) return fx.faceTex;
+      const S = 2;
+      const make = (w, h, count, color, alpha, width, length) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = w * S;
+        canvas.height = h * S;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(S, S);
+        for (let n = 0; n < count; n++) {
+          const x = Math.random() * w;
+          const y = Math.random() * h;
+          const sw = wxRand(...width);
+          const len = wxRand(...length);
+          const a = wxRand(...alpha);
+          // Drawn again across each border it crosses, so the tile repeats seamlessly.
+          for (const ox of [-w, 0, w]) {
+            for (const oy of [-h, 0, h]) {
+              const cx = x + ox;
+              const cy = y + oy;
+              if (cx + sw < 0 || cx - sw > w || cy + len / 2 < 0 || cy - len / 2 > h) continue;
+              const streak = ctx.createLinearGradient(0, cy - len / 2, 0, cy + len / 2);
+              streak.addColorStop(0, `rgba(${color},0)`);
+              streak.addColorStop(0.5, `rgba(${color},${a.toFixed(3)})`);
+              streak.addColorStop(1, `rgba(${color},0)`);
+              ctx.fillStyle = streak;
+              ctx.beginPath();
+              ctx.ellipse(cx, cy, sw / 2, len / 2, 0, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        }
+        return { pattern: fx.upCtx.createPattern(canvas, 'repeat'), w, h };
+      };
+      fx.faceTex = {
+        S,
+        light: make(96, 192, 60, '255,255,255', [0.25, 0.7], [1, 3.2], [18, 70]),
+        dark: make(128, 256, 46, '52,98,162', [0.16, 0.42], [2, 6], [30, 110]),
+        glint: make(80, 160, 26, '255,255,255', [0.7, 1], [0.8, 1.7], [4, 13])
+      };
+      return fx.faceTex;
+    }
+
+    // One layer of moving water: the texture scrolled down at speed (px/s),
+    // shown at scale, swaying sideways a little.
+    function fillFaceLayer(ctx, path, layer, { speed, scale, sway = 0, alpha = 1, blend = 'source-over' }) {
+      const tex = weatherFx.faceTex;
+      const t = weatherFx.time;
+      const tileH = layer.h * scale;
+      layer.pattern.setTransform(new DOMMatrix()
+        .translateSelf(sway, (t * speed) % tileH)
+        .scaleSelf(scale / tex.S));
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = blend;
+      ctx.fillStyle = layer.pattern;
+      ctx.fill(path);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    function drawLedgeFaceWater(ctx, f) {
+      const tex = wxFaceTextures();
+      if (!tex.light.pattern) return;
+      const t = weatherFx.time;
+      smoothLedgeFace(f);
+      const wet = ledgeFaceShape(f, WX_FACE_WET, false);
+      if (!wet) return;
+      // Damp where water has run, a little darker and bluer, drying in from
+      // its edges.
+      ctx.fillStyle = 'rgba(96,132,178,0.045)';
+      ctx.fill(wet.fill);
+      const damp = ledgeFaceShape(f, WX_FACE_DAMP, false);
+      if (damp) ctx.fill(damp.fill);
+      const run = ledgeFaceShape(f, WX_FACE_RUN, true);
+      if (!run) return;
+      const H = f.rows * WX_FACE_CELL_H;
+      const body = ctx.createLinearGradient(0, 0, 0, H);
+      body.addColorStop(0, 'rgba(112,162,222,0.26)');
+      body.addColorStop(1, 'rgba(132,178,228,0.18)');
+      ctx.fillStyle = body;
+      ctx.fill(run.fill);
+      // The layers slide past each other: slow, big dark streaks under
+      // quicker light ones.
+      fillFaceLayer(ctx, run.fill, tex.dark, { speed: 52, scale: 1.25, sway: 3 * Math.sin(t * 0.7), alpha: 0.45 });
+      fillFaceLayer(ctx, run.fill, tex.light, { speed: 118, scale: 1, sway: 2 * Math.sin(t * 1.6 + 1), alpha: 0.6 });
+      const core = ledgeFaceShape(f, WX_FACE_CORE, false);
+      if (core) {
+        // Deeper water: bluer, with a bigger, quicker layer over it.
+        ctx.fillStyle = 'rgba(104,156,220,0.14)';
+        ctx.fill(core.fill);
+        fillFaceLayer(ctx, core.fill, tex.light, { speed: 170, scale: 1.6, sway: -2 * Math.sin(t * 1.1), alpha: 0.45 });
+      }
+      const sheet = ledgeFaceShape(f, WX_FACE_SHEET, false);
+      if (sheet) {
+        // A full sheet: froth and glints racing down on top.
+        ctx.fillStyle = 'rgba(190,220,248,0.14)';
+        ctx.fill(sheet.fill);
+        fillFaceLayer(ctx, sheet.fill, tex.light, { speed: 230, scale: 0.8, alpha: 0.4 });
+        fillFaceLayer(ctx, sheet.fill, tex.glint, { speed: 260, scale: 1, alpha: 0.85, blend: 'lighter' });
+      }
+      // Its edges: lit on the upper left, a thin shadow on the lower right.
+      ctx.lineCap = 'round';
+      ctx.save();
+      ctx.translate(0.7, 0.8);
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = 'rgba(58,94,148,0.2)';
+      ctx.stroke(run.edge);
+      ctx.restore();
+      ctx.save();
+      ctx.translate(-0.5, -0.4);
+      ctx.lineWidth = 1.1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.stroke(run.edge);
+      ctx.restore();
+      // A bright lip where it rolls over the edge.
+      ctx.save();
+      ctx.clip(run.fill);
+      const lip = ctx.createLinearGradient(0, 0, 0, 6);
+      lip.addColorStop(0, 'rgba(255,255,255,0.8)');
+      lip.addColorStop(0.35, 'rgba(200,226,250,0.45)');
+      lip.addColorStop(1, 'rgba(200,226,250,0)');
+      ctx.fillStyle = lip;
+      ctx.fillRect(0, 0, f.cols * WX_LEDGE_STEP, 6);
+      ctx.restore();
     }
 
     function stepLedge(dt) {
@@ -10795,38 +11145,15 @@
         if (value > WX_LEDGE_SPILL_PX) {
           const excess = (value - WX_LEDGE_SPILL_PX * 0.85) * Math.min(1, dt * 6);
           value -= excess;
-          feedRivulet(s, L.l + index * WX_LEDGE_STEP, excess);
+          if (overLedge(L.l + index * WX_LEDGE_STEP)) feedLedgeFace(s, index, excess);
         }
         w[index] = value;
         wet = Math.max(wet, value);
       }
       s.wet = wet;
 
-      // Rivulets crawl down the face in fits and starts, leaving a wet
-      // trail that dries behind them.
-      s.rivulets.forEach(rivulet => {
-        rivulet.feed = Math.max(0, rivulet.feed - dt * 0.5);
-        rivulet.slipT -= dt;
-        if (rivulet.slipT <= 0) {
-          rivulet.slip = Math.random() < 0.55 ? wxRand(55, 120) : wxRand(4, 16);
-          rivulet.slipT = wxRand(0.15, 0.6);
-        }
-        if (rivulet.vol > 0.02 && rivulet.y < L.b - L.t + 20) {
-          const speed = (rivulet.slip + 50 * rivulet.feed) * g.scale;
-          const step = speed * dt;
-          rivulet.y += step;
-          // Water on a surface wanders: it keeps a heading that drifts.
-          rivulet.drift = wxClamp(rivulet.drift + wxRand(-1, 1) * step * 0.04, -0.7, 0.7);
-          rivulet.x += (rivulet.drift + wxRand(-0.4, 0.4)) * step * 0.35;
-          rivulet.vol -= step * 0.006;
-          const last = rivulet.pts.length - 2;
-          if (rivulet.y - rivulet.pts[last + 1] > 3) rivulet.pts.push(rivulet.x, rivulet.y);
-        } else {
-          rivulet.vol = Math.max(0, rivulet.vol);
-        }
-        if (fx.time - rivulet.fedAt > 1.5) rivulet.dryT += dt;
-      });
-      s.rivulets = s.rivulets.filter(rivulet => rivulet.dryT < 12);
+      // What spilled runs down the face.
+      stepLedgeFace(s, dt);
 
       // The drift settles a little, keeps to a natural slope, and lets go
       // where it has grown too tall.
@@ -10937,14 +11264,14 @@
       return drew;
     }
 
-    // Rivulets and falling snow on the face of the strip (#upcomingFx).
+    // Running water and falling snow on the face of the strip (#upcomingFx).
     function drawLedgeFace() {
       const fx = weatherFx;
       const L = wxLedge();
       const ctx = fx.upCtx;
       if (!ctx) return;
       const s = fx.ledgeState;
-      const busy = L && s && (s.rivulets.length || s.grains.length || s.wet > 0.08);
+      const busy = L && s && (s.face?.any || s.grains.length || s.wet > 0.08);
       if (!busy) {
         if (!fx.upClean) {
           ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -10957,7 +11284,6 @@
       ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
       ctx.clearRect(0, 0, L.r - L.l, L.b - L.t);
       fx.upClean = false;
-      const dark = fx.night || fx.effect === 'thunder';
 
       // A wet sheen just under the edge where the film sits.
       if (s.wet > 0.08) {
@@ -10973,37 +11299,7 @@
         ctx.fill();
       }
 
-      s.rivulets.forEach(rivulet => {
-        const alpha = 1 - wxClamp(rivulet.dryT / 12, 0, 1);
-        if (alpha <= 0.01 || rivulet.pts.length < 4) return;
-        const width = (1.3 + 1.8 * rivulet.feed) * g.scale;
-        ctx.beginPath();
-        ctx.moveTo(rivulet.pts[0], rivulet.pts[1]);
-        for (let index = 2; index < rivulet.pts.length; index += 2) ctx.lineTo(rivulet.pts[index], rivulet.pts[index + 1]);
-        ctx.lineTo(rivulet.x, rivulet.y);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.lineWidth = width;
-        ctx.strokeStyle = `rgba(${dark ? '110,146,200' : '120,162,214'},${(0.55 * alpha).toFixed(3)})`;
-        ctx.stroke();
-        ctx.save();
-        ctx.translate(-width * 0.22, 0);
-        ctx.lineWidth = Math.max(0.5, width * 0.32);
-        ctx.strokeStyle = `rgba(255,255,255,${(0.6 * alpha).toFixed(3)})`;
-        ctx.stroke();
-        ctx.restore();
-        if (rivulet.vol > 0.02 || rivulet.dryT < 2) {
-          const r = width * 0.95 + 0.6;
-          ctx.beginPath();
-          ctx.ellipse(rivulet.x, rivulet.y, r * 0.9, r * 1.2, 0, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(${dark ? '130,166,214' : '140,180,226'},${(0.85 * alpha).toFixed(3)})`;
-          ctx.fill();
-          ctx.beginPath();
-          ctx.arc(rivulet.x - r * 0.3, rivulet.y - r * 0.35, r * 0.32, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(255,255,255,${(0.9 * alpha).toFixed(3)})`;
-          ctx.fill();
-        }
-      });
+      if (s.face?.any) drawLedgeFaceWater(ctx, s.face);
 
       if (s.grains.length) {
         const sprite = wxFlakeSprite(true);
@@ -13198,7 +13494,8 @@
         const phase = { fill: 'piling up', full: 'full', sift: 'spilling' }[fx.snow.phase] || fx.snow.phase;
         parts.push(`snow ${Math.round((total / WX_SNOW_COLS) * 100)}% · ${phase}`);
       } else if (fx.fog) parts.push('mist pours over the edge');
-      if (fx.ledgeState?.wet > 0.08 || fx.ledgeState?.rivulets.length) parts.push(`${fx.ledgeState.rivulets.length} rivulets on the Upcoming strip`);
+      if (fx.ledgeState?.face?.any) parts.push('water running down the Upcoming strip');
+      else if (fx.ledgeState?.wet > 0.08) parts.push('water on the Upcoming strip');
       if (fx.leak?.params.length) parts.push(`${fx.leak.kind === 'snow' ? 'flakes' : 'drops'} leaking ${(fx.leak.rate * 60).toFixed(0)}/min`);
       if (fx.pop?.flare) parts.push('flare');
       if (fx.blast) parts.push('shock wave');

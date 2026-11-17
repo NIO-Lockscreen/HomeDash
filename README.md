@@ -743,10 +743,30 @@ edge of the Upcoming strip instead of vanishing under it.
 
 - **Water** splashes where it lands and gathers along the edge in a thin film
   that bulges over the edge and spreads sideways. Where the film gets thicker
-  than about 1.6px it spills over: rivulets crawl down the face of the strip in
-  fits and starts, wandering a little, behind the *Upcoming* title and on under
-  the photos (they show again in the gaps between them). Each leaves a wet
-  trail that dries in about twelve seconds; the film dries slowly too.
+  than about 1.6px it floods over and runs down the face of the strip as a
+  sheet, behind the *Upcoming* title and on under the photos (it shows again in
+  the gaps between them):
+  - Each spill fans out along the edge as it goes over, and comes down the
+    face as a curtain with a rounded head that swells and creeps where it meets
+    dry strip. Thick water runs faster and spreads; thin water drifts towards
+    the face's faint grooves (a fixed, gently wandering pattern, new on every
+    visit), so a sheet gathers into streams that wander a little and merge. When
+    the supply stops, the tail thins and breaks into tapering drips.
+  - Everywhere water has run keeps a damp trail, which dries in from its edges
+    over about ten seconds. A small spill uses itself up wetting the strip and
+    stops on the way down; a big one runs off the bottom edge.
+  - It is drawn the way water was on the N64: tiling textures of streaks laid
+    over one another, each scrolling down at its own speed and size, so they
+    slide past each other like layers of moving water. Thicker water gets more
+    layers: a slow dark one and a quicker light one where it runs, a bigger,
+    faster one in its deeper core, and racing froth and glints where it is a
+    full sheet. Its edges catch the light on the upper left and throw a thin
+    shadow on the lower right, and a bright lip shows where it rolls over the
+    edge.
+  - Under the hood the face is a grid of cells 4px wide and 5px tall, each
+    holding how thick the water on it is; the shapes are traced through a
+    softened copy of it, so the grid never shows. Drawing it takes about a
+    millisecond a frame, and only while there is water on the strip.
 - **Snow** (sifted powder, falling flakes) builds a small heap on the edge,
   right under the weather card where it falls; it keeps a natural slope but
   never creeps along the rest of the strip, and only the heap itself is drawn.
