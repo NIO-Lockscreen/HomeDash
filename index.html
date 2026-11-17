@@ -16808,8 +16808,9 @@ Cancel = choose whether to delete the whole series.`);
     // new card falls out of the air towards its slot, swinging a little, its
     // shadow sharpening under it as it comes down, and lands with a thump:
     // the nuke's shock ring, rounded off the card's own shape, runs out
-    // across the strip, dust puffs out from under the card and the dashboard
-    // jolts. The cards that have to make room are shoved along into their
+    // across the strip and on over the weather card (whose sky it blows
+    // about, as the nuke's does), dust puffs out from under the card and the
+    // dashboard jolts. The cards that have to make room are shoved along into their
     // new places (on a full page the last one goes over the end of the strip
     // and drops away), and the ring hits every card as it reaches it, like
     // the nuke's but softer: the near side lifts, it is pushed away from the
@@ -17154,15 +17155,23 @@ Cancel = choose whether to delete the whole series.`);
       body.el.style.opacity = '';
       body.shadowAlpha = 1;
       const radius = parseFloat(getComputedStyle(body.el.querySelector('.mini-event') || body.el).borderTopLeftRadius) || 16;
-      launchCardShock({
-        left: body.left,
-        top: body.top,
-        right: body.left + body.w,
-        bottom: body.top + body.h,
-        radius,
-        speed: body.shock.speed,
-        reach: body.shock.reach
-      });
+      const right = body.left + body.w;
+      const bottom = body.top + body.h;
+      let reach = body.shock.reach;
+      // The ring runs on over the weather card and blows its sky about, as
+      // the nuke's does. It sets off from the point of this card nearest the
+      // weather card, so that card is hit just as the drawn ring gets there,
+      // and the drawn ring carries on until it has passed it.
+      const sky = els.weatherCard?.getBoundingClientRect();
+      if (sky?.width && sky.height) {
+        const x = wxClamp(sky.left + sky.width / 2, body.left, right);
+        const y = wxClamp(sky.top + sky.height / 2, body.top, bottom);
+        weatherFxBlast(x, y, body.shock.speed);
+        const away = (px, py) => Math.hypot(Math.max(0, body.left - px, px - right), Math.max(0, body.top - py, py - bottom));
+        reach = Math.max(reach, ...[[sky.left, sky.top], [sky.right, sky.top], [sky.left, sky.bottom], [sky.right, sky.bottom]]
+          .map(([px, py]) => away(px, py) + 80));
+      }
+      launchCardShock({ left: body.left, top: body.top, right, bottom, radius, speed: body.shock.speed, reach });
     }
 
     // The ring reaches a card: pushed away from the landing, the near side

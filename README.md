@@ -496,8 +496,12 @@ whole list in, and a task added while the screen was dimmed is simply there when
 it wakes. Nothing moves while the page is hidden, the camera dimmer has dimmed
 the screen, an overlay is up, the nuke is going off, or with reduced motion.
 
-The weather card is left alone: the ring stops short of blowing its sky away,
-so a pile of snow does not get scoured off every time a task is added.
+The ring runs on over the weather card and hits it just as the nuke's does (see
+*The nuke's shock wave* under *Weather effects*): water torn off as spray, snow
+scoured away, mist blown off, clouds, sun and moon knocked aside. It sets off
+from the point of the landed card nearest the weather card, so the card is hit
+just as the drawn ring reaches it, and a card landing right under it hits it
+hardest. New tasks are rare, so the sky can afford it.
 
 While the cards are moving the strip is not redrawn for nothing (a sync always
 redraws it twice in a row, which used to throw away whatever was on it); a
@@ -756,7 +760,9 @@ card is there, as before.
 ### The nuke's shock wave
 
 When the YouTube panel's mini nuke goes off, its shock ring sweeps over the
-weather card and blows away whatever the card's sky has on it and around it. Nothing
+weather card and blows away whatever the card's sky has on it and around it. (So
+does the quicker ring of a new task landing in the Upcoming strip, 1.3 screen
+diagonals a second, from the edge of that card; see *A new task drops in*.) Nothing
 here is physics. The ring is a circle growing at the same fixed speed the nuke
 draws it (0.8 screen diagonals a second), and whatever it passes is shoved straight
 away from the blast by a gust that dies away behind the ring. So where the panel
