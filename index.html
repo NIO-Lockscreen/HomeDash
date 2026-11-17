@@ -958,7 +958,8 @@
     .kiosk-shell.daily-calendar-mode canvas.weather-fx,
     .kiosk-shell.daily-calendar-mode canvas.weather-spill { display: none; }
 
-    .wx-debug > #wxDebugPop { width: 100%; }
+    .wx-debug > #wxDebugPop,
+    .wx-debug > #wxDebugShadows { width: 100%; }
 
     /* Weather test panel (press Q on the wall display). */
     .wx-debug {
@@ -4293,6 +4294,37 @@
     /* The big task photo is rocked as a whole. */
     .event-hero.is-primed { will-change: transform; }
 
+    /* A card's shadow on the strip while it is in the air: its own outline,
+       projected along the light (the script sets the matrix). A crisp layer
+       where it lies and a soft one as it rises. */
+    .card3d-shadow {
+      position: absolute;
+      pointer-events: none;
+      will-change: transform;
+    }
+
+    .card3d-shadow > i {
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius-md);
+      background: rgb(46, 34, 22);
+      opacity: 0;
+      will-change: opacity;
+    }
+
+    .card3d-shadow > .is-crisp { filter: blur(2.5px); }
+    .card3d-shadow > .is-soft { inset: -6px; filter: blur(16px); }
+
+    /* It takes over from the drop shadow that sticks to the card; Sofia's
+       pink ring stays. */
+    .card3d.has-shadow > .mini-event { box-shadow: none; }
+    .card3d.has-shadow > .mini-event.is-sofia {
+      box-shadow: 0 0 0 2px rgba(255, 128, 186, 0.48), 0 0 20px 4px rgba(255, 102, 168, 0.22);
+    }
+
+    /* The card a new one pushed off a full page, on its way over the end. */
+    .card3d.card-drop-ghost { pointer-events: none; }
+
     .upcoming-card > canvas.upcoming-fx { border-radius: inherit; }
 
     @media (prefers-reduced-motion: reduce) {
@@ -5103,6 +5135,13 @@
       <button type="button" data-wx-nuke="middle">Middle</button>
       <button type="button" data-wx-nuke="under">Under card</button>
     </div>
+    <div class="wx-debug-label">New task drops into Upcoming at</div>
+    <div class="wx-debug-grid three" id="wxDebugDrop">
+      <button type="button" data-card-drop="first">First</button>
+      <button type="button" data-card-drop="middle">Middle</button>
+      <button type="button" data-card-drop="last">Last</button>
+    </div>
+    <button type="button" id="wxDebugShadows">Card shadows</button>
     <div class="wx-debug-label">Speed of fill and leak</div>
     <div class="wx-debug-grid four" id="wxDebugSpeed">
       <button type="button" data-wx-speed="1">1×</button>
@@ -5463,6 +5502,7 @@
       wxDebugFill: document.getElementById('wxDebugFill'),
       wxDebugSpill: document.getElementById('wxDebugSpill'),
       wxDebugPop: document.getElementById('wxDebugPop'),
+      wxDebugShadows: document.getElementById('wxDebugShadows'),
       wxDebugStatus: document.getElementById('wxDebugStatus'),
       wxDebugBadge: document.getElementById('wxDebugBadge'),
       edgePanel: document.getElementById('edgePanel'),
@@ -8660,10 +8700,13 @@
       scheduleHiddenRepeatingTasksHide();
       renderUpcomingPager(allUpcomingCount, upcomingPage, maxUpcomingPage, upcomingLimit, hiddenRepeatsCount, hiddenRepeatsVisible);
 
-      if (!upcoming.length) {
+      // The Q panel's test card, while one is in.
+      const shown = withDropTestCard(upcoming, upcomingLimit);
+      if (!shown.length) {
         if (els.upcomingGrid) els.upcomingGrid.style.setProperty('--upcoming-cols', String(getUpcomingDisplayLimit()));
-        els.upcomingGrid.innerHTML = '<div class="empty-upcoming" style="grid-column:1/-1">No upcoming events yet</div>';
+        setUpcomingCards('<div class="empty-upcoming" style="grid-column:1/-1">No upcoming events yet</div>', shown);
         ensureTodayTaskCycle();
+        noteKnownEvents();
         return;
       }
 
@@ -8671,7 +8714,7 @@
       if (els.upcomingGrid) els.upcomingGrid.style.setProperty('--upcoming-cols', String(upcomingLimit));
       // Sofia's hearts sit in an aura laid over the card's grid cell.
       const columns = Math.max(1, getComputedStyle(els.upcomingGrid).gridTemplateColumns.split(' ').filter(Boolean).length);
-      els.upcomingGrid.innerHTML = upcoming.map((event, index) => {
+      setUpcomingCards(shown.map((event, index) => {
         const date = new Date(event.start);
         const exactDate = formatUpcomingDate(date);
         const sofia = isSofiaEvent(event);
@@ -8685,7 +8728,8 @@
             </span>
           </button>${aura}
         `;
-      }).join('');
+      }).join(''), shown);
+      noteKnownEvents();
     }
 
     async function fetchWeather() {
@@ -13179,6 +13223,10 @@
       els.wxDebugSpill.textContent = weatherFx.snow ? 'Spill snow now' : weatherFx.fog ? 'Pour mist now' : 'Leak now';
       els.wxDebugPop.disabled = !weatherFx.pop;
       els.wxDebugPop.textContent = weatherPopLabel();
+      if (els.wxDebugShadows) {
+        els.wxDebugShadows.classList.toggle('is-on', cardShadows.on);
+        els.wxDebugShadows.textContent = `Card shadows: ${cardShadows.on ? 'on' : 'off'}`;
+      }
       els.wxDebug.querySelectorAll('[data-wx-speed]').forEach(button => {
         button.classList.toggle('is-on', Number(button.dataset.wxSpeed) === weatherFx.speed);
       });
@@ -13247,6 +13295,14 @@
       document.getElementById('wxDebugNuke')?.addEventListener('click', event => {
         const button = event.target.closest('[data-wx-nuke]');
         if (button) testNukeAt(button.dataset.wxNuke);
+      });
+      document.getElementById('wxDebugDrop')?.addEventListener('click', event => {
+        const button = event.target.closest('[data-card-drop]');
+        if (button) testCardDrop(button.dataset.cardDrop);
+      });
+      els.wxDebugShadows?.addEventListener('click', () => {
+        setCardShadows(!cardShadows.on);
+        renderWeatherDebug();
       });
     }
 
@@ -15533,6 +15589,8 @@ Cancel = choose whether to delete the whole series.`);
       sparks: [],
       shards: [],
       fallFrom: null,
+      // Shock rings of cards dropping into the Upcoming strip.
+      shocks: [],
       last: 0,
       clean: true
     };
@@ -15831,10 +15889,11 @@ Cancel = choose whether to delete the whole series.`);
         boom.onDone = null;
       }
       stepNuke(dt, t);
-      drawNuke(t);
-      nukeShakeAt(boom ? t : Infinity);
+      stepCardShocks(dt, now);
+      drawNuke(t, now);
+      nukeShakeAt(boom ? t : Infinity, cardShockJolt(now));
       if (boom && t * 1000 >= NUKE_MS) nuke.boom = null;
-      if (nuke.boom || nuke.trail.length || nuke.sparks.length || nuke.shards.length) {
+      if (nuke.boom || nuke.trail.length || nuke.sparks.length || nuke.shards.length || nuke.shocks.length) {
         nuke.raf = requestAnimationFrame(nukeFrame);
       } else {
         nuke.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -15845,13 +15904,18 @@ Cancel = choose whether to delete the whole series.`);
 
     // The dashboard (and the weather's pop-out layer, which lies over it but
     // outside it) shakes hard and then rumbles out.
-    function nukeShakeAt(t) {
+    // A card landing in the Upcoming strip adds a small jolt (jolt: [x, y]).
+    function nukeShakeAt(t, jolt = null) {
       let x = 0;
       let y = 0;
       if (t < 1.7) {
         const a = 9 * Math.exp(-t / 0.18) + 3.5 * Math.exp(-t / 0.55);
         x = a * (0.6 * Math.sin(t * 73) + 0.4 * Math.sin(t * 41 + 1.3));
         y = a * (0.6 * Math.sin(t * 89 + 0.7) + 0.4 * Math.sin(t * 31 + 2.1));
+      }
+      if (jolt) {
+        x += jolt[0];
+        y += jolt[1];
       }
       if (!x && !y && !weatherFx.shake.x && !weatherFx.shake.y) return;
       weatherFx.shake.x = x;
@@ -15940,12 +16004,13 @@ Cancel = choose whether to delete the whole series.`);
       nuke.shards = nuke.shards.filter(shard => shard.y < nuke.h + 60 && shard.age < 5);
     }
 
-    function drawNuke(t) {
+    function drawNuke(t, now) {
       const ctx = nuke.ctx;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, nuke.canvas.width, nuke.canvas.height);
       ctx.setTransform(nuke.dpr, 0, 0, nuke.dpr, 0, 0);
       nuke.clean = false;
+      nuke.shocks.forEach(shock => drawCardShock(ctx, shock, now));
       const boom = nuke.boom;
       if (boom) drawNukeLight(ctx, boom, t);
       nuke.trail.forEach(puff => {
@@ -16218,6 +16283,116 @@ Cancel = choose whether to delete the whole series.`);
       ctx.fillRect(0, 0, nuke.w, nuke.h);
     }
 
+    // --- A card landing in the Upcoming strip ------------------------------
+    //
+    // The nuke's shock ring, smaller and quicker, runs out from a card that
+    // drops into the strip. It is the front of a shock from a flat card, so
+    // it starts as the card's own rounded outline and rounds off into a
+    // circle as it grows. Dust puffs out from under the card's edges, and
+    // the dashboard jolts.
+    function launchCardShock({ left, top, right, bottom, radius, speed, reach }) {
+      if (!nukeCanvasReady()) return;
+      const w = right - left;
+      const h = bottom - top;
+      const size = Math.min(w, h);
+      const dust = [];
+      for (let index = 0; index < 12; index++) {
+        // Anywhere along the outline, pushed straight out from it.
+        const along = Math.random() * 2 * (w + h);
+        let x = right;
+        let y = top + along - 2 * w - h;
+        let nx = 1;
+        let ny = 0;
+        if (along < w) [x, y, nx, ny] = [left + along, bottom, 0, 1];
+        else if (along < 2 * w) [x, y, nx, ny] = [left + along - w, top, 0, -1];
+        else if (along < 2 * w + h) [x, y, nx, ny] = [left, top + along - 2 * w, -1, 0];
+        const v = wxRand(50, 150);
+        dust.push({
+          x,
+          y,
+          vx: nx * v + wxRand(-20, 20),
+          vy: ny * v + wxRand(-20, 20),
+          size: size * wxRand(0.5, 0.7),
+          age: 0,
+          life: wxRand(0.8, 1.2),
+          variant: index % 4
+        });
+      }
+      nuke.shocks.push({ left, top, right, bottom, radius, speed, reach, dust, start: performance.now(), phase: Math.random() * 6.28 });
+      nukeLoop();
+    }
+
+    function stepCardShocks(dt, now) {
+      if (!nuke.shocks.length) return;
+      nuke.shocks.forEach(shock => {
+        shock.dust.forEach(puff => {
+          puff.age += dt;
+          puff.vx *= Math.exp(-3 * dt);
+          puff.vy *= Math.exp(-3 * dt);
+          puff.x += puff.vx * dt;
+          puff.y += puff.vy * dt;
+        });
+        shock.dust = shock.dust.filter(puff => puff.age < puff.life);
+      });
+      nuke.shocks = nuke.shocks.filter(shock => shock.dust.length || ((now - shock.start) / 1000) * shock.speed < shock.reach);
+    }
+
+    function drawCardShock(ctx, shock, now) {
+      const t = (now - shock.start) / 1000;
+      if (t < 0) return;
+      const grow = shock.speed * t;
+      const fade = Math.pow(1 - wxClamp(grow / shock.reach, 0, 1), 0.75) * wxSmooth(0, 0.02, t);
+      if (fade > 0.01) {
+        // The same layers as the nuke's ring: a soft band of disturbed air
+        // behind a sharp bright edge, with a darker line just inside it.
+        const ring = (inset, width, style) => {
+          cardShockPath(ctx, shock, Math.max(0, grow - inset));
+          ctx.lineWidth = width;
+          ctx.strokeStyle = style;
+          ctx.stroke();
+        };
+        ring(16, 22, `rgba(90,70,56,${(0.08 * fade).toFixed(3)})`);
+        ring(6, 10, `rgba(255,246,226,${(0.32 * fade).toFixed(3)})`);
+        ring(2, 1.4, `rgba(110,84,64,${(0.3 * fade).toFixed(3)})`);
+        ring(0, 2.2, `rgba(255,255,255,${(0.9 * fade).toFixed(3)})`);
+      }
+      shock.dust.forEach(puff => {
+        const p = puff.age / puff.life;
+        const alpha = 0.16 * wxSmooth(0, 0.15, p) * (1 - wxSmooth(0.3, 1, p));
+        drawNukePuff(ctx, puff.x, puff.y, puff.size * (1 + 0.8 * p), alpha, 0, 1, puff.variant, 'dust', 0.6);
+      });
+    }
+
+    // The card's outline grown by g all round.
+    function cardShockPath(ctx, shock, g) {
+      const x0 = shock.left - g;
+      const y0 = shock.top - g;
+      const x1 = shock.right + g;
+      const y1 = shock.bottom + g;
+      const r = Math.min(shock.radius + g, (x1 - x0) / 2, (y1 - y0) / 2);
+      ctx.beginPath();
+      ctx.moveTo(x0 + r, y0);
+      ctx.arcTo(x1, y0, x1, y1, r);
+      ctx.arcTo(x1, y1, x0, y1, r);
+      ctx.arcTo(x0, y1, x0, y0, r);
+      ctx.arcTo(x0, y0, x1, y0, r);
+      ctx.closePath();
+    }
+
+    // The thump of a landing: a quick knock down, gone in half a second.
+    function cardShockJolt(now) {
+      let x = 0;
+      let y = 0;
+      nuke.shocks.forEach(shock => {
+        const t = (now - shock.start) / 1000;
+        if (t < 0 || t > 0.5) return;
+        const a = 2.6 * Math.exp(-t / 0.08);
+        x += a * 0.4 * Math.sin(t * 71 + shock.phase);
+        y += a * Math.cos(t * 93);
+      });
+      return x || y ? [x, y] : null;
+    }
+
     // --- Picture cards the nuke rattles ---------------------------------------
     //
     // Pulling the YouTube panel out primes the photo cards: each Upcoming card
@@ -16256,23 +16431,7 @@ Cancel = choose whether to delete the whole series.`);
       cardRattle.token += 1;
       if (adminMode || wxReducedMotion.matches || !els.upcomingGrid) return;
       // Only cards not wrapped yet: the strip may have been redrawn since.
-      els.upcomingGrid.querySelectorAll(':scope > .mini-event').forEach(card => {
-        const wrap = document.createElement('div');
-        wrap.className = 'card3d';
-        for (let index = CARD3D_PLATES; index >= 1; index--) {
-          const plate = document.createElement('div');
-          plate.className = index === CARD3D_PLATES ? 'card3d-plate is-back' : 'card3d-plate';
-          plate.style.setProperty('--plate-z', `${(-(index * CARD3D_THICK_PX) / CARD3D_PLATES).toFixed(2)}px`);
-          wrap.appendChild(plate);
-        }
-        card.before(wrap);
-        wrap.appendChild(card);
-        ['card3d-light', 'card3d-shade'].forEach(name => {
-          const plane = document.createElement('div');
-          plane.className = name;
-          wrap.appendChild(plane);
-        });
-      });
+      els.upcomingGrid.querySelectorAll(':scope > .mini-event').forEach(wrapCard3d);
       els.upcomingGrid.closest('.upcoming-card')?.classList.add('is-primed');
       els.heroEvent?.classList.add('is-primed');
       cardRattle.primed = true;
@@ -16280,6 +16439,28 @@ Cancel = choose whether to delete the whole series.`);
       if (!lift) return;
       // Lifted in the next frame, so it eases up rather than jumping.
       requestAnimationFrame(() => all.forEach(wrap => wrap.classList.add('is-lifted')));
+    }
+
+    // A photo card in its 3D object: plates behind it for its edge and its
+    // back, a light and a shade in front of it. Wrapped where it stands, if
+    // it stands anywhere.
+    function wrapCard3d(card) {
+      const wrap = document.createElement('div');
+      wrap.className = 'card3d';
+      for (let index = CARD3D_PLATES; index >= 1; index--) {
+        const plate = document.createElement('div');
+        plate.className = index === CARD3D_PLATES ? 'card3d-plate is-back' : 'card3d-plate';
+        plate.style.setProperty('--plate-z', `${(-(index * CARD3D_THICK_PX) / CARD3D_PLATES).toFixed(2)}px`);
+        wrap.appendChild(plate);
+      }
+      if (card.parentNode) card.before(wrap);
+      wrap.appendChild(card);
+      ['card3d-light', 'card3d-shade'].forEach(name => {
+        const plane = document.createElement('div');
+        plane.className = name;
+        wrap.appendChild(plane);
+      });
+      return wrap;
     }
 
     // Unprimed after a moment, unless the panel is out again, falling, or the
@@ -16299,7 +16480,7 @@ Cancel = choose whether to delete the whole series.`);
     }
 
     function cardRattleBusy() {
-      return Boolean(cardRattle.raf || edgePanel.falling || edgePanel.drag?.moved
+      return Boolean(cardRattle.raf || cardDropBusy() || edgePanel.falling || edgePanel.drag?.moved
         || els.edgePanel?.classList.contains('is-open'));
     }
 
@@ -16321,6 +16502,8 @@ Cancel = choose whether to delete the whole series.`);
     // The nuke went off: every picture card is hit as the ring reaches it.
     function rattleCards(boom) {
       if (adminMode || wxReducedMotion.matches || !els.upcomingGrid) return;
+      // A card still dropping in is put straight down first.
+      if (cardDropBusy()) finishCardDrop();
       primeCards({ lift: false });
       const items = [];
       const lift = el => (el.classList.contains('is-lifted') ? CARD3D_LIFT_PX : 0);
@@ -16334,6 +16517,9 @@ Cancel = choose whether to delete the whole series.`);
         const rect = hero.getBoundingClientRect();
         if (rect.width > 40 && rect.height > 40) items.push(newCardBody(hero, rect, boom, { hero: true, rest: 0 }));
       }
+      items.forEach(card => {
+        if (!card.hero) attachCardShadow(card);
+      });
       cardRattle.items = items;
       cardRattle.boom = boom;
       els.upcomingGrid.classList.add('is-rattling');
@@ -16433,6 +16619,7 @@ Cancel = choose whether to delete the whole series.`);
         card.el.classList.remove('is-rattling');
         if (card.light) card.light.style.opacity = '';
         if (card.shade) card.shade.style.opacity = '';
+        detachCardShadow(card);
       });
       cardRattle.items = [];
       els.upcomingGrid?.classList.remove('is-rattling');
@@ -16441,8 +16628,9 @@ Cancel = choose whether to delete the whole series.`);
 
     function stepCard(card, dt) {
       const spring = (pos, vel, k, c) => vel + (-k * pos - c * vel) * dt;
-      card.vx = spring(card.x, card.vx, 55, 7);
-      card.vy = spring(card.y, card.vy, 55, 7);
+      // A card shoved into a new place has stiffer springs (kxy, cxy).
+      card.vx = spring(card.x, card.vx, card.kxy || 55, card.cxy || 7);
+      card.vy = spring(card.y, card.vy, card.kxy || 55, card.cxy || 7);
       card.vz = spring(card.z, card.vz, 45, 6.5);
       card.vtilt = spring(card.tilt, card.vtilt, 140, 5);
       card.vwob = spring(card.wob, card.vwob, 170, 6);
@@ -16495,6 +16683,7 @@ Cancel = choose whether to delete the whole series.`);
         + `rotate3d(${card.nx.toFixed(3)}, ${card.ny.toFixed(3)}, 0, ${card.wob.toFixed(2)}deg)`;
       // Above its neighbours while it is up in the air.
       card.el.style.zIndex = z > 2 ? String(Math.round(z) + 10) : '';
+      if (card.shadow) drawCardShadow(card, x, y, z, spin, ax, ay, tilt);
       if (!card.light) return;
       // Turned towards the light it brightens, away from it it darkens.
       let normal = [0, 0, 1];
@@ -16517,6 +16706,622 @@ Cancel = choose whether to delete the whole series.`);
       const dot = k[0] * v[0] + k[1] * v[1] + k[2] * v[2];
       const cross = [k[1] * v[2] - k[2] * v[1], k[2] * v[0] - k[0] * v[2], k[0] * v[1] - k[1] * v[0]];
       return [0, 1, 2].map(index => v[index] * cos + cross[index] * sin + k[index] * dot * (1 - cos));
+    }
+
+    // --- The cards' shadows on the strip ------------------------------------
+    //
+    // While a card is in the air (the nuke's rattle, a new task dropping in)
+    // the room light, from above and a little to the top left, casts its
+    // shadow on the strip. Not a blurred square that trails the card: the
+    // card's face, turned and tilted as it is, is projected along the light
+    // onto the strip, so the shadow is the card's real outline there. It
+    // narrows to a sliver as the card stands on edge, stretches and swings
+    // round as it flips, slides out from under the card, spreads and pales
+    // as the card rises, and tucks back in under it as it lands. Two layers,
+    // a crisp one and a soft one, hand over to each other with the height,
+    // so only transform and opacity change (both composited). While its card
+    // is down it lies under every card on the strip; while its card is up it
+    // lies over the ones resting there (still under any card in the air), so
+    // a card thrown over its neighbour shades it. The card's own drop shadow,
+    // which sticks to it wherever it goes, is dropped meanwhile; Sofia's pink
+    // ring stays. Built when the cards take off, gone once they settle.
+    const CARD3D_SHADOW_LIGHT = (() => {
+      const v = [-0.12, -0.2, 0.97];
+      const length = Math.hypot(...v);
+      return v.map(value => value / length);
+    })();
+    const CARD3D_SHADOWS_KEY = 'homedash.cardShadows';
+    const cardShadows = { on: true };
+    try {
+      cardShadows.on = localStorage.getItem(CARD3D_SHADOWS_KEY) !== '0';
+    } catch {
+      // No storage: shadows on.
+    }
+
+    function setCardShadows(on) {
+      cardShadows.on = on;
+      try {
+        localStorage.setItem(CARD3D_SHADOWS_KEY, on ? '1' : '0');
+      } catch {
+        // Kept for this visit only.
+      }
+    }
+
+    function attachCardShadow(card) {
+      if (!cardShadows.on || card.shadow || !els.upcomingGrid) return;
+      const wrap = card.el;
+      const shadow = document.createElement('div');
+      shadow.className = 'card3d-shadow';
+      shadow.setAttribute('aria-hidden', 'true');
+      shadow.innerHTML = '<i class="is-crisp"></i><i class="is-soft"></i>';
+      shadow.style.cssText = `left:${wrap.offsetLeft}px;top:${wrap.offsetTop}px;width:${wrap.offsetWidth}px;height:${wrap.offsetHeight}px`;
+      // First in the strip, so every card lying on it is drawn over it.
+      els.upcomingGrid.prepend(shadow);
+      card.shadow = shadow;
+      card.shadowCrisp = shadow.firstChild;
+      card.shadowSoft = shadow.lastChild;
+      wrap.classList.add('has-shadow');
+    }
+
+    function detachCardShadow(card) {
+      card.shadow?.remove();
+      card.shadow = card.shadowCrisp = card.shadowSoft = null;
+      card.el.classList.remove('has-shadow');
+    }
+
+    // The card's face as drawCard turns it (without the perspective, which is
+    // the eye), each point slid along the light down to the strip. Lying on
+    // the strip, the card's back is on it and its face CARD3D_THICK_PX above.
+    // A flat face projects to a flat shape, so the shadow is the card's own
+    // rectangle under one 2D matrix.
+    function drawCardShadow(card, x, y, z, spin, ax, ay, tilt) {
+      const m = new DOMMatrix()
+        .translateSelf(x, y, z)
+        .rotateSelf(0, 0, spin)
+        .rotateAxisAngleSelf(ax, ay, 0, tilt)
+        .rotateAxisAngleSelf(card.nx, card.ny, 0, card.wob);
+      const [lx, ly, lz] = CARD3D_SHADOW_LIGHT;
+      const kx = lx / lz;
+      const ky = ly / lz;
+      const height = m.m43 + CARD3D_THICK_PX;
+      const a = m.m11 - kx * m.m13;
+      const b = m.m12 - ky * m.m13;
+      const c = m.m21 - kx * m.m23;
+      const d = m.m22 - ky * m.m23;
+      const e = m.m41 - kx * height;
+      const f = m.m42 - ky * height;
+      card.shadow.style.transform = `matrix(${a.toFixed(4)}, ${b.toFixed(4)}, ${c.toFixed(4)}, ${d.toFixed(4)}, ${e.toFixed(2)}, ${f.toFixed(2)})`;
+      // Crisp where it lies, softer and paler the higher it goes.
+      const lift = Math.max(0, m.m43);
+      const soft = wxSmooth(2, 130, lift);
+      const strength = (card.shadowAlpha ?? 1) * (0.22 + 0.3 * wxSmooth(0, 26, lift) - 0.32 * wxSmooth(90, 520, lift));
+      card.shadowCrisp.style.opacity = (strength * (1 - soft)).toFixed(3);
+      card.shadowSoft.style.opacity = (strength * (0.25 + 0.75 * soft)).toFixed(3);
+      card.shadow.style.zIndex = card.el.style.zIndex ? '1' : '';
+    }
+
+    // --- A new task drops into the Upcoming strip ----------------------------
+    //
+    // A task this screen has not seen before, loading into the Upcoming page
+    // on show (a save on the phone, another tab, ...), is not just drawn
+    // there: it drops in. The cards become the nuke's small 3D objects; the
+    // new card falls out of the air towards its slot, swinging a little, its
+    // shadow sharpening under it as it comes down, and lands with a thump:
+    // the nuke's shock ring, rounded off the card's own shape, runs out
+    // across the strip, dust puffs out from under the card and the dashboard
+    // jolts. The cards that have to make room are shoved along into their
+    // new places (on a full page the last one goes over the end of the strip
+    // and drops away), and the ring hits every card as it reaches it, like
+    // the nuke's but softer: the near side lifts, it is pushed away from the
+    // landing and chatters. Then everything settles and the cards are taken
+    // apart again.
+    //
+    // Only a task new to this screen counts, and only when it lands on the
+    // page on show: paging, the minute tick, a resize, a task that moved or a
+    // repeat coming into range redraw the strip as before. Counting starts
+    // with the first fresh list from the server, so a reload never drops its
+    // whole list in. Nothing moves while the page is hidden, the screen is
+    // dimmed, an overlay is up, the nuke is going off, or with reduced
+    // motion: the card is simply there.
+    const CARD_DROP_FALL_S = 0.6;
+    const CARD_DROP_HEIGHT_PX = 300;
+    // More than one new card at once: each lands this much after the last.
+    const CARD_DROP_STAGGER_S = 0.4;
+    const CARD_DROP_MAX = 6;
+    // In screen diagonals a second: quicker than the nuke's, it is a thump.
+    const CARD_DROP_WAVE_SPEED = 1.3;
+    // The Q panel's test card lifts off again this long after it settled.
+    const CARD_DROP_TEST_STAY_MS = 3500;
+
+    const cardDrop = {
+      known: new Set(),
+      seeded: false,
+      html: '',
+      raf: 0,
+      last: 0,
+      start: 0,
+      bodies: [],
+      lifting: false,
+      // The strip is redrawn with the cards sliding back (the test card left).
+      slide: false,
+      test: null,
+      testTimer: null,
+      testSeq: 0
+    };
+
+    function cardDropBusy() {
+      return Boolean(cardDrop.raf || cardDrop.lifting);
+    }
+
+    function cardDropAllowed() {
+      return !adminMode
+        && !wxReducedMotion.matches
+        && document.visibilityState === 'visible'
+        && !els.displayView.classList.contains('hidden')
+        && !document.body.classList.contains('motion-dimmed')
+        && !anyDisplayOverlayOpen()
+        && !nuke.boom
+        && !cardRattle.raf
+        && !edgePanel.falling
+        && els.upcomingGrid?.offsetWidth > 0;
+    }
+
+    // The cards about to be shown that have just come in.
+    function upcomingArrivals(shown) {
+      return shown
+        .filter(event => (event._dropTest
+          ? !cardDrop.test?.arrived
+          : cardDrop.seeded && !cardDrop.known.has(String(event.id))))
+        .map(event => String(event._instanceId));
+    }
+
+    // Every task this screen has now seen, on any page.
+    function noteKnownEvents() {
+      state.events.forEach(event => cardDrop.known.add(String(event.id)));
+      if (state.lastFreshEventLoadAt) cardDrop.seeded = true;
+    }
+
+    // Draws the strip's cards, dropping in the ones that have just come in.
+    function setUpcomingCards(html, shown) {
+      const grid = els.upcomingGrid;
+      if (!grid) return;
+      const arrivals = upcomingArrivals(shown);
+      if (cardDrop.test && shown.some(event => event._dropTest && arrivals.includes(String(event._instanceId)))) {
+        cardDrop.test.arrived = true;
+      }
+      // Already on show and still moving: left to finish (the strip is drawn
+      // again straight after every sync).
+      if (!arrivals.length && !cardDrop.slide && html === cardDrop.html && cardDropBusy()) return;
+      const slide = cardDrop.slide;
+      cardDrop.slide = false;
+      if (cardDropBusy()) finishCardDrop();
+      const before = (arrivals.length || slide) && cardDropAllowed() ? snapshotUpcomingCards() : null;
+      grid.innerHTML = html;
+      cardDrop.html = html;
+      if (before) startCardDrop(before, arrivals, { slide: slide && !arrivals.length });
+    }
+
+    // Where each card is now, in the strip (its place, not where an
+    // animation has it).
+    function snapshotUpcomingCards() {
+      const cards = new Map();
+      els.upcomingGrid.querySelectorAll('[data-upcoming-pick]').forEach(card => {
+        const holder = card.parentElement?.classList.contains('card3d') ? card.parentElement : card;
+        cards.set(card.dataset.upcomingPick, {
+          node: card,
+          x: holder.offsetLeft,
+          y: holder.offsetTop,
+          w: holder.offsetWidth,
+          h: holder.offsetHeight
+        });
+      });
+      return cards;
+    }
+
+    function startCardDrop(before, arrivals, { slide = false } = {}) {
+      const grid = els.upcomingGrid;
+      primeCards({ lift: false });
+      if (!cardRattle.primed) return;
+      const box = grid.getBoundingClientRect();
+      const gap = parseFloat(getComputedStyle(grid).columnGap) || 12;
+      const landing = new Set(arrivals.slice(0, CARD_DROP_MAX));
+      const bodies = [];
+      const present = new Set();
+      grid.querySelectorAll(':scope > .card3d').forEach(wrap => {
+        const id = wrap.querySelector('[data-upcoming-pick]')?.dataset.upcomingPick;
+        const slot = { x: wrap.offsetLeft, y: wrap.offsetTop, w: wrap.offsetWidth, h: wrap.offsetHeight };
+        if (!id || slot.w < 20 || slot.h < 20) return;
+        present.add(id);
+        const body = newDropBody(wrap, slot, box);
+        const old = before.get(id);
+        if (landing.has(id)) {
+          body.kind = 'drop';
+        } else if (old) {
+          body.x = old.x - slot.x;
+          body.y = old.y - slot.y;
+          body.kind = Math.abs(body.x) + Math.abs(body.y) > 1 ? 'moved' : 'still';
+        } else {
+          // In from the next page: it slides in from the end of the strip.
+          body.kind = 'moved';
+          body.x = slot.w + gap;
+          body.enter = true;
+          body.el.style.opacity = '0';
+        }
+        bodies.push(body);
+      });
+      // A full page pushes its last card off: it goes over the end of the
+      // strip and drops away.
+      if (!slide) {
+        before.forEach((old, id) => {
+          if (!present.has(id)) bodies.push(newDropGhost(old, box, gap));
+        });
+      }
+      if (!bodies.length) return;
+
+      const speed = Math.hypot(window.innerWidth, window.innerHeight) * CARD_DROP_WAVE_SPEED;
+      const drops = bodies.filter(body => body.kind === 'drop');
+      drops.forEach((body, index) => {
+        body.fallAt = index * CARD_DROP_STAGGER_S;
+        body.impact = body.fallAt + CARD_DROP_FALL_S;
+        // It comes down from a little above and to one side, swinging about
+        // a random axis, turned a little.
+        const a = Math.random() * Math.PI * 2;
+        body.nx = Math.cos(a);
+        body.ny = Math.sin(a);
+        body.axisSet = true;
+        body.fromX = wxRand(-0.1, 0.1) * body.w;
+        body.fromY = -wxRand(0.25, 0.4) * body.h;
+        body.fromSpin = wxRand(9, 16) * (Math.random() < 0.5 ? -1 : 1);
+        body.fromTilt = wxRand(18, 26);
+        body.fromWob = wxRand(-8, 8);
+        body.el.style.opacity = '0';
+        body.shadowAlpha = 0;
+      });
+      // The cards in the way go first, nearest first, shoved as the first
+      // card lands (a moment before, as its edge comes down); in a slide
+      // they simply go, one after another.
+      const first = drops[0];
+      const movers = bodies
+        .filter(body => body.kind === 'moved' || body.kind === 'ghost')
+        .sort((p, q) => (first ? cardDropGap(first, p) - cardDropGap(first, q) : p.left - q.left));
+      movers.forEach((body, rank) => {
+        body.release = first ? first.impact - 0.05 + 0.035 * rank : 0.03 + 0.05 * rank;
+      });
+      // Each landing hits every other card as its ring gets there.
+      drops.forEach(drop => {
+        const reach = Math.max(...bodies.map(body => cardDropGap(drop, body) + body.w)) + 120;
+        drop.shock = { speed, reach };
+        bodies.forEach(body => {
+          if (body === drop || body.kind === 'ghost') return;
+          const at = drop.impact + cardDropGap(drop, body) / speed;
+          if (body.kind === 'drop' && body.impact >= at) return;
+          const dx = body.cx - drop.cx;
+          const dy = body.cy - drop.cy;
+          const d = Math.hypot(dx, dy) || 1;
+          body.hits.push({
+            at,
+            nx: dx / d,
+            ny: dy / d,
+            // The point it is hit first, relative to its middle.
+            rx: wxClamp(drop.cx, body.left, body.left + body.w) - body.cx,
+            ry: wxClamp(drop.cy, body.top, body.top + body.h) - body.cy,
+            power: wxClamp((1.25 * drop.w) / d, 0.25, 1.1)
+          });
+        });
+      });
+      bodies.forEach(body => {
+        body.hits.sort((p, q) => p.at - q.at);
+        body.el.classList.add('is-rattling');
+        if (body.kind !== 'ghost' && (body.kind !== 'still' || body.hits.length)) attachCardShadow(body);
+        // Held where it was until it is shoved.
+        if (body.kind !== 'drop') drawCard(body);
+      });
+      drops.forEach(body => fallCard(body, 0));
+      grid.classList.add('is-rattling');
+      cardDrop.bodies = bodies;
+      cardDrop.start = performance.now();
+      cardDrop.last = 0;
+      cardDrop.raf = requestAnimationFrame(cardDropFrame);
+    }
+
+    function newDropBody(el, slot, box) {
+      const left = box.left + slot.x;
+      const top = box.top + slot.y;
+      return {
+        el,
+        hero: false,
+        rest: 0,
+        kind: 'still',
+        light: el.querySelector(':scope > .card3d-light'),
+        shade: el.querySelector(':scope > .card3d-shade'),
+        w: slot.w,
+        h: slot.h,
+        // Its place, in the window.
+        left,
+        top,
+        cx: left + slot.w / 2,
+        cy: top + slot.h / 2,
+        nx: 1,
+        ny: 0,
+        x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
+        tilt: 0, vtilt: 0, wob: 0, vwob: 0, spin: 0, vspin: 0,
+        flip: null,
+        chatter: 0,
+        chatterT: 0,
+        phase: Math.random() * 6.28,
+        calm: 0,
+        // Moved by the springs once it is shoved, hit or has landed.
+        live: false,
+        hits: [],
+        // Shoved into its new place without bouncing past it.
+        kxy: 70,
+        cxy: 12.5
+      };
+    }
+
+    // The card pushed off a full page: a copy where it stood.
+    function newDropGhost(old, box, gap) {
+      const card = old.node.cloneNode(true);
+      card.removeAttribute('data-upcoming-pick');
+      card.tabIndex = -1;
+      card.setAttribute('aria-hidden', 'true');
+      card.querySelector('img')?.removeAttribute('data-fallback-seed');
+      const wrap = wrapCard3d(card);
+      wrap.classList.add('card-drop-ghost');
+      wrap.style.cssText = `position:absolute;left:${old.x}px;top:${old.y}px;width:${old.w}px;height:${old.h}px`;
+      els.upcomingGrid.appendChild(wrap);
+      const body = newDropBody(wrap, old, box);
+      body.kind = 'ghost';
+      body.push = old.w + gap;
+      return body;
+    }
+
+    // How far the ring has to go from a dropped card to reach a card.
+    function cardDropGap(drop, body) {
+      const dx = Math.max(0, body.left - (drop.left + drop.w), drop.left - (body.left + body.w));
+      const dy = Math.max(0, body.top - (drop.top + drop.h), drop.top - (body.top + body.h));
+      return Math.hypot(dx, dy);
+    }
+
+    function cardDropFrame(now) {
+      cardDrop.raf = 0;
+      const dt = cardDrop.last ? Math.min(0.033, (now - cardDrop.last) / 1000) : 1 / 60;
+      cardDrop.last = now;
+      const t = Math.max(0, (now - cardDrop.start) / 1000);
+      let busy = false;
+      cardDrop.bodies.forEach(body => {
+        if (!body.el.isConnected) return;
+        if (body.kind === 'ghost') {
+          if (pushGhostOff(body, t)) busy = true;
+          return;
+        }
+        if (body.kind === 'drop' && !body.landed) {
+          busy = true;
+          if (t < body.impact) {
+            if (t >= body.fallAt) fallCard(body, t - body.fallAt);
+            return;
+          }
+          landCard(body);
+        }
+        if (!body.live && body.release !== undefined && t >= body.release) body.live = true;
+        while (body.hits.length && t >= body.hits[0].at) hitDropBody(body, body.hits.shift());
+        if (body.hits.length || (body.release !== undefined && !body.live)) busy = true;
+        if (!body.live) return;
+        stepCard(body, dt);
+        drawCard(body);
+        if (body.enter) body.el.style.opacity = wxSmooth(0, 0.3, t - body.release).toFixed(3);
+        // The new card stays on top of the ones it shoves out from under it.
+        if (body.kind === 'drop' && body.calm < 0.4) body.el.style.zIndex = '500';
+        if (body.calm < 0.4) busy = true;
+      });
+      if (busy && t < 9) {
+        cardDrop.raf = requestAnimationFrame(cardDropFrame);
+        return;
+      }
+      endCardDrop();
+    }
+
+    // Falling: gravity, so slow to start and fastest as it lands, swinging
+    // through flat once and coming down level.
+    function fallCard(body, t) {
+      const u = wxClamp(t / CARD_DROP_FALL_S, 0, 1);
+      const up = 1 - u * u;
+      body.z = CARD_DROP_HEIGHT_PX * up;
+      body.x = body.fromX * up;
+      body.y = body.fromY * up;
+      body.spin = body.fromSpin * (1 - u) * (1 - u);
+      body.tilt = body.fromTilt * Math.cos(u * Math.PI * 1.5) * (1 - 0.6 * u);
+      body.wob = body.fromWob * Math.sin(u * Math.PI * 2) * (1 - u);
+      const seen = wxSmooth(0, 0.2, u);
+      body.el.style.opacity = seen.toFixed(3);
+      body.shadowAlpha = seen;
+      drawCard(body);
+      body.el.style.zIndex = '500';
+    }
+
+    // Down: a small bounce, a slap of the edge that touched last, chatter,
+    // and the shock ring.
+    function landCard(body) {
+      body.landed = true;
+      body.live = true;
+      body.x = body.y = body.z = body.tilt = body.wob = body.spin = 0;
+      body.vx = body.vy = 0;
+      body.vz = 110;
+      body.vtilt = wxRand(-1, 1) * 90;
+      body.vspin = wxRand(-1, 1) * 40;
+      body.chatter = 2.4;
+      body.chatterT = 0;
+      body.el.style.opacity = '';
+      body.shadowAlpha = 1;
+      const radius = parseFloat(getComputedStyle(body.el.querySelector('.mini-event') || body.el).borderTopLeftRadius) || 16;
+      launchCardShock({
+        left: body.left,
+        top: body.top,
+        right: body.left + body.w,
+        bottom: body.top + body.h,
+        radius,
+        speed: body.shock.speed,
+        reach: body.shock.reach
+      });
+    }
+
+    // The ring reaches a card: pushed away from the landing, the near side
+    // lifts and it chatters. Softer than the nuke; a card already being
+    // shoved into its new place is pushed less.
+    function hitDropBody(body, hit) {
+      const p = hit.power;
+      if (!body.axisSet) {
+        // The first hit sets the axis it tips about.
+        body.axisSet = true;
+        body.nx = hit.nx;
+        body.ny = hit.ny;
+      }
+      body.live = true;
+      const shove = body.kind === 'moved' ? 120 : 320;
+      body.vx += hit.nx * shove * p;
+      body.vy += hit.ny * shove * p;
+      body.vz += 180 * p;
+      body.vtilt += 230 * p;
+      body.vwob += wxRand(-1, 1) * 90 * p;
+      const torque = (hit.rx * hit.ny - hit.ry * hit.nx) / (Math.max(body.w, body.h) / 2);
+      body.vspin += (torque * 220 + wxRand(-25, 25)) * p;
+      body.chatter = Math.max(body.chatter * Math.exp(-body.chatterT / 0.5), 2 * Math.min(1, p));
+      body.chatterT = 0;
+    }
+
+    // Over the end of the strip: shoved a card's width along, it tips over
+    // the edge and drops away out of sight.
+    function pushGhostOff(body, t) {
+      if (t < body.release) return true;
+      const u = (t - body.release) / 0.8;
+      if (u >= 1) {
+        body.el.remove();
+        return false;
+      }
+      const go = 1 - Math.pow(1 - Math.min(1, u * 1.7), 3);
+      const over = wxSmooth(0.3, 1, u);
+      body.x = body.push * go + body.w * 0.15 * over;
+      body.z = -260 * over * over;
+      body.tilt = 70 * over * over;
+      body.spin = 5 * over;
+      drawCard(body);
+      body.el.style.opacity = (1 - wxSmooth(0.45, 1, u)).toFixed(3);
+      return true;
+    }
+
+    function endCardDrop() {
+      cancelAnimationFrame(cardDrop.raf);
+      cardDrop.raf = 0;
+      cardDrop.bodies.forEach(body => {
+        if (body.kind === 'ghost') {
+          body.el.remove();
+          return;
+        }
+        body.el.style.transform = '';
+        body.el.style.zIndex = '';
+        body.el.style.opacity = '';
+        body.el.classList.remove('is-rattling');
+        if (body.light) body.light.style.opacity = '';
+        if (body.shade) body.shade.style.opacity = '';
+        detachCardShadow(body);
+      });
+      cardDrop.bodies = [];
+      els.upcomingGrid?.classList.remove('is-rattling');
+      if (els.edgePanel?.classList.contains('is-open')) {
+        els.upcomingGrid?.querySelectorAll(':scope > .card3d').forEach(wrap => wrap.classList.add('is-lifted'));
+      } else {
+        scheduleUnprimeCards(500);
+      }
+      scheduleDropTestLiftOff();
+    }
+
+    // Put straight down where it belongs: the strip is about to be redrawn,
+    // or the nuke is going off.
+    function finishCardDrop() {
+      if (cardDrop.raf) endCardDrop();
+    }
+
+    // --- The Q panel's drop test ------------------------------------------
+    //
+    // A made-up task drops into the page on show, at its first place, in the
+    // middle or at its last place, through the very same path a real one
+    // takes. It is only drawn, never saved, and cannot be opened. A few
+    // seconds after it settles it lifts off again and the cards slide back.
+    function testCardDrop(where) {
+      if (adminMode || cardDrop.test || cardDropBusy() || nuke.boom || edgePanel.falling) return;
+      closeWeatherDebug();
+      setTimeout(() => {
+        const { upcoming, upcomingLimit } = getDisplayEvents();
+        const count = upcoming.length;
+        const slot = where === 'first' ? 0
+          : where === 'middle' ? Math.floor(count / 2)
+          : count >= upcomingLimit ? count - 1 : count;
+        // A time between its neighbours, so its label reads like a real one.
+        const before = upcoming[slot - 1] ? new Date(upcoming[slot - 1].start).getTime() : null;
+        const after = upcoming[slot] ? new Date(upcoming[slot].start).getTime() : null;
+        const start = before && after ? (before + after) / 2
+          : after ? after - 30 * 60 * 1000
+          : before ? before + 60 * 60 * 1000
+          : Date.now() + 60 * 60 * 1000;
+        cardDrop.testSeq += 1;
+        const id = `drop-test-${cardDrop.testSeq}`;
+        cardDrop.test = {
+          slot,
+          arrived: false,
+          event: { id, _instanceId: id, _dropTest: true, title: 'New task (test)', start: new Date(start).toISOString(), imageUrl: '' }
+        };
+        renderDisplay();
+        // Nothing moved (reduced motion, say): it still goes again.
+        if (!cardDrop.raf) scheduleDropTestLiftOff();
+      }, 250);
+    }
+
+    function withDropTestCard(upcoming, limit) {
+      const test = cardDrop.test;
+      if (!test) return upcoming;
+      const list = [...upcoming];
+      list.splice(Math.min(test.slot, list.length), 0, test.event);
+      return list.slice(0, limit);
+    }
+
+    function scheduleDropTestLiftOff() {
+      if (!cardDrop.test?.arrived || cardDrop.lifting) return;
+      clearTimeout(cardDrop.testTimer);
+      cardDrop.testTimer = setTimeout(liftDropTestCard, CARD_DROP_TEST_STAY_MS);
+    }
+
+    // The test card rises off the strip and fades, then the strip is drawn
+    // without it and the cards slide back.
+    function liftDropTestCard() {
+      const test = cardDrop.test;
+      if (!test) return;
+      const done = () => {
+        cardDrop.lifting = false;
+        cardDrop.test = null;
+        cardDrop.slide = true;
+        renderDisplay();
+      };
+      const card = els.upcomingGrid?.querySelector(`[data-upcoming-pick="${CSS.escape(test.event._instanceId)}"]`);
+      if (!card || cardDropBusy() || !cardDropAllowed()) {
+        done();
+        return;
+      }
+      primeCards({ lift: false });
+      const wrap = card.closest('.card3d');
+      if (!wrap) {
+        done();
+        return;
+      }
+      cardDrop.lifting = true;
+      wrap.classList.remove('is-lifted');
+      wrap.style.zIndex = '500';
+      wrap.style.transition = 'transform .5s cubic-bezier(.5, 0, .9, .55), opacity .35s ease .15s';
+      wrap.getBoundingClientRect();
+      wrap.style.transform = `perspective(${CARD3D_PERSPECTIVE}px) translate3d(0, ${(-0.35 * wrap.offsetHeight).toFixed(1)}px, ${CARD_DROP_HEIGHT_PX}px) rotate3d(1, 0.4, 0, -18deg) rotateZ(-8deg)`;
+      wrap.style.opacity = '0';
+      setTimeout(() => {
+        if (cardDrop.lifting && cardDrop.test === test) done();
+      }, 520);
     }
 
     function peekEdgePanel() {

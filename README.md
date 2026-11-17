@@ -465,6 +465,61 @@ dashboard, and takes about four seconds. The handle comes back after about three
 as the cloud clears. With reduced motion the panel just slides shut. The cloud
 scales with the screen height, so it looks the same on any screen.
 
+### A new task drops in
+
+When a task this screen has not seen before loads into the Upcoming page on
+show (saved on the phone, in another tab, ...), it is not just drawn there: it
+drops in.
+
+- The cards become the same small 3D objects the nuke rattles. The new card
+  falls out of the air towards its slot from a little above it, swinging
+  through flat once and turned a little, fastest just before it lands. Its
+  shadow sharpens under it as it comes down.
+- It lands with a thump: the nuke's shock ring, smaller and quicker, runs out
+  across the strip. It starts as the card's own rounded outline and rounds off
+  into a circle as it grows. A little dust puffs out from under the card and
+  the dashboard jolts.
+- The cards that have to make room are shoved along into their new places,
+  nearest first. On a full page the last card goes over the end of the strip,
+  tips over its edge and drops away (it is on the next page now).
+- The ring hits every card as it reaches it, like the nuke's only softer: the
+  card is pushed away from the landing, its near side lifts, it chatters, and
+  springs settle it back. Then the cards are taken apart again, as after a nuke.
+- More than one new card at once (a new repeating task, say) land one after
+  another, 0.4 s apart.
+
+**What counts.** Only a task whose id this screen has not seen, and only when it
+lands on the page on show. Paging, the minute tick, a resize, an edited task
+that moved, or a repeat coming into range redraw the strip as before. Counting
+starts with the first fresh list from the server, so a reload never drops its
+whole list in, and a task added while the screen was dimmed is simply there when
+it wakes. Nothing moves while the page is hidden, the camera dimmer has dimmed
+the screen, an overlay is up, the nuke is going off, or with reduced motion.
+
+The weather card is left alone: the ring stops short of blowing its sky away,
+so a pile of snow does not get scoured off every time a task is added.
+
+While the cards are moving the strip is not redrawn for nothing (a sync always
+redraws it twice in a row, which used to throw away whatever was on it); a
+change that really alters the strip puts the cards straight down first.
+
+### Card shadows
+
+While a card is in the air (the nuke's rattle, a card dropping in) the room
+light casts its shadow on the strip. It is not a blurred square trailing the
+card: the card's face, turned and tilted as it is, is projected along the light
+onto the strip, so the shadow is the card's real outline there. It narrows to a
+sliver as the card stands on edge, swings round and stretches as the card flips
+over, slides out from under it and spreads and pales as it rises, and tucks
+back in under it as it lands. While its card is down it lies under every card;
+while its card is up it lies over the ones resting on the strip, so a card
+thrown over its neighbour shades it. The card's own drop shadow, which sticks
+to it wherever it goes, is dropped meanwhile (Sofia's pink ring stays).
+
+It costs two blurred layers per card, which only move and fade (both done by
+the compositor), built when the cards take off and removed once they settle.
+The Q panel can turn it off (*Card shadows*), which the screen remembers.
+
 ## Sofia's tasks
 
 A task that names Sofia gets a pink glowing ring and hearts floating up around it.
@@ -779,6 +834,16 @@ On the wall display, press **Q** to open a small panel in the top right corner:
   panel and sets the nuke off at that place at the bottom of the screen (without
   the panel falling), to see how the shock wave hits the card from there.
   *Fill up now* first gives it the most to blow away.
+- **New task drops into Upcoming at**: *First*, *Middle* or *Last* closes the
+  panel and drops a made-up task ("New task (test)") into that place on the
+  page on show, through the same path a real new task takes, so the cards in
+  the way are shoved along and, on a full page, the last one goes over the end.
+  The test task is only drawn, never saved, and cannot be opened. About three
+  and a half seconds after it settles it lifts off again and the cards slide
+  back.
+- **Card shadows** turns the cards' shadows on the strip on or off (see *Card
+  shadows* under *The mini nuke*), to compare. The choice is remembered on this
+  screen.
 - **Speed** (1×, 4×, 12×, 40×) only speeds up the filling. The leak and the
   spill always run at their real speed, so they can be judged as they will look.
 - A status line shows the sky, how full the card is and what it is doing.
