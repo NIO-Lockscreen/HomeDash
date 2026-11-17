@@ -4124,6 +4124,79 @@
       to { box-shadow: 0 0 0 2px rgba(255, 70, 30, 0.9), 0 0 28px rgba(255, 110, 40, 0.9); }
     }
 
+    /* Picture cards primed for the mini nuke. Pulling the YouTube panel out
+       wraps each Upcoming photo card in a small 3D object (.card3d): the card
+       is its front, a few plates behind it make its edge and its back, and a
+       light and a shade in front of it follow its tilt. Nothing of this
+       exists until the panel is pulled out, and it is taken down again
+       afterwards, so the cards cost nothing in everyday use. The strip stops
+       clipping its cards while they are primed, so one can be thrown out
+       over its edge. */
+    .upcoming-card.is-primed { overflow: visible; }
+
+    .card3d {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      transform-style: preserve-3d;
+      transform: perspective(900px);
+      transition: transform .35s ease;
+      will-change: transform;
+    }
+
+    /* Primed: lifted a little off the strip, ready to go. */
+    .card3d.is-lifted { transform: perspective(900px) translateY(-3px); }
+    .card3d.is-rattling { transition: none; }
+
+    .card3d > .mini-event {
+      width: 100%;
+      height: 100%;
+      transition: box-shadow .35s ease;
+    }
+
+    .card3d.is-lifted > .mini-event { box-shadow: 0 14px 26px rgba(70, 58, 44, 0.15); }
+
+    .card3d-plate,
+    .card3d-light,
+    .card3d-shade {
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius-md);
+      pointer-events: none;
+    }
+
+    /* The card's edge: card stock, darker towards the back. */
+    .card3d-plate {
+      background: #ddd3c5;
+      transform: translateZ(var(--plate-z, -2px));
+    }
+
+    .card3d-plate:nth-child(2) { background: #d3c8b8; }
+    .card3d-plate:nth-child(3) { background: #cbbfae; }
+
+    /* Its back, like the back of a mounted photo. */
+    .card3d-plate.is-back {
+      background:
+        repeating-linear-gradient(45deg, rgba(150, 128, 104, 0.07) 0 6px, rgba(150, 128, 104, 0) 6px 12px),
+        #f3ece2;
+      box-shadow: inset 0 0 0 6px #e8dfd2, inset 0 0 0 7px rgba(150, 128, 104, 0.25);
+    }
+
+    .card3d-light,
+    .card3d-shade {
+      opacity: 0;
+      transform: translateZ(0.6px);
+      will-change: opacity;
+    }
+
+    .card3d-light { background: linear-gradient(135deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.12) 55%, rgba(255, 255, 255, 0.3)); }
+    .card3d-shade { background: linear-gradient(135deg, rgba(24, 16, 10, 0.18), rgba(24, 16, 10, 0.55)); }
+
+    /* The big task photo is rocked as a whole. */
+    .event-hero.is-primed { will-change: transform; }
+
+    .upcoming-card > canvas.upcoming-fx { border-radius: inherit; }
+
     @media (prefers-reduced-motion: reduce) {
       .edge-panel-tray,
       .edge-panel-scrim { transition: none; }
@@ -15178,6 +15251,10 @@ Cancel = choose whether to delete the whole series.`);
       els.edgePanel.classList.toggle('is-open', open);
       els.edgePanelHandle?.setAttribute('aria-expanded', String(open));
       els.edgeYoutubeBtn?.setAttribute('tabindex', open ? '0' : '-1');
+      // Out, it primes the picture cards for the nuke; away again (and not
+      // going off), they are let go a moment later.
+      if (open) primeCards();
+      else scheduleUnprimeCards();
       clearTimeout(edgePanel.autoCloseTimer);
       edgePanel.autoCloseTimer = open ? setTimeout(() => dropEdgePanel(), EDGE_PANEL_AUTO_CLOSE_MS) : null;
     }
@@ -15254,6 +15331,8 @@ Cancel = choose whether to delete the whole series.`);
       const done = () => {
         els.edgePanel.classList.remove('is-falling');
         edgePanel.falling = false;
+        // In case the cards settled before the panel was back.
+        scheduleUnprimeCards(500);
       };
       if (!launchNuke(landingX, done)) done();
     }
@@ -15501,6 +15580,7 @@ Cancel = choose whether to delete the whole series.`);
       nuke.fallFrom = null;
       nuke.boom = boom;
       weatherFxBlast(x, h, boom.speed);
+      rattleCards(boom);
       nukeLoop();
       return true;
     }
@@ -15989,6 +16069,304 @@ Cancel = choose whether to delete the whole series.`);
       ctx.fillRect(0, 0, nuke.w, nuke.h);
     }
 
+    // --- Picture cards the nuke rattles ---------------------------------------
+    //
+    // Pulling the YouTube panel out primes the photo cards: each Upcoming card
+    // is wrapped in a small 3D object (its front is the card itself, plates
+    // behind it make its edge and its back, a light and a shade in front of it
+    // follow its tilt) and lifts a little off the strip, and the big task
+    // photo is readied to be rocked. Until then they are plain flat elements:
+    // nothing is built, no layers, no loop. They are unprimed again a moment
+    // after the panel goes away without going off, or once the rattle after a
+    // nuke has died down.
+    //
+    // When the nuke's shock ring reaches a card (the same ring, at the same
+    // speed, that hits the weather card) the card is hit away from the blast,
+    // harder the closer it went off: it is shoved and pops towards the viewer,
+    // the side that was hit lifts like a playing card in a gust, it spins
+    // about the corner hit first and chatters, and springs settle it back. A
+    // card right over the blast is thrown up and tumbles over, showing its
+    // back, before it lands and rattles. The big task photo, heavier, rocks.
+    const CARD3D_PLATES = 4;
+    const CARD3D_THICK_PX = 7;
+    const CARD3D_LIFT_PX = -3;
+    const CARD3D_PERSPECTIVE = 900;
+    // Closer than this (as a share of the blast's reach), a card tumbles over.
+    const CARD3D_FLIP_POWER = 1.3;
+    // Light on the cards comes from the top left, in front.
+    const CARD3D_LIGHT = (() => {
+      const v = [-0.35, -0.55, 0.76];
+      const length = Math.hypot(...v);
+      return v.map(value => value / length);
+    })();
+
+    const cardRattle = { primed: false, items: [], raf: 0, last: 0, boom: null, unprimeTimer: null, token: 0 };
+
+    function primeCards({ lift = true } = {}) {
+      clearTimeout(cardRattle.unprimeTimer);
+      cardRattle.token += 1;
+      if (adminMode || wxReducedMotion.matches || !els.upcomingGrid) return;
+      // Only cards not wrapped yet: the strip may have been redrawn since.
+      els.upcomingGrid.querySelectorAll(':scope > .mini-event').forEach(card => {
+        const wrap = document.createElement('div');
+        wrap.className = 'card3d';
+        for (let index = CARD3D_PLATES; index >= 1; index--) {
+          const plate = document.createElement('div');
+          plate.className = index === CARD3D_PLATES ? 'card3d-plate is-back' : 'card3d-plate';
+          plate.style.setProperty('--plate-z', `${(-(index * CARD3D_THICK_PX) / CARD3D_PLATES).toFixed(2)}px`);
+          wrap.appendChild(plate);
+        }
+        card.before(wrap);
+        wrap.appendChild(card);
+        ['card3d-light', 'card3d-shade'].forEach(name => {
+          const plane = document.createElement('div');
+          plane.className = name;
+          wrap.appendChild(plane);
+        });
+      });
+      els.upcomingGrid.closest('.upcoming-card')?.classList.add('is-primed');
+      els.heroEvent?.classList.add('is-primed');
+      cardRattle.primed = true;
+      const all = [...els.upcomingGrid.querySelectorAll(':scope > .card3d')];
+      if (!lift) return;
+      // Lifted in the next frame, so it eases up rather than jumping.
+      requestAnimationFrame(() => all.forEach(wrap => wrap.classList.add('is-lifted')));
+    }
+
+    // Unprimed after a moment, unless the panel is out again, falling, or the
+    // cards are still rattling: whatever ends last asks again.
+    function scheduleUnprimeCards(delay = 900) {
+      clearTimeout(cardRattle.unprimeTimer);
+      if (!cardRattle.primed) return;
+      const token = cardRattle.token;
+      cardRattle.unprimeTimer = setTimeout(() => {
+        if (token !== cardRattle.token || cardRattleBusy()) return;
+        // Down onto the strip first, then taken apart.
+        els.upcomingGrid?.querySelectorAll('.card3d').forEach(wrap => wrap.classList.remove('is-lifted'));
+        cardRattle.unprimeTimer = setTimeout(() => {
+          if (token === cardRattle.token && !cardRattleBusy()) unprimeCards();
+        }, 380);
+      }, delay);
+    }
+
+    function cardRattleBusy() {
+      return Boolean(cardRattle.raf || edgePanel.falling || edgePanel.drag?.moved
+        || els.edgePanel?.classList.contains('is-open'));
+    }
+
+    function unprimeCards() {
+      clearTimeout(cardRattle.unprimeTimer);
+      els.upcomingGrid?.querySelectorAll('.card3d').forEach(wrap => {
+        const card = wrap.querySelector(':scope > .mini-event');
+        if (card) wrap.replaceWith(card);
+        else wrap.remove();
+      });
+      els.upcomingGrid?.closest('.upcoming-card')?.classList.remove('is-primed');
+      if (els.heroEvent) {
+        els.heroEvent.classList.remove('is-primed');
+        els.heroEvent.style.transform = '';
+      }
+      cardRattle.primed = false;
+    }
+
+    // The nuke went off: every picture card is hit as the ring reaches it.
+    function rattleCards(boom) {
+      if (adminMode || wxReducedMotion.matches || !els.upcomingGrid) return;
+      primeCards({ lift: false });
+      const items = [];
+      const lift = el => (el.classList.contains('is-lifted') ? CARD3D_LIFT_PX : 0);
+      els.upcomingGrid.querySelectorAll(':scope > .card3d').forEach(wrap => {
+        const rect = wrap.getBoundingClientRect();
+        if (rect.width < 20 || rect.height < 20) return;
+        items.push(newCardBody(wrap, rect, boom, { hero: false, rest: lift(wrap) }));
+      });
+      const hero = els.heroEvent;
+      if (hero && hero.getClientRects().length && !hero.classList.contains('hidden')) {
+        const rect = hero.getBoundingClientRect();
+        if (rect.width > 40 && rect.height > 40) items.push(newCardBody(hero, rect, boom, { hero: true, rest: 0 }));
+      }
+      cardRattle.items = items;
+      cardRattle.boom = boom;
+      if (!items.length) {
+        scheduleUnprimeCards(400);
+        return;
+      }
+      if (!cardRattle.raf) {
+        cardRattle.last = 0;
+        cardRattle.raf = requestAnimationFrame(cardRattleFrame);
+      }
+    }
+
+    function newCardBody(el, rect, boom, { hero, rest }) {
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      // The point the ring reaches first, and when it gets there.
+      const hx = wxClamp(boom.x, rect.left, rect.right);
+      const hy = wxClamp(boom.y, rect.top, rect.bottom);
+      const dx = cx - boom.x;
+      const dy = cy - boom.y;
+      const d = Math.hypot(dx, dy) || 1;
+      return {
+        el,
+        hero,
+        rest,
+        light: hero ? null : el.querySelector(':scope > .card3d-light'),
+        shade: hero ? null : el.querySelector(':scope > .card3d-shade'),
+        w: rect.width,
+        h: rect.height,
+        arrive: Math.hypot(hx - boom.x, hy - boom.y) / boom.speed,
+        nx: dx / d,
+        ny: dy / d,
+        // The hit point relative to the centre, for the spin it gives.
+        rx: hx - cx,
+        ry: hy - cy,
+        power: wxClamp((boom.diag * WX_BLAST_REACH) / d, 0.2, 1.7),
+        // The big task photo is far heavier: it only rocks.
+        mass: hero ? 5 : 1,
+        hit: false,
+        x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
+        tilt: 0, vtilt: 0, wob: 0, vwob: 0, spin: 0, vspin: 0,
+        flip: null,
+        chatter: 0,
+        chatterT: 0,
+        phase: Math.random() * 6.28,
+        calm: 0
+      };
+    }
+
+    function hitCard(card) {
+      const p = card.power / card.mass;
+      card.hit = true;
+      card.el.classList.add('is-rattling');
+      card.vx += card.nx * 520 * p;
+      card.vy += card.ny * 520 * p;
+      card.vz += 650 * p;
+      // The side that was hit lifts towards the viewer, like a card in a gust.
+      card.vtilt += 430 * p;
+      card.vwob += wxRand(-1, 1) * 170 * p;
+      const torque = (card.rx * card.ny - card.ry * card.nx) / (Math.max(card.w, card.h) / 2);
+      card.vspin += (torque * 520 + wxRand(-60, 60)) * p;
+      card.chatter = 2.6 * Math.min(1.3, p);
+      card.chatterT = 0;
+      if (!card.hero && card.power >= CARD3D_FLIP_POWER) card.flip = { t: 0, dur: wxRand(0.8, 0.95) };
+    }
+
+    function cardRattleFrame(now) {
+      cardRattle.raf = 0;
+      const boom = cardRattle.boom;
+      const dt = cardRattle.last ? Math.min(0.033, (now - cardRattle.last) / 1000) : 1 / 60;
+      cardRattle.last = now;
+      const t = (now - boom.start) / 1000;
+      let busy = false;
+      cardRattle.items.forEach(card => {
+        if (!card.el.isConnected) return;
+        if (!card.hit) {
+          if (t < card.arrive) {
+            busy = true;
+            return;
+          }
+          hitCard(card);
+        }
+        stepCard(card, dt);
+        drawCard(card);
+        if (card.calm < 0.4) busy = true;
+      });
+      if (busy && t < 9) {
+        cardRattle.raf = requestAnimationFrame(cardRattleFrame);
+        return;
+      }
+      // Settled: back to the resting, primed look, and then unprimed.
+      cardRattle.items.forEach(card => {
+        card.el.style.transform = '';
+        card.el.style.zIndex = '';
+        card.el.classList.remove('is-rattling');
+        if (card.light) card.light.style.opacity = '';
+        if (card.shade) card.shade.style.opacity = '';
+      });
+      cardRattle.items = [];
+      if (!els.edgePanel?.classList.contains('is-open')) scheduleUnprimeCards(500);
+    }
+
+    function stepCard(card, dt) {
+      const spring = (pos, vel, k, c) => vel + (-k * pos - c * vel) * dt;
+      card.vx = spring(card.x, card.vx, 55, 7);
+      card.vy = spring(card.y, card.vy, 55, 7);
+      card.vz = spring(card.z, card.vz, 45, 6.5);
+      card.vtilt = spring(card.tilt, card.vtilt, 140, 5);
+      card.vwob = spring(card.wob, card.vwob, 170, 6);
+      card.vspin = spring(card.spin, card.vspin, 70, 4.5);
+      card.x += card.vx * dt;
+      card.y += card.vy * dt;
+      card.z = Math.min(400, card.z + card.vz * dt);
+      card.tilt += card.vtilt * dt;
+      card.wob += card.vwob * dt;
+      card.spin += card.vspin * dt;
+      card.chatterT += dt;
+      if (card.flip) {
+        card.flip.t += dt;
+        if (card.flip.t >= card.flip.dur) {
+          // It lands: a bounce and a fresh fit of chattering.
+          card.flip = null;
+          card.vy += 160;
+          card.vtilt -= 120;
+          card.chatter = 2.2;
+          card.chatterT = 0;
+        }
+      }
+      const motion = Math.abs(card.x) + Math.abs(card.y) + Math.abs(card.z) + Math.abs(card.tilt) + Math.abs(card.wob) + Math.abs(card.spin)
+        + (Math.abs(card.vx) + Math.abs(card.vy) + Math.abs(card.vz) + Math.abs(card.vtilt) + Math.abs(card.vwob) + Math.abs(card.vspin)) * 0.05;
+      card.calm = motion < 0.15 && !card.flip && card.chatterT > 1.6 ? card.calm + dt : 0;
+    }
+
+    function drawCard(card) {
+      let { x, y, z, tilt } = card;
+      y += card.rest;
+      // Thrown up, it tumbles over once and comes down again.
+      if (card.flip) {
+        const u = card.flip.t / card.flip.dur;
+        const ease = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+        tilt += 360 * ease;
+        const arc = Math.sin(Math.PI * u);
+        z += 230 * arc;
+        y -= 80 * arc;
+      }
+      // Chattering against the strip: quick, small, dying away.
+      const chatter = card.chatter * Math.exp(-card.chatterT / 0.5);
+      const spin = card.spin + chatter * Math.sin(card.chatterT * 48 + card.phase);
+      x += chatter * 0.5 * Math.sin(card.chatterT * 41 + card.phase * 3);
+      y += chatter * 0.8 * Math.sin(card.chatterT * 57 + card.phase * 2);
+      const ax = -card.ny;
+      const ay = card.nx;
+      const perspective = card.hero ? 1400 : CARD3D_PERSPECTIVE;
+      card.el.style.transform = `perspective(${perspective}px) translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, ${z.toFixed(2)}px) `
+        + `rotateZ(${spin.toFixed(2)}deg) rotate3d(${ax.toFixed(3)}, ${ay.toFixed(3)}, 0, ${tilt.toFixed(2)}deg) `
+        + `rotate3d(${card.nx.toFixed(3)}, ${card.ny.toFixed(3)}, 0, ${card.wob.toFixed(2)}deg)`;
+      // Above its neighbours while it is up in the air.
+      card.el.style.zIndex = z > 2 ? String(Math.round(z) + 10) : '';
+      if (!card.light) return;
+      // Turned towards the light it brightens, away from it it darkens.
+      let normal = [0, 0, 1];
+      normal = wxRotate(normal, [card.nx, card.ny, 0], card.wob);
+      normal = wxRotate(normal, [ax, ay, 0], tilt);
+      normal = wxRotate(normal, [0, 0, 1], spin);
+      const facing = normal[0] * CARD3D_LIGHT[0] + normal[1] * CARD3D_LIGHT[1] + normal[2] * CARD3D_LIGHT[2] - CARD3D_LIGHT[2];
+      card.light.style.opacity = wxClamp(facing * 2.4, 0, 0.8).toFixed(3);
+      card.shade.style.opacity = wxClamp(-facing * 2.2, 0, 0.7).toFixed(3);
+    }
+
+    // v turned by deg degrees about the axis (Rodrigues), in the page's own
+    // axes: x right, y down, z towards the viewer.
+    function wxRotate(v, axis, deg) {
+      const length = Math.hypot(...axis) || 1;
+      const k = axis.map(value => value / length);
+      const a = (deg * Math.PI) / 180;
+      const cos = Math.cos(a);
+      const sin = Math.sin(a);
+      const dot = k[0] * v[0] + k[1] * v[1] + k[2] * v[2];
+      const cross = [k[1] * v[2] - k[2] * v[1], k[2] * v[0] - k[0] * v[2], k[0] * v[1] - k[1] * v[0]];
+      return [0, 1, 2].map(index => v[index] * cos + cross[index] * sin + k[index] * dot * (1 - cos));
+    }
+
     function peekEdgePanel() {
       els.edgePanel.classList.add('is-peeking');
       clearTimeout(edgePanel.peekTimer);
@@ -16042,6 +16420,7 @@ Cancel = choose whether to delete the whole series.`);
         els.edgePanel.classList.remove('is-peeking');
         els.edgePanel.classList.add('is-dragging');
         clearTimeout(edgePanel.autoCloseTimer);
+        primeCards();
       }
       const closedX = edgePanelClosedX();
       const x = (drag.fromOpen ? EDGE_PANEL_OPEN_X : closedX) + dx;

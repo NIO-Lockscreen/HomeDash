@@ -440,6 +440,26 @@ speed. Where it leaves the screen it goes off:
 - The dashboard shakes hard and rumbles out over about a second and a half; the
   weather's pop-out layer shakes with it so it stays on the card.
 
+**The picture cards rattle.** Pulling the panel out *primes* the photo cards:
+each card in the Upcoming strip becomes a small 3D object (the card is its front;
+plates behind it give it a card-stock edge about 7px thick and a back like the
+back of a mounted photo; a light and a shade in front of it follow its tilt), and
+the cards lift a little off the strip. When the nuke's shock ring reaches a card,
+it is hit away from the blast, harder the closer it went off: it is shoved and
+pops towards you, the side that was hit lifts like a playing card in a gust, it
+spins about the corner the ring reached first and chatters against the strip,
+and springs settle it back in a second or two. A card right over the blast is
+thrown up and tumbles over, showing its back, before it lands with a bounce and
+rattles. The big task photo (when one is up) only rocks. The strip stops
+clipping its cards while they are primed, so a thrown card can fly out over it.
+
+Priming is what keeps this free in everyday use: until the panel is pulled out
+the cards are plain flat elements, with no extra elements, layers or animation
+loop. A moment after the panel goes away without going off, or once the cards
+have settled after a nuke, they are lowered and taken apart again. The rattle
+itself only moves and fades composited layers. The Q panel's nuke buttons
+rattle the cards too (they prime them on the spot).
+
 It is all drawn on one canvas in the edge panel's layer, in front of the
 dashboard, and takes about four seconds. The handle comes back after about three,
 as the cloud clears. With reduced motion the panel just slides shut. The cloud
