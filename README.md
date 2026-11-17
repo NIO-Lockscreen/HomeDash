@@ -524,32 +524,18 @@ It costs two blurred layers per card, which only move and fade (both done by
 the compositor), built when the cards take off and removed once they settle.
 The Q panel can turn it off (*Card shadows*), which the screen remembers.
 
-### The backs of the cards
+### The back of a card
 
 A card thrown over by the nuke (or turned over by the Q panel's test) shows its
-back. There are five designs, picked in the Q panel under *Back of the cards*
-and remembered on the screen:
+back, which is a postcard: the task's time and title written by hand on the
+left, a stamp, a postmark and address lines on the right. On Windows the
+handwriting is Segoe Print.
 
-- **Blurred** (the default): the photo on the front coming through the paper
-  from behind, blurred and washed out, a little brighter in the middle as if
-  lit through. It is the front image itself, not turned round, so a card turned
-  over shows it the way a print held up to the light does: mirrored left to
-  right when it turns over sideways, upside down when it turns over end to end.
-  It is framed like the front (the photo's focus point and zoom).
-- **Card stock**: the back of a mounted photo (the first design).
-- **Photo paper**: off-white, with *HOME ORGANIZER · PHOTO PAPER* printed over
-  it in faint slanted lines.
-- **Playing card**: a white border round a red panel with a fine lattice and a
-  little house in the middle.
-- **Postcard**: the task's time and title written by hand on the left, a stamp,
-  a postmark and address lines on the right. On Windows the handwriting is
-  Segoe Print.
-
-The printed designs face outwards from the back, so they read the right way
-round on a card turned over sideways, and upside down on one turned over end to
-end, as a real card would. The back is lit like the front as it turns: brighter
-turned towards the light, darker turned away. Like the rest of the 3D card, the
-back only exists while the cards are primed.
+It is printed facing outwards from the back, so it reads the right way round on
+a card turned over sideways, and upside down on one turned over end to end, as
+a real postcard would. It is lit like the front as it turns: brighter turned
+towards the light, darker turned away. Like the rest of the 3D card, the back
+only exists while the cards are primed.
 
 ## Sofia's tasks
 
@@ -897,12 +883,11 @@ On the wall display, press **Q** to open a small panel in the top right corner:
 - **Card shadows** turns the cards' shadows on the strip on or off (see *Card
   shadows* under *The mini nuke*), to compare. The choice is remembered on this
   screen.
-- **Back of the cards**: *Blurred*, *Card stock*, *Photo paper*, *Playing card*
-  or *Postcard* picks what a card shows when it is turned over (see *The backs
-  of the cards*); remembered on this screen. **Turn over** closes the panel and
-  turns every card on the strip over, one after another, holds them face down
-  for a couple of seconds and turns them back. Every other card turns over end
-  to end and the rest sideways, so the back can be seen both ways round.
+- **Turn the cards over** closes the panel and turns every card on the strip
+  over, one after another, to show its postcard back (see *The back of a card*),
+  holds them face down for a couple of seconds and turns them back. Every other
+  card turns over end to end and the rest sideways, so the back can be seen both
+  ways round.
 - **Speed** (1×, 4×, 12×, 40×) only speeds up the filling. The leak and the
   spill always run at their real speed, so they can be judged as they will look.
 - A status line shows the sky, how full the card is and what it is doing.
