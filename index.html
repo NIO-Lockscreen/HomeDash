@@ -968,6 +968,9 @@
       top: 18px;
       z-index: 60;
       width: min(340px, calc(100vw - 36px));
+      max-height: calc(100vh - 36px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
       display: grid;
       gap: 12px;
       padding: 16px;
@@ -4273,13 +4276,153 @@
     .card3d-plate:nth-child(2) { background: #d3c8b8; }
     .card3d-plate:nth-child(3) { background: #cbbfae; }
 
-    /* Its back, like the back of a mounted photo. */
+    /* Its back. A few designs to choose from in the Q panel (data-back).
+       The printed ones face the other way, so they read the right way round
+       on a card turned over sideways, and upside down on one turned over
+       end to end, as a real card would. The blurred photo is the front
+       showing through from behind, so it is not turned: a card turned over
+       shows it mirrored, the way a print held up to the light does. */
     .card3d-plate.is-back {
+      overflow: hidden;
+      background: #f3ece2;
+    }
+
+    .card3d-plate.is-back.is-printed { transform: translateZ(var(--plate-z, -2px)) rotateY(180deg); }
+
+    .card3d-plate.is-back > * {
+      position: absolute;
+      pointer-events: none;
+    }
+
+    /* Card stock: the back of a mounted photo. */
+    .card3d-plate.is-back[data-back="stock"] {
       background:
         repeating-linear-gradient(45deg, rgba(150, 128, 104, 0.07) 0 6px, rgba(150, 128, 104, 0) 6px 12px),
         #f3ece2;
       box-shadow: inset 0 0 0 6px #e8dfd2, inset 0 0 0 7px rgba(150, 128, 104, 0.25);
     }
+
+    /* The photo itself, blurred and washed out, coming through the paper
+       from the front. It bleeds past the edges so the blur does not fade
+       there. */
+    .card3d-plate.is-back[data-back="blur"] { background: #efe7dc; }
+
+    .card3d-back-photo {
+      left: -14%;
+      top: -14%;
+      width: 128%;
+      height: 128%;
+      object-fit: cover;
+      object-position: var(--image-focus-x, 50%) var(--image-focus-y, 38%);
+      transform-origin: var(--image-focus-x, 50%) var(--image-focus-y, 38%);
+      transform: scale(var(--image-scale, 1.01));
+      filter: blur(9px) saturate(0.75) brightness(1.06);
+      opacity: 0.72;
+    }
+
+    /* The paper it is printed on, lit through: brighter in the middle. */
+    .card3d-back-paper {
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 50% 45%, rgba(255, 250, 242, 0.32), rgba(255, 250, 242, 0) 62%),
+        linear-gradient(180deg, rgba(243, 236, 226, 0.18), rgba(214, 200, 182, 0.28));
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45), inset 0 0 18px rgba(80, 62, 44, 0.18);
+    }
+
+    /* Photo paper: an off-white back with the paper's name printed over it
+       in faint slanted lines. */
+    .card3d-plate.is-back[data-back="paper"] { background: #f7f4ee; }
+
+    .card3d-plate.is-back[data-back="paper"] > .card3d-back-print {
+      inset: -60%;
+      transform: rotate(-24deg);
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='236' height='26'%3E%3Ctext x='0' y='16' font-family='Arial,Helvetica,sans-serif' font-size='9' letter-spacing='1.6' fill='%237b8496' fill-opacity='.32'%3EHOME ORGANIZER %C2%B7 PHOTO PAPER %C2%B7 %3C/text%3E%3C/svg%3E") 0 0 / 236px 26px repeat;
+    }
+
+    /* Playing card: a white border round a red panel with a fine lattice and
+       a little house in the middle. */
+    .card3d-plate.is-back[data-back="deck"] { background: #fbf8f2; }
+
+    .card3d-plate.is-back[data-back="deck"] > .card3d-back-print {
+      inset: 7px;
+      border-radius: calc(var(--radius-md) - 5px);
+      background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 60'%3E%3Ccircle cx='30' cy='30' r='26' fill='%237e1f24' stroke='%23fbf8f2' stroke-width='2.4'/%3E%3Cpath d='M17 31 30 19 43 31M21 28v13h18V28M27 41v-7h6v7' fill='none' stroke='%23fbf8f2' stroke-width='2.4' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E") center / 46px 46px no-repeat,
+        repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 1.4px, rgba(255, 255, 255, 0) 1.4px 9px),
+        repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.16) 0 1.4px, rgba(255, 255, 255, 0) 1.4px 9px),
+        radial-gradient(ellipse at 50% 50%, #b4383d, #7e1f24);
+      box-shadow: inset 0 0 0 2px #7e1f24, inset 0 0 0 4px #fbf8f2, inset 0 0 0 5.5px #9b2c32;
+    }
+
+    /* Postcard: the task's time and title written by hand on the left, a
+       stamp, a postmark and address lines on the right. */
+    .card3d-plate.is-back[data-back="postcard"] {
+      background:
+        linear-gradient(90deg, rgba(0, 0, 0, 0) calc(55% - 0.5px), rgba(120, 104, 86, 0.35) calc(55% - 0.5px) calc(55% + 0.5px), rgba(0, 0, 0, 0) calc(55% + 0.5px)) 0 0 / 100% 100% no-repeat,
+        #fbf7ef;
+      box-shadow: inset 0 0 22px rgba(150, 126, 96, 0.14);
+    }
+
+    .card3d-postcard-note {
+      left: 9%;
+      top: 16%;
+      width: 40%;
+      bottom: 14%;
+      display: grid;
+      align-content: start;
+      gap: 6px;
+      color: #24407a;
+      font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
+      line-height: 1.15;
+      transform: rotate(-3deg);
+      overflow: hidden;
+    }
+
+    .card3d-postcard-note > span:first-child { font-size: clamp(9px, 0.75vw, 12px); opacity: 0.8; }
+    .card3d-postcard-note > span:last-child { font-size: clamp(12px, 1vw, 17px); font-weight: 700; }
+
+    .card3d-postcard-stamp {
+      right: 7%;
+      top: 11%;
+      width: 15%;
+      aspect-ratio: 4 / 5;
+      background:
+        radial-gradient(circle at 50% 42%, #f4c25a 0 18%, rgba(0, 0, 0, 0) 19%),
+        linear-gradient(180deg, #8cc0d8, #cfe6ef 70%, #7fae6a 70%);
+      outline: 2.5px dotted #fbf7ef;
+      outline-offset: -1px;
+      box-shadow: 0 0 0 3px #fbf7ef, 0 1px 3px 3px rgba(80, 60, 40, 0.12);
+    }
+
+    .card3d-postcard-mark {
+      right: 15%;
+      top: 9%;
+      width: 18%;
+      aspect-ratio: 1;
+      border: 1.5px solid rgba(60, 64, 90, 0.42);
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0, 0, 0, 0) 0 56%, rgba(60, 64, 90, 0.32) 56% 61%, rgba(0, 0, 0, 0) 61%);
+      transform: rotate(-12deg);
+    }
+
+    .card3d-postcard-lines {
+      left: 61%;
+      right: 8%;
+      top: 52%;
+      height: 34%;
+      background: repeating-linear-gradient(180deg, rgba(0, 0, 0, 0) 0 calc(33.3% - 1px), rgba(120, 104, 86, 0.4) calc(33.3% - 1px) 33.3%);
+    }
+
+    /* The back turned towards the light or away from it. */
+    .card3d-back-light,
+    .card3d-back-shade {
+      inset: 0;
+      opacity: 0;
+      will-change: opacity;
+    }
+
+    .card3d-back-light { background: linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.1) 55%, rgba(255, 255, 255, 0.25)); }
+    .card3d-back-shade { background: linear-gradient(135deg, rgba(24, 16, 10, 0.16), rgba(24, 16, 10, 0.5)); }
 
     .card3d-light,
     .card3d-shade {
@@ -5142,6 +5285,15 @@
       <button type="button" data-card-drop="last">Last</button>
     </div>
     <button type="button" id="wxDebugShadows">Card shadows</button>
+    <div class="wx-debug-label">Back of the cards</div>
+    <div class="wx-debug-grid" id="wxDebugBack">
+      <button type="button" data-card-back="blur">Blurred</button>
+      <button type="button" data-card-back="stock">Card stock</button>
+      <button type="button" data-card-back="paper">Photo paper</button>
+      <button type="button" data-card-back="deck">Playing card</button>
+      <button type="button" data-card-back="postcard">Postcard</button>
+      <button type="button" id="wxDebugTurn">Turn over</button>
+    </div>
     <div class="wx-debug-label">Speed of fill and leak</div>
     <div class="wx-debug-grid four" id="wxDebugSpeed">
       <button type="button" data-wx-speed="1">1×</button>
@@ -13524,6 +13676,9 @@
         els.wxDebugShadows.classList.toggle('is-on', cardShadows.on);
         els.wxDebugShadows.textContent = `Card shadows: ${cardShadows.on ? 'on' : 'off'}`;
       }
+      els.wxDebug.querySelectorAll('[data-card-back]').forEach(button => {
+        button.classList.toggle('is-on', button.dataset.cardBack === cardBack.style);
+      });
       els.wxDebug.querySelectorAll('[data-wx-speed]').forEach(button => {
         button.classList.toggle('is-on', Number(button.dataset.wxSpeed) === weatherFx.speed);
       });
@@ -13600,6 +13755,14 @@
       els.wxDebugShadows?.addEventListener('click', () => {
         setCardShadows(!cardShadows.on);
         renderWeatherDebug();
+      });
+      document.getElementById('wxDebugBack')?.addEventListener('click', event => {
+        const back = event.target.closest('[data-card-back]');
+        if (back) {
+          setCardBackStyle(back.dataset.cardBack);
+          renderWeatherDebug();
+        }
+        if (event.target.closest('#wxDebugTurn')) testCardTurn();
       });
     }
 
@@ -16748,6 +16911,7 @@ Cancel = choose whether to delete the whole series.`);
         const plate = document.createElement('div');
         plate.className = index === CARD3D_PLATES ? 'card3d-plate is-back' : 'card3d-plate';
         plate.style.setProperty('--plate-z', `${(-(index * CARD3D_THICK_PX) / CARD3D_PLATES).toFixed(2)}px`);
+        if (index === CARD3D_PLATES) fillCardBack(plate, card);
         wrap.appendChild(plate);
       }
       if (card.parentNode) card.before(wrap);
@@ -16758,6 +16922,87 @@ Cancel = choose whether to delete the whole series.`);
         wrap.appendChild(plane);
       });
       return wrap;
+    }
+
+    // --- The backs of the cards -------------------------------------------
+    //
+    // What a card shows when it is turned over: a choice of designs in the Q
+    // panel (Back of the cards), remembered on this screen.
+    // - stock: the back of a mounted photo (the first design);
+    // - blur: the photo on the front coming through the paper from behind,
+    //   blurred and washed out. Not turned round, so a card turned over
+    //   shows it mirrored, as a print held up to the light does: left to
+    //   right when it turns over sideways, top to bottom end over end;
+    // - paper: photo paper, with its name printed in faint slanted lines;
+    // - deck: the back of a playing card;
+    // - postcard: the task's time and title written by hand, with a stamp,
+    //   a postmark and address lines.
+    // The printed ones face the other way, so they read the right way round.
+    // Each back has its own light and shade, set by drawCard as it turns.
+    const CARD_BACKS = ['stock', 'blur', 'paper', 'deck', 'postcard'];
+    const CARD_BACK_PRINTED = new Set(['paper', 'deck', 'postcard']);
+    const CARD_BACK_KEY = 'homedash.cardBack';
+    const cardBack = { style: 'blur' };
+    try {
+      const saved = localStorage.getItem(CARD_BACK_KEY);
+      if (CARD_BACKS.includes(saved)) cardBack.style = saved;
+    } catch {
+      // No storage: the default back.
+    }
+
+    function setCardBackStyle(style) {
+      if (!CARD_BACKS.includes(style)) return;
+      cardBack.style = style;
+      try {
+        localStorage.setItem(CARD_BACK_KEY, style);
+      } catch {
+        // Kept for this visit only.
+      }
+      // Cards already wrapped get the new back at once.
+      document.querySelectorAll('.card3d').forEach(wrap => {
+        const plate = wrap.querySelector(':scope > .card3d-plate.is-back');
+        const card = wrap.querySelector(':scope > .mini-event');
+        if (plate && card) fillCardBack(plate, card);
+      });
+    }
+
+    function fillCardBack(plate, card) {
+      const style = cardBack.style;
+      plate.dataset.back = style;
+      plate.classList.toggle('is-printed', CARD_BACK_PRINTED.has(style));
+      plate.replaceChildren();
+      const add = (className, tag = 'div') => {
+        const el = document.createElement(tag);
+        el.className = className;
+        plate.appendChild(el);
+        return el;
+      };
+      if (style === 'blur') {
+        const front = card.querySelector('img');
+        if (front) {
+          const photo = add('card3d-back-photo', 'img');
+          photo.alt = '';
+          photo.decoding = 'async';
+          // Framed like the front (its focus point and zoom).
+          photo.style.cssText = front.style.cssText;
+          photo.src = front.currentSrc || front.src;
+        }
+        add('card3d-back-paper');
+      } else if (style === 'paper' || style === 'deck') {
+        add('card3d-back-print');
+      } else if (style === 'postcard') {
+        const note = add('card3d-postcard-note');
+        const when = document.createElement('span');
+        when.textContent = card.querySelector('.mini-time')?.textContent || '';
+        const what = document.createElement('span');
+        what.textContent = card.querySelector('.mini-title')?.textContent || '';
+        note.append(when, what);
+        add('card3d-postcard-stamp');
+        add('card3d-postcard-mark');
+        add('card3d-postcard-lines');
+      }
+      add('card3d-back-light');
+      add('card3d-back-shade');
     }
 
     // Unprimed after a moment, unless the panel is out again, falling, or the
@@ -16916,6 +17161,8 @@ Cancel = choose whether to delete the whole series.`);
         card.el.classList.remove('is-rattling');
         if (card.light) card.light.style.opacity = '';
         if (card.shade) card.shade.style.opacity = '';
+        if (card.backLight) card.backLight.style.opacity = '';
+        if (card.backShade) card.backShade.style.opacity = '';
         detachCardShadow(card);
       });
       cardRattle.items = [];
@@ -16990,6 +17237,15 @@ Cancel = choose whether to delete the whole series.`);
       const facing = normal[0] * CARD3D_LIGHT[0] + normal[1] * CARD3D_LIGHT[1] + normal[2] * CARD3D_LIGHT[2] - CARD3D_LIGHT[2];
       card.light.style.opacity = wxClamp(facing * 2.4, 0, 0.8).toFixed(3);
       card.shade.style.opacity = wxClamp(-facing * 2.2, 0, 0.7).toFixed(3);
+      // Its back faces the other way, and is lit the same way.
+      if (!card.backLight?.isConnected) {
+        card.backLight = card.el.querySelector('.card3d-back-light');
+        card.backShade = card.el.querySelector('.card3d-back-shade');
+      }
+      if (!card.backLight) return;
+      const backFacing = -normal[0] * CARD3D_LIGHT[0] - normal[1] * CARD3D_LIGHT[1] - normal[2] * CARD3D_LIGHT[2] - CARD3D_LIGHT[2];
+      card.backLight.style.opacity = wxClamp(backFacing * 2.4, 0, 0.75).toFixed(3);
+      card.backShade.style.opacity = wxClamp(-backFacing * 2.2, 0, 0.65).toFixed(3);
     }
 
     // v turned by deg degrees about the axis (Rodrigues), in the page's own
@@ -17307,15 +17563,20 @@ Cancel = choose whether to delete the whole series.`);
           });
         });
       });
+      bodies.forEach(body => body.hits.sort((p, q) => p.at - q.at));
+      runCardBodies(bodies);
+      drops.forEach(body => fallCard(body, 0));
+    }
+
+    // Sets the cards moving (cardDropFrame steps them).
+    function runCardBodies(bodies) {
       bodies.forEach(body => {
-        body.hits.sort((p, q) => p.at - q.at);
         body.el.classList.add('is-rattling');
         if (body.kind !== 'ghost' && (body.kind !== 'still' || body.hits.length)) attachCardShadow(body);
         // Held where it was until it is shoved.
         if (body.kind !== 'drop') drawCard(body);
       });
-      drops.forEach(body => fallCard(body, 0));
-      grid.classList.add('is-rattling');
+      els.upcomingGrid.classList.add('is-rattling');
       cardDrop.bodies = bodies;
       cardDrop.start = performance.now();
       cardDrop.last = 0;
@@ -17391,6 +17652,10 @@ Cancel = choose whether to delete the whole series.`);
         if (!body.el.isConnected) return;
         if (body.kind === 'ghost') {
           if (pushGhostOff(body, t)) busy = true;
+          return;
+        }
+        if (body.kind === 'turn') {
+          if (turnCardOver(body, t)) busy = true;
           return;
         }
         if (body.kind === 'drop' && !body.landed) {
@@ -17529,6 +17794,8 @@ Cancel = choose whether to delete the whole series.`);
         body.el.classList.remove('is-rattling');
         if (body.light) body.light.style.opacity = '';
         if (body.shade) body.shade.style.opacity = '';
+        if (body.backLight) body.backLight.style.opacity = '';
+        if (body.backShade) body.backShade.style.opacity = '';
         detachCardShadow(body);
       });
       cardDrop.bodies = [];
@@ -17628,6 +17895,69 @@ Cancel = choose whether to delete the whole series.`);
       setTimeout(() => {
         if (cardDrop.lifting && cardDrop.test === test) done();
       }, 520);
+    }
+
+    // --- The Q panel's turn-over test -----------------------------------------
+    //
+    // Every card on the strip lifts, turns over and lies there showing its
+    // back for a couple of seconds, then turns back, one after another. Every
+    // other one turns over end to end, the rest sideways, so the back can be
+    // seen both ways round.
+    const CARD_TURN_S = 0.8;
+    const CARD_TURN_HOLD_S = 2.4;
+
+    function testCardTurn() {
+      if (adminMode || cardDrop.test || cardDropBusy() || nuke.boom || edgePanel.falling) return;
+      closeWeatherDebug();
+      setTimeout(() => {
+        if (cardDropBusy() || !cardDropAllowed()) return;
+        primeCards({ lift: false });
+        if (!cardRattle.primed) return;
+        const grid = els.upcomingGrid;
+        const box = grid.getBoundingClientRect();
+        const bodies = [];
+        grid.querySelectorAll(':scope > .card3d:not(.card-drop-ghost)').forEach((wrap, index) => {
+          const slot = { x: wrap.offsetLeft, y: wrap.offsetTop, w: wrap.offsetWidth, h: wrap.offsetHeight };
+          if (slot.w < 20 || slot.h < 20) return;
+          const body = newDropBody(wrap, slot, box);
+          body.kind = 'turn';
+          // Its tipping axis is (-ny, nx): sideways about the upright, or end over end.
+          body.nx = index % 2 ? 0 : 1;
+          body.ny = index % 2 ? 1 : 0;
+          body.turnAt = index * 0.18;
+          bodies.push(body);
+        });
+        if (bodies.length) runCardBodies(bodies);
+      }, 250);
+    }
+
+    // Up, over, down on its face; held; up, over again (on round the same
+    // way), down. Turned over, the card's back lies on the strip, so it sits
+    // a card's thickness lower.
+    function turnCardOver(body, t) {
+      const u = t - body.turnAt;
+      if (u < 0) return true;
+      const ease = p => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+      let tilt = 180;
+      let arc = 0;
+      if (u < CARD_TURN_S) {
+        const p = u / CARD_TURN_S;
+        tilt = 180 * ease(p);
+        arc = Math.sin(Math.PI * p);
+      } else if (u >= CARD_TURN_S + CARD_TURN_HOLD_S) {
+        const p = Math.min(1, (u - CARD_TURN_S - CARD_TURN_HOLD_S) / CARD_TURN_S);
+        tilt = 180 + 180 * ease(p);
+        arc = Math.sin(Math.PI * p);
+        if (p >= 1) {
+          body.tilt = body.z = 0;
+          drawCard(body);
+          return false;
+        }
+      }
+      body.tilt = tilt;
+      body.z = Math.max(body.w, body.h) * 0.32 * arc - CARD3D_THICK_PX * (1 - Math.cos((tilt * Math.PI) / 180)) / 2;
+      drawCard(body);
+      return true;
     }
 
     function peekEdgePanel() {
