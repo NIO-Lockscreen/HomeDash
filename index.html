@@ -934,6 +934,26 @@
     /* The canvas draws ripples where the drops meet the water instead. */
     .weather-card.wx-fx-water .weather-effect .splash { display: none; }
 
+    /* The nuke's shock wave pushes the card's own rain, snow, mist and
+       clouds aside where it passes: the script sets each particle's push
+       (--bx, --by), how far a drop is bent over (--bt) and how much of it
+       is left (--bo) for the two or three seconds it lasts. Margins, since
+       the animations already use translate, rotate and transform. */
+    .weather-effect.wx-blasted > span {
+      margin-left: var(--bx, 0px);
+      margin-top: var(--by, 0px);
+    }
+
+    .weather-effect.wx-blasted .drop {
+      rotate: calc(14deg + var(--bt, 0deg));
+      opacity: calc(var(--o, .8) * var(--bo, 1));
+    }
+
+    .weather-effect.wx-blasted .flake { opacity: calc(var(--o, .85) * var(--bo, 1)); }
+
+    .weather-effect.wx-blasted .mist,
+    .weather-effect.wx-blasted .cloud-puff { opacity: var(--bo, 1); }
+
     .weather-card.show-selected-event > canvas.weather-fx,
     .kiosk-shell.daily-calendar-mode canvas.weather-fx,
     .kiosk-shell.daily-calendar-mode canvas.weather-spill { display: none; }
@@ -989,6 +1009,7 @@
     }
 
     .wx-debug-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .wx-debug-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .wx-debug-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
     .wx-debug button {
@@ -4083,164 +4104,24 @@
       pointer-events: none;
     }
 
-    .edge-nuke {
+    /* The mini nuke is drawn on a canvas over the whole window, behind the
+       tray itself, so the smoke it trails while it falls stays behind it. */
+    .edge-nuke-canvas {
       position: absolute;
-      left: var(--nuke-x, 50%);
-      bottom: 0;
-      width: 0;
-      height: 0;
+      inset: 0;
+      width: 100%;
+      height: 100%;
       pointer-events: none;
     }
 
-    .edge-nuke > * {
-      position: absolute;
-      left: 0;
-      bottom: 0;
+    /* Coming loose, the YouTube icon glows hot and pulses like a lit fuse. */
+    .edge-panel.is-falling .edge-app-icon {
+      animation: edge-nuke-arm .22s ease-in-out infinite alternate;
     }
 
-    .edge-nuke-glare {
-      position: fixed;
-      inset: 0;
-      background: radial-gradient(circle at var(--nuke-x, 50%) 100%, rgba(255, 246, 210, 0.7), rgba(255, 214, 150, 0.22) 45%, rgba(255, 214, 150, 0) 75%);
-      animation: edge-nuke-glare .5s ease-out forwards;
-    }
-
-    .edge-nuke-flash {
-      width: 240px;
-      height: 240px;
-      margin: 0 0 -120px -120px;
-      border-radius: 50%;
-      background: radial-gradient(circle, #fff 0%, #fff6c4 16%, rgba(255, 196, 84, 0.8) 36%, rgba(255, 120, 40, 0) 70%);
-      animation: edge-nuke-flash .7s ease-out forwards;
-    }
-
-    .edge-nuke-ring {
-      width: 70px;
-      height: 20px;
-      margin: 0 0 -10px -35px;
-      border-radius: 50%;
-      border: 2px solid rgba(255, 224, 170, 0.95);
-      box-shadow: 0 0 12px rgba(255, 170, 80, 0.7);
-      animation: edge-nuke-ring .9s cubic-bezier(.2, .7, .3, 1) forwards;
-    }
-
-    .edge-nuke-dust {
-      width: 120px;
-      height: 34px;
-      margin: 0 0 -14px -60px;
-      border-radius: 50%;
-      background: radial-gradient(ellipse at 50% 60%, rgba(214, 160, 120, 0.85), rgba(150, 128, 116, 0.55) 55%, rgba(150, 128, 116, 0) 75%);
-      animation: edge-nuke-dust 1.6s ease-out forwards;
-    }
-
-    .edge-nuke-stem {
-      width: 22px;
-      height: 104px;
-      margin-left: -11px;
-      border-radius: 11px 11px 6px 6px;
-      background: linear-gradient(to top, rgba(255, 150, 60, 0.95), rgba(214, 124, 84, 0.9) 45%, rgba(150, 124, 112, 0.8));
-      transform-origin: 50% 100%;
-      animation: edge-nuke-stem 1.6s cubic-bezier(.2, .8, .3, 1) forwards;
-    }
-
-    .edge-nuke-collar {
-      width: 64px;
-      height: 16px;
-      margin: 0 0 54px -32px;
-      border-radius: 50%;
-      border: 3px solid rgba(214, 140, 96, 0.8);
-      background: rgba(255, 214, 170, 0.35);
-      animation: edge-nuke-collar 1.6s ease-out forwards;
-    }
-
-    .edge-nuke-cap {
-      width: 112px;
-      height: 62px;
-      margin: 0 0 -20px -56px;
-      border-radius: 50% 50% 42% 42% / 64% 64% 36% 36%;
-      background: radial-gradient(ellipse at 50% 64%, #fff3b0 0%, #ffc04a 20%, #ff7a2a 44%, #a4523a 70%, #7e6a62 100%);
-      box-shadow: 0 0 28px rgba(255, 140, 50, 0.55);
-      animation: edge-nuke-cap 1.6s cubic-bezier(.2, .8, .3, 1) forwards;
-    }
-
-    .edge-nuke-cap::before,
-    .edge-nuke-cap::after {
-      content: '';
-      position: absolute;
-      border-radius: 50%;
-      background: radial-gradient(circle at 50% 70%, #ffb347, #d0643a 55%, #8a6c62);
-    }
-
-    .edge-nuke-cap::before { width: 50px; height: 46px; left: 10px; top: -16px; }
-    .edge-nuke-cap::after { width: 56px; height: 50px; right: 8px; top: -20px; }
-
-    .edge-nuke-spark {
-      width: 7px;
-      height: 7px;
-      margin: 0 0 -3px -3px;
-      border-radius: 50%;
-      background: #ffd27a;
-      box-shadow: 0 0 8px rgba(255, 170, 60, 0.9);
-      animation: edge-nuke-spark .8s cubic-bezier(.15, .6, .4, 1) forwards;
-    }
-
-    .kiosk-shell.is-nuke-shaking { animation: edge-nuke-shake .45s linear; }
-
-    @keyframes edge-nuke-glare {
-      from { opacity: 1; }
-      to { opacity: 0; }
-    }
-
-    @keyframes edge-nuke-flash {
-      0% { transform: scale(.1); opacity: 1; }
-      25% { transform: scale(1); opacity: 1; }
-      100% { transform: scale(1.25); opacity: 0; }
-    }
-
-    @keyframes edge-nuke-ring {
-      0% { transform: scale(.2); opacity: 1; }
-      100% { transform: scale(6); opacity: 0; }
-    }
-
-    @keyframes edge-nuke-dust {
-      0% { transform: scale(.2, .4); opacity: 0; }
-      15% { opacity: 1; }
-      60% { transform: scale(1.5, 1); opacity: .85; }
-      100% { transform: scale(1.9, 1.1); opacity: 0; }
-    }
-
-    @keyframes edge-nuke-stem {
-      0% { transform: scaleY(0) scaleX(.6); opacity: 1; }
-      30% { transform: scaleY(1) scaleX(1); opacity: 1; }
-      65% { transform: scaleY(1.08) scaleX(1.1); opacity: .9; filter: none; }
-      100% { transform: scaleY(1.12) scaleX(1.35); opacity: 0; filter: grayscale(.8); }
-    }
-
-    @keyframes edge-nuke-collar {
-      0%, 18% { transform: scale(.3); opacity: 0; }
-      34% { transform: scale(1); opacity: 1; }
-      100% { transform: scale(1.9); opacity: 0; }
-    }
-
-    @keyframes edge-nuke-cap {
-      0% { transform: translateY(0) scale(.15); opacity: 1; filter: brightness(1.5); }
-      32% { transform: translateY(-96px) scale(1); opacity: 1; filter: brightness(1.15); }
-      65% { transform: translateY(-110px) scale(1.12); opacity: .95; filter: grayscale(.35); }
-      100% { transform: translateY(-124px) scale(1.3); opacity: 0; filter: grayscale(.85) brightness(.9); }
-    }
-
-    @keyframes edge-nuke-spark {
-      0% { transform: translate(0, 0) scale(1); opacity: 1; }
-      100% { transform: translate(var(--spark-x), var(--spark-y)) scale(.3); opacity: 0; }
-    }
-
-    @keyframes edge-nuke-shake {
-      0%, 100% { translate: 0 0; }
-      15% { translate: -5px 3px; }
-      30% { translate: 4px -3px; }
-      45% { translate: -3px 2px; }
-      60% { translate: 3px -1px; }
-      80% { translate: -1px 1px; }
+    @keyframes edge-nuke-arm {
+      from { box-shadow: 0 0 0 1px rgba(255, 90, 40, 0.35), 0 0 10px rgba(255, 90, 40, 0.35); }
+      to { box-shadow: 0 0 0 2px rgba(255, 70, 30, 0.9), 0 0 28px rgba(255, 110, 40, 0.9); }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -5045,6 +4926,12 @@
       <button type="button" id="wxDebugSpill">Leak / spill now</button>
     </div>
     <button type="button" id="wxDebugPop">Pop-out now</button>
+    <div class="wx-debug-label">Mini nuke goes off at</div>
+    <div class="wx-debug-grid three" id="wxDebugNuke">
+      <button type="button" data-wx-nuke="left">Left edge</button>
+      <button type="button" data-wx-nuke="middle">Middle</button>
+      <button type="button" data-wx-nuke="under">Under card</button>
+    </div>
     <div class="wx-debug-label">Speed of fill and leak</div>
     <div class="wx-debug-grid four" id="wxDebugSpeed">
       <button type="button" data-wx-speed="1">1×</button>
@@ -8817,7 +8704,14 @@
       surface: { front: new Float32Array(0), back: new Float32Array(0) },
       water: null,
       snow: null,
-      fog: null
+      fog: null,
+      // The mini nuke's shock wave while it crosses the card, what it blew
+      // loose (spray, powder, broken icicles), and how far the nuke has shaken
+      // the dashboard just now.
+      blast: null,
+      blastId: 0,
+      bits: [],
+      shake: { x: 0, y: 0 }
     };
 
     const wxRand = (min, max) => min + Math.random() * (max - min);
@@ -8969,9 +8863,10 @@
       const hasLeft = covers.some(cover => cover.r <= 2 && sideways(cover));
       fx.geo.side = hasRight || !hasLeft ? 1 : -1;
       // The pop-out layer covers the whole window; it works in card
-      // coordinates shifted by the card's place in the window.
-      fx.geo.vx = cardRect.left;
-      fx.geo.vy = cardRect.top;
+      // coordinates shifted by the card's place in the window. (Not counting
+      // the nuke's shake, which moves the pop-out layer along with the card.)
+      fx.geo.vx = cardRect.left - fx.shake.x;
+      fx.geo.vy = cardRect.top - fx.shake.y;
       const pw = Math.max(1, Math.round(window.innerWidth * dpr));
       const ph = Math.max(1, Math.round(window.innerHeight * dpr));
       if (fx.popCanvas.width !== pw || fx.popCanvas.height !== ph) {
@@ -9245,6 +9140,10 @@
         fx.running = false;
         cancelAnimationFrame(fx.raf);
         fx.raf = 0;
+        // A shock wave half way across the card is not resumed later.
+        fx.blast = null;
+        fx.bits = [];
+        resetBlastCss();
         // Let the last frame fade out with the canvas, then let it go.
         fx.clearTimer = setTimeout(() => {
           if (fx.running) return;
@@ -9277,12 +9176,15 @@
       fx.time += dt;
       const flashState = wxFlashState();
       fx.flash = flashState ? flashState.level : 0;
+      stepBlast(now);
       if (fx.family === 'water') stepWater(dt);
       else if (fx.family === 'snow') stepSnow(dt);
       else if (fx.family === 'fog') stepFog(dt);
       stepLeaks(dt);
       stepLedge(dt);
       stepPop(dt, flashState);
+      stepBlastBits(dt);
+      stepBlastCss();
       drawWeatherFxCard();
       drawWeatherFxSpill();
       drawLedgeFace();
@@ -9336,6 +9238,20 @@
         const d = (x - hole.x) / 15;
         y += (1.5 + 5 * hole.flow) * Math.exp(-d * d);
       }
+      // After a shock wave: the water piles up on the side away from the
+      // blast and sloshes back and forth, heaves up if it came from below,
+      // and a swell runs off across it.
+      const surge = w.surge;
+      if (surge) {
+        const g = weatherFx.geo;
+        const side = (x / g.W - 0.5) * 2;
+        y -= surge.amp * surge.nx * 8 * g.scale * side * Math.exp(-surge.t / 1.4) * Math.cos(surge.t * 4.4);
+        y -= surge.amp * Math.max(0, -surge.ny) * 5 * g.scale * Math.exp(-surge.t / 0.7) * Math.cos(surge.t * 7.5);
+        if (surge.dir) {
+          const d = (x - (surge.x0 + surge.dir * 470 * surge.t)) / 36;
+          y -= surge.amp * 6 * g.scale * Math.exp(-surge.t / 0.9) * Math.exp(-d * d);
+        }
+      }
       return y;
     }
 
@@ -9348,6 +9264,11 @@
       w.phaseT += dt;
       w.slosh = Math.max(0, w.slosh - dt * 0.5);
       w.stainAlpha = Math.max(0, w.stainAlpha - dt / 24);
+      if (fx.blast) blastWater();
+      if (w.surge) {
+        w.surge.t += dt;
+        if (w.surge.t > 4.5) w.surge = null;
+      }
 
       if (w.phase === 'fill') {
         w.level = Math.min(1, w.level + fill * fx.speed * dt);
@@ -9384,6 +9305,16 @@
       // Drips: from a hole that is only trickling, and afterwards from the
       // beads left hanging under the card, slower and slower.
       w.holes.forEach(hole => {
+        // A shock wave bends the stream over and blows the bead off.
+        const gust = fx.blast ? wxBlastField(hole.x, g.H + 30) : null;
+        const bend = gust ? gust.nx * gust.k * 80 * g.scale : 0;
+        hole.bend = (hole.bend || 0) + (bend - (hole.bend || 0)) * Math.min(1, dt * (gust ? 12 : 3));
+        if (Math.abs(hole.bend) < 0.05) hole.bend = 0;
+        const hit = fx.blast && hole.bead > 0.15 ? wxBlastFront(hole.x, g.H + 3) : null;
+        if (hit) {
+          spawnBlastDrop(hole.x, g.H + 3, hit, { r: (0.6 + 2.8 * hole.bead) * g.scale, speed: 0.7 });
+          hole.bead = 0;
+        }
         let interval = 0;
         if (w.phase === 'leak' && hole.flow > 0 && hole.flow < WX_WATER_STREAM_MIN) {
           interval = 0.12 + 0.9 * (1 - hole.flow / WX_WATER_STREAM_MIN);
@@ -9436,6 +9367,7 @@
       w.ripples = w.ripples.filter(ripple => ripple.age < 1.1);
       w.splashes.forEach(splash => {
         splash.vy += 700 * dt;
+        if (fx.blast) wxBlastShove(splash, splash.x, splash.y, dt, 0.4);
         splash.x += splash.vx * dt;
         splash.y += splash.vy * dt;
       });
@@ -9452,6 +9384,8 @@
       });
       w.drops.forEach(drop => {
         drop.vy += WX_WATER_GRAVITY * dt;
+        if (fx.blast) wxBlastShove(drop, drop.x, drop.y, dt, 0.5);
+        if (drop.vx) drop.x += drop.vx * dt;
         drop.y += drop.vy * dt;
       });
       const ledge = wxLedge();
@@ -9467,6 +9401,37 @@
         w.holes.forEach(hole => {
           if (hole.flow >= WX_WATER_STREAM_MIN && overLedge(hole.x)) ledgeLand('stream', hole.x, hole.flow * 7 * dt, 700);
         });
+      }
+    }
+
+    // The ring tears the water off its surface where it passes: spray, a
+    // haze of it, and less water left. More the closer the blast.
+    function blastWater() {
+      const fx = weatherFx;
+      const w = fx.water;
+      const g = fx.geo;
+      const levelPx = w.level * wxWaterMaxPx();
+      if (levelPx < 1.5) return;
+      const surface = g.H - levelPx;
+      let lost = 0;
+      for (let x = 3; x < g.W; x += 6) {
+        const hit = wxBlastFront(x, surface);
+        if (!hit) continue;
+        if (!w.surge || w.surge.id !== fx.blast.id) {
+          w.surge = { id: fx.blast.id, t: 0, x0: x, dir: Math.abs(hit.nx) > 0.25 ? Math.sign(hit.nx) : 0, nx: hit.nx, ny: hit.ny, amp: 0 };
+        }
+        w.surge.amp = Math.max(w.surge.amp, Math.min(1.3, hit.power));
+        lost += (wxClamp(0.18 + 0.34 * hit.power, 0.2, 0.68) * 6) / g.W;
+        const count = Math.round((0.8 + 2.4 * hit.power) * Math.min(1, levelPx / 14) + Math.random());
+        for (let k = 0; k < count; k++) spawnBlastDrop(x + wxRand(-3, 3), surface - wxRand(0, 4), hit);
+        if (Math.random() < 0.3 * hit.power) spawnBlastHaze(x, surface - 6, hit, true);
+      }
+      if (!lost) return;
+      w.level = Math.max(0, w.level * (1 - Math.min(0.9, lost)));
+      w.slosh = Math.max(w.slosh, 0.6);
+      if (w.phase === 'brim') {
+        w.phase = 'fill';
+        w.phaseT = 0;
       }
     }
 
@@ -9656,7 +9621,10 @@
           const y1 = lands ? wxLedge().t : Math.min(g.H + WX_FX_PAD_BOTTOM, coverTop + WX_FX_COVER_FADE_PX + 2);
           const half0 = ((1.3 + 4.4 * hole.flow) * g.scale) / 2;
           const halfAt = y => half0 * Math.pow(1 + (y - y0) / 9, -0.25) * (1 + 0.22 * Math.sin(y * 0.55 - t * 32 + hole.phase) * Math.min(1, (y - y0) / 8));
-          const wobble = y => Math.sin(y * 0.12 - t * 18 + hole.phase) * 0.4 * hole.flow;
+          // Bent over by the nuke's gust, most of all far down the stream.
+          const bend = hole.bend || 0;
+          const wobble = y => Math.sin(y * 0.12 - t * 18 + hole.phase) * 0.4 * hole.flow
+            + (bend ? bend * Math.pow(wxClamp((y - y0) / Math.max(1, y1 - y0), 0, 1), 1.6) : 0);
           const gradient = ctx.createLinearGradient(0, y0, 0, y1);
           const fadeFrom = wxClamp((coverTop - y0) / Math.max(1, y1 - y0), 0, 1);
           gradient.addColorStop(0, `rgba(${top},.95)`);
@@ -9673,7 +9641,7 @@
           if (lands) {
             // Where it hits the edge it fans out.
             ctx.beginPath();
-            ctx.ellipse(hole.x, y1, half0 * 2.6 + 1.5, (1.2 + hole.flow * 1.6) * g.scale, 0, Math.PI, Math.PI * 2);
+            ctx.ellipse(hole.x + wobble(y1), y1, half0 * 2.6 + 1.5, (1.2 + hole.flow * 1.6) * g.scale, 0, Math.PI, Math.PI * 2);
             ctx.fillStyle = `rgba(${top},.85)`;
             ctx.fill();
           }
@@ -9772,6 +9740,7 @@
       const s = fx.snow;
       const g = fx.geo;
       s.phaseT += dt;
+      if (fx.blast) blastSnowPile();
 
       if (s.phase === 'fill') {
         const rate = fx.speed * fx.intensity / WX_SNOW_FILL_S;
@@ -9842,6 +9811,10 @@
         if (flake.gust) flake.vx *= 1 - Math.min(1, dt * 0.35);
         flake.bx += flake.vx * dt;
         flake.y += flake.vy * dt;
+        if (wxBlastDrift(flake, flake.x ?? flake.bx, flake.y, dt, 0.8, 1.1)) {
+          flake.bx += flake.bvx * dt;
+          flake.y += flake.bvy * dt;
+        }
         flake.x = flake.bx + Math.sin(fx.time * flake.freq * 2 * Math.PI * 0.5 + flake.phase) * flake.sway;
       });
       const ledge = wxLedge();
@@ -9856,6 +9829,7 @@
       s.powder.forEach(grain => {
         grain.vy = Math.min(130, grain.vy + 160 * dt);
         grain.vx *= 1 - Math.min(1, dt * 0.8);
+        if (fx.blast) wxBlastShove(grain, grain.x, grain.y, dt, 0.6);
         grain.x += (grain.vx + Math.sin(fx.time * 3 + grain.phase) * 6) * dt;
         grain.y += grain.vy * dt;
       });
@@ -9866,6 +9840,36 @@
         }
         return grain.y < g.H + WX_FX_PAD_BOTTOM + 10;
       });
+    }
+
+    // The ring scours the pile where it passes: powder and spindrift blow
+    // off it, more the closer the blast, and it builds up again from there.
+    function blastSnowPile() {
+      const fx = weatherFx;
+      const s = fx.snow;
+      const g = fx.geo;
+      const maxPx = wxSnowMaxPx();
+      let scoured = false;
+      for (let index = 0; index < WX_SNOW_COLS; index++) {
+        const h = s.cols[index] * maxPx;
+        if (h < 1) continue;
+        const x = (index / (WX_SNOW_COLS - 1)) * g.W;
+        const hit = wxBlastFront(x, g.H - h);
+        if (!hit) continue;
+        scoured = true;
+        const removed = s.cols[index] * wxClamp(0.3 + 0.42 * hit.power, 0.25, 0.85);
+        s.cols[index] -= removed;
+        const count = Math.round(removed * maxPx * 0.28 + Math.random());
+        for (let k = 0; k < count; k++) {
+          spawnBlastPowder(x + wxRand(-6, 6), g.H - h * Math.random(), hit, { clump: Math.random() < 0.1 });
+        }
+        if (Math.random() < 0.45) spawnBlastHaze(x, g.H - h, hit, false);
+      }
+      if (scoured) {
+        s.sift = null;
+        s.phase = 'fill';
+        s.phaseT = 0;
+      }
     }
 
     function snowPileHeights() {
@@ -10107,11 +10111,22 @@
       const fog = fx.fog;
       const g = fx.geo;
       const L = wxLedge();
-      const boost = fog.burst > 0 ? 3.5 : 1;
+      // Once the nuke's ring reaches the card, no new mist for a moment;
+      // then it rolls back in all at once.
+      const b = fx.blast;
+      if (b && b.fog !== true && b.r >= b.near) {
+        b.fog = true;
+        fog.hush = 2.6;
+      }
+      if (fog.hush > 0) {
+        fog.hush -= dt;
+        if (fog.hush <= 0) fog.burst = 3.5;
+      }
+      const boost = fog.hush > 0 ? 0 : fog.burst > 0 ? 3.5 : 1;
       fog.burst = Math.max(0, (fog.burst || 0) - dt);
       fog.clock += dt * 9 * (g.W / 420) * boost;
       fog.sideClock = (fog.sideClock || 0) + dt * 1.6 * boost;
-      fog.topClock = (fog.topClock || 0) + dt * 0.8;
+      fog.topClock = (fog.topClock || 0) + dt * 0.8 * Math.min(1, boost);
       for (const [clock, kind] of [['clock', 'bottom'], ['sideClock', 'side'], ['topClock', 'top']]) {
         while (fog[clock] >= 1) {
           fog[clock] -= 1;
@@ -10122,6 +10137,12 @@
       const wind = fx.windy ? 14 * g.side : 0;
       fog.puffs.forEach(puff => {
         puff.age += dt;
+        // The nuke's gust blows the mist away, and thins what it carries off.
+        if (wxBlastDrift(puff, puff.x, puff.y, dt, 0.75, 0.8)) {
+          puff.x += puff.bvx * dt;
+          puff.y += puff.bvy * dt;
+          puff.age += dt * Math.min(2.5, Math.hypot(puff.bvx, puff.bvy) / 160);
+        }
         // A slow, turbulent flow, so the mist curls instead of sliding.
         const flowX = Math.sin(puff.y * 0.031 + t * 0.35 + puff.seed) * 6 + Math.sin(puff.x * 0.017 - t * 0.22 + puff.seed * 0.5) * 4;
         const flowY = Math.cos(puff.x * 0.027 + t * 0.3 + puff.seed * 1.7) * 3;
@@ -10296,9 +10317,16 @@
       }
       const ledge = wxLedge();
       leak.items.forEach(item => {
+        if (leak.kind === 'rain' && fx.blast) wxBlastShove(item, item.x, item.y, dt, 0.5);
         item.y += item.vy * dt;
         if (leak.kind === 'rain') item.x += item.vx * dt;
-        else item.x = item.bx + item.drift * Math.sin((2 * Math.PI * fx.time) / item.period + item.phase);
+        else {
+          if (wxBlastDrift(item, item.x, item.y, dt, 0.8, 1.1)) {
+            item.bx += item.bvx * dt;
+            item.y += item.bvy * dt;
+          }
+          item.x = item.bx + item.drift * Math.sin((2 * Math.PI * fx.time) / item.period + item.phase);
+        }
       });
       leak.items = leak.items.filter(item => {
         if (ledge && overLedge(item.x) && item.y >= ledge.t - 1) {
@@ -10462,6 +10490,28 @@
       if (!L || !fx.ledgeState) return;
       const s = ledgeArrays();
       const g = fx.geo;
+      // The nuke's ring blows the film and the heap off the edge.
+      if (fx.blast) {
+        for (let index = 0; index < s.cols; index++) {
+          const wet = s.water[index] > 0.15;
+          const snowy = s.snow[index] > 0.4;
+          if (!wet && !snowy) continue;
+          const x = L.l + index * WX_LEDGE_STEP;
+          const hit = wxBlastFront(x, L.t - 1);
+          if (!hit) continue;
+          if (wet) {
+            const count = Math.min(3, Math.round(s.water[index] * 1.4 + Math.random() * 0.6));
+            for (let k = 0; k < count; k++) spawnBlastDrop(x, L.t - 1.5, hit, { r: wxRand(0.9, 1.8) * g.scale, speed: 0.6 });
+            s.water[index] *= 0.2;
+          }
+          if (snowy) {
+            const count = Math.min(4, Math.round(s.snow[index] * 0.6 + Math.random()));
+            for (let k = 0; k < count; k++) spawnBlastPowder(x, L.t - s.snow[index] * Math.random(), hit, { speed: 0.7 });
+            if (Math.random() < 0.2) spawnBlastHaze(x, L.t - 3, hit, false);
+            s.snow[index] *= 0.2;
+          }
+        }
+      }
 
       // The film spreads along the edge, dries, and spills over where it is
       // too thick to hold.
@@ -10567,10 +10617,11 @@
 
       s.splashes.forEach(splash => {
         splash.vy += 900 * dt;
+        if (fx.blast) wxBlastShove(splash, splash.x, splash.y, dt, 0.4);
         splash.x += splash.vx * dt;
         splash.y += splash.vy * dt;
       });
-      s.splashes = s.splashes.filter(splash => splash.y < L.t + 0.5);
+      s.splashes = s.splashes.filter(splash => splash.y < L.t + 0.5 && splash.y > L.t - 400);
     }
 
     // The film and the splashes, in the gap above the edge (spill layer).
@@ -10761,6 +10812,441 @@
       });
     }
 
+    // --- The mini nuke's shock wave ------------------------------------------
+    //
+    // When the YouTube panel's mini nuke goes off (launchNuke), its shock ring
+    // races out across the screen from where the panel landed. None of this
+    // is physics. The ring is a circle growing at a fixed speed, the same one
+    // the nuke draws, and whatever it passes over is shoved straight away
+    // from the blast by a gust that dies away behind the ring. So the part
+    // of the card nearest the blast is hit first and hardest, and everything
+    // is blown away from it: up and out of the card when it went off under
+    // it, sideways across it when it went off to one side, harder the closer.
+    //
+    // - Water is torn off its surface as spray (more of it the closer the
+    //   blast), and what is left sloshes away from the blast and heaves;
+    //   beads and runners are blown off the card's edges, streams and drips
+    //   bend in the gust, the film on the Upcoming strip is blown off it.
+    // - Snow is scoured off the pile, the cap and the heap on the Upcoming
+    //   strip in a burst of powder and spindrift; icicles snap off and
+    //   shatter on the strip. All of it grows back as before.
+    // - Fog is blown away from the card and rolls back in a few seconds on.
+    // - Clouds, the sun and the moon are knocked away from the blast and
+    //   spring back; a wisp tears off the clouds; the sun flares.
+    // - Streaks of the gust race across the card, and the card's own CSS
+    //   rain, snow, mist and clouds are pushed aside and thinned where the
+    //   ring passes, then come back.
+    //
+    // Spray, powder, haze and broken icicles are drawn on the pop-out layer:
+    // they fly out of the card, over its border, and fall on the Upcoming
+    // strip or off the screen.
+    const WX_BLAST_GUST_S = 0.42;
+    const WX_BLAST_ACCEL = 2100;
+    const WX_BLAST_MAX_BITS = 560;
+    // The push at a distance, as a share of the blast's reach.
+    const WX_BLAST_REACH = 0.24;
+
+    // The nuke went off at (viewX, viewY) in the window; its ring grows at
+    // speed px/s.
+    function weatherFxBlast(viewX, viewY, speed) {
+      const fx = weatherFx;
+      if (!fx.running || !fx.geo || !(speed > 0)) return;
+      const g = fx.geo;
+      const x = viewX - g.vx;
+      const y = viewY - g.vy;
+      const corners = [[0, 0], [g.W, 0], [0, g.H], [g.W, g.H]];
+      const far = Math.max(...corners.map(([cx, cy]) => Math.hypot(cx - x, cy - y)));
+      const near = Math.hypot(Math.max(0, -x, x - g.W), Math.max(0, -y, y - g.H));
+      fx.blastId += 1;
+      fx.blast = {
+        id: fx.blastId,
+        x,
+        y,
+        speed,
+        reach: Math.hypot(window.innerWidth, window.innerHeight) * WX_BLAST_REACH,
+        near,
+        start: performance.now(),
+        t: 0,
+        r: 0,
+        rPrev: 0,
+        // Done once the ring is well past the card and whatever hangs below it.
+        end: (far + WX_FX_PAD_BOTTOM + 200) / speed + WX_BLAST_GUST_S * 6,
+        seeds: Array.from({ length: 14 }, () => ({ x: wxRand(0.02, 0.98) * g.W, y: wxRand(0.04, 0.96) * g.H })),
+        css: null,
+        fog: false,
+        tore: false
+      };
+    }
+
+    function stepBlast(now) {
+      const fx = weatherFx;
+      const b = fx.blast;
+      if (!b) return;
+      b.rPrev = b.r;
+      b.t = Math.max(0, (now - b.start) / 1000);
+      b.r = b.t * b.speed;
+      if (b.t > b.end) {
+        fx.blast = null;
+        resetBlastCss();
+      }
+    }
+
+    // How hard the gust is at a distance d from the blast.
+    function wxBlastPower(d) {
+      return wxClamp(weatherFx.blast.reach / Math.max(1, d), 0.2, 1.5);
+    }
+
+    // The gust at (x, y): away from the blast (nx, ny), its strength there
+    // (power), and how much of it is still blowing (k): none before the ring
+    // gets there, all of it as it passes, dying away behind it.
+    function wxBlastField(x, y) {
+      const b = weatherFx.blast;
+      if (!b) return null;
+      const dx = x - b.x;
+      const dy = y - b.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const u = b.t - d / b.speed;
+      if (u < 0 || u > WX_BLAST_GUST_S * 6) return null;
+      const power = wxBlastPower(d);
+      return { nx: dx / d, ny: dy / d, power, k: power * Math.exp(-u / WX_BLAST_GUST_S), u };
+    }
+
+    // Did the ring pass (x, y) in this frame? For things it knocks loose once.
+    function wxBlastFront(x, y) {
+      const b = weatherFx.blast;
+      if (!b) return null;
+      const dx = x - b.x;
+      const dy = y - b.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d <= b.rPrev || d > b.r) return null;
+      return { nx: dx / d, ny: dy / d, power: wxBlastPower(d), d };
+    }
+
+    // The gust on something that keeps its own velocity (vx, vy).
+    function wxBlastShove(p, x, y, dt, gain = 1) {
+      const f = wxBlastField(x, y);
+      if (!f) return;
+      p.vx = (p.vx || 0) + f.nx * f.k * WX_BLAST_ACCEL * gain * dt;
+      p.vy = (p.vy || 0) + f.ny * f.k * WX_BLAST_ACCEL * gain * dt;
+    }
+
+    // The gust on something that moves on rails of its own (a sway, a slow
+    // drift): it gets an extra velocity (bvx, bvy) that drag takes away
+    // again. True while it has some; the caller moves it by it.
+    function wxBlastDrift(p, x, y, dt, gain = 1, drag = 1.6) {
+      if (weatherFx.blast) {
+        const f = wxBlastField(x, y);
+        if (f) {
+          p.bvx = (p.bvx || 0) + f.nx * f.k * WX_BLAST_ACCEL * gain * dt;
+          p.bvy = (p.bvy || 0) + f.ny * f.k * WX_BLAST_ACCEL * gain * dt;
+        }
+      }
+      if (!p.bvx && !p.bvy) return false;
+      const keep = Math.exp(-drag * dt);
+      p.bvx *= keep;
+      p.bvy *= keep;
+      if (Math.abs(p.bvx) + Math.abs(p.bvy) < 0.5) {
+        p.bvx = 0;
+        p.bvy = 0;
+      }
+      return true;
+    }
+
+    // Something blown off at (x, y), thrown away from the blast (fanned out a
+    // little) and lifted.
+    function wxBlastThrow(hit, speed, lift, fan = 0.45) {
+      const spread = wxRand(-fan, fan);
+      const nx = hit.nx * Math.cos(spread) - hit.ny * Math.sin(spread);
+      const ny = hit.nx * Math.sin(spread) + hit.ny * Math.cos(spread);
+      return { vx: nx * speed, vy: ny * speed - lift };
+    }
+
+    function spawnBlastDrop(x, y, hit, { r = null, speed = 1 } = {}) {
+      const fx = weatherFx;
+      const g = fx.geo;
+      if (fx.bits.length >= WX_BLAST_MAX_BITS) return;
+      const v = wxBlastThrow(hit, wxRand(240, 620) * hit.power * speed * g.scale, wxRand(60, 220) * g.scale);
+      fx.bits.push({ type: 'drop', x, y, px: x, py: y, vx: v.vx, vy: v.vy, r: r ?? wxRand(1, 2.5) * g.scale, age: 0, life: wxRand(2.6, 4) });
+    }
+
+    function spawnBlastPowder(x, y, hit, { speed = 1, clump = false } = {}) {
+      const fx = weatherFx;
+      const g = fx.geo;
+      if (fx.bits.length >= WX_BLAST_MAX_BITS) return;
+      const v = wxBlastThrow(hit, wxRand(160, 520) * hit.power * speed * g.scale, wxRand(40, 170) * g.scale, 0.6);
+      fx.bits.push({
+        type: 'powder',
+        x,
+        y,
+        px: x,
+        py: y,
+        vx: v.vx,
+        vy: v.vy,
+        r: (clump ? wxRand(2.2, 3.4) : wxRand(0.7, 2)) * g.scale,
+        a: wxRand(0.75, 1),
+        phase: Math.random() * 6.28,
+        age: 0,
+        life: wxRand(2.6, 4.6)
+      });
+    }
+
+    // A soft cloud of spray or spindrift that billows out and thins.
+    function spawnBlastHaze(x, y, hit, water) {
+      const fx = weatherFx;
+      const g = fx.geo;
+      if (fx.bits.length >= WX_BLAST_MAX_BITS) return;
+      const v = wxBlastThrow(hit, wxRand(120, 300) * hit.power * g.scale, wxRand(10, 60) * g.scale, 0.5);
+      fx.bits.push({
+        type: 'haze',
+        x,
+        y,
+        px: x,
+        py: y,
+        vx: v.vx,
+        vy: v.vy,
+        size: wxRand(16, 30) * g.scale,
+        grow: wxRand(40, 80) * g.scale,
+        a: (water ? 0.32 : 0.5) * Math.min(1, 0.4 + hit.power),
+        age: 0,
+        life: wxRand(1.1, 2)
+      });
+    }
+
+    function stepBlastBits(dt) {
+      const fx = weatherFx;
+      if (!fx.bits.length) return;
+      const g = fx.geo;
+      const L = wxLedge();
+      const water = fx.water;
+      const surface = water ? g.H - water.level * wxWaterMaxPx() : g.H;
+      const bottom = window.innerHeight - g.vy + 40;
+      fx.bits.forEach(bit => {
+        bit.age += dt;
+        bit.px = bit.x;
+        bit.py = bit.y;
+        if (bit.type === 'powder') {
+          // Snow is light: the air soon has it, and it drifts down slowly.
+          const drag = Math.exp(-2.2 * dt);
+          bit.vx *= drag;
+          bit.vy = bit.vy * drag + 150 * dt;
+        } else if (bit.type === 'haze') {
+          const drag = Math.exp(-2.6 * dt);
+          bit.vx *= drag;
+          bit.vy = bit.vy * drag - 6 * dt;
+          bit.size += bit.grow * dt;
+        } else {
+          const drag = Math.exp(-(bit.type === 'drop' ? 0.9 : 0.35) * dt);
+          bit.vx *= drag;
+          bit.vy = bit.vy * drag + WX_WATER_GRAVITY * (bit.type === 'glint' ? 0.6 : 1) * dt;
+        }
+        if (fx.blast) wxBlastShove(bit, bit.x, bit.y, dt, bit.type === 'powder' || bit.type === 'haze' ? 0.45 : 0.22);
+        bit.x += bit.vx * dt;
+        bit.y += bit.vy * dt;
+        if (bit.type === 'powder') bit.x += Math.sin(fx.time * 3 + bit.phase) * 9 * dt;
+        if (bit.type === 'ice') bit.rot += bit.spin * dt;
+      });
+      fx.bits = fx.bits.filter(bit => {
+        if (bit.age > bit.life || bit.y > bottom || bit.y < -window.innerHeight) return false;
+        if (bit.x < -g.vx - 80 || bit.x > window.innerWidth - g.vx + 80) return false;
+        if (bit.type === 'haze' || bit.vy <= 0) return true;
+        const inside = bit.x > 0 && bit.x < g.W;
+        // Spray that falls back into the water.
+        if (bit.type === 'drop' && water && inside && bit.py < surface && bit.y >= surface && bit.y < g.H) {
+          if (water.ripples.length < 26) water.ripples.push({ x: bit.x, age: 0, amp: 0.9 });
+          return false;
+        }
+        // Powder that settles back on the pile.
+        if (bit.type === 'powder' && fx.snow && inside && bit.y < g.H) {
+          const s = fx.snow;
+          const index = Math.round((bit.x / g.W) * (WX_SNOW_COLS - 1));
+          if (bit.y >= g.H - s.cols[index] * wxSnowMaxPx()) {
+            s.cols[index] = Math.min(s.profile[index], s.cols[index] + 0.004 * bit.r);
+            return false;
+          }
+        }
+        // Whatever comes down on the Upcoming strip lands on its edge.
+        if (L && overLedge(bit.x) && bit.py < L.t && bit.y >= L.t - 1) {
+          if (bit.type === 'drop') ledgeLand('water', bit.x, bit.r * 0.4, bit.vy);
+          else if (bit.type === 'powder') ledgeLand('snow', bit.x, bit.r * 0.35);
+          else if (bit.type === 'ice') shatterBlastIce(bit, L.t);
+          return false;
+        }
+        return true;
+      });
+    }
+
+    // A broken icicle lands on the strip and bursts into glittering bits.
+    function shatterBlastIce(bit, y) {
+      const fx = weatherFx;
+      const g = fx.geo;
+      ledgeLand('drip', bit.x, 0, bit.vy);
+      for (let index = 0; index < 7 && fx.bits.length < WX_BLAST_MAX_BITS; index++) {
+        fx.bits.push({
+          type: 'glint',
+          x: bit.x + wxRand(-3, 3),
+          y: y - 1,
+          px: bit.x,
+          py: y - 1,
+          vx: wxRand(-110, 110) * g.scale,
+          vy: -wxRand(80, 220) * g.scale,
+          r: wxRand(0.8, 1.7) * g.scale,
+          age: 0,
+          life: wxRand(0.45, 0.8)
+        });
+      }
+    }
+
+    function drawBlastBits(ctx) {
+      const fx = weatherFx;
+      if (!fx.bits.length) return;
+      const g = fx.geo;
+      const dark = fx.night || fx.effect === 'thunder';
+      const haze = wxMistSprite(fx.night).canvas;
+      fx.bits.forEach(bit => {
+        if (bit.type !== 'haze') return;
+        const p = bit.age / bit.life;
+        const alpha = bit.a * wxSmooth(0, 0.12, p) * (1 - wxSmooth(0.35, 1, p));
+        if (alpha <= 0.01) return;
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(haze, bit.x - bit.size / 2, bit.y - bit.size / 2, bit.size, bit.size);
+      });
+      ctx.globalAlpha = 1;
+      const flake = wxFlakeSprite(true);
+      fx.bits.forEach(bit => {
+        const fade = 1 - wxSmooth(bit.life * 0.75, bit.life, bit.age);
+        if (fade <= 0.01) return;
+        if (bit.type === 'drop') {
+          // Stretched along its flight, with a glint.
+          const speed = Math.hypot(bit.vx, bit.vy) || 1;
+          const stretch = 1 + Math.min(2.6, speed / 420);
+          ctx.save();
+          ctx.globalAlpha = fade;
+          ctx.translate(bit.x, bit.y);
+          ctx.rotate(Math.atan2(bit.vy, bit.vx) - Math.PI / 2);
+          ctx.beginPath();
+          ctx.ellipse(0, -bit.r * (stretch - 1) * 0.5, bit.r * 0.85, bit.r * stretch, 0, 0, Math.PI * 2);
+          ctx.fillStyle = dark ? 'rgba(170,200,240,.9)' : 'rgba(150,190,236,.9)';
+          ctx.fill();
+          ctx.lineWidth = 0.6;
+          ctx.strokeStyle = 'rgba(60,92,140,.4)';
+          ctx.stroke();
+          ctx.restore();
+          ctx.globalAlpha = fade;
+          ctx.beginPath();
+          ctx.arc(bit.x - bit.r * 0.3, bit.y - bit.r * 0.3, bit.r * 0.32, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255,255,255,.9)';
+          ctx.fill();
+        } else if (bit.type === 'powder') {
+          const size = bit.r * 5;
+          ctx.globalAlpha = bit.a * fade;
+          ctx.drawImage(flake, bit.x - size / 2, bit.y - size / 2, size, size);
+        } else if (bit.type === 'ice') {
+          ctx.save();
+          ctx.globalAlpha = fade;
+          ctx.translate(bit.x, bit.y);
+          ctx.rotate(bit.rot);
+          const half = bit.half;
+          const len = bit.len;
+          ctx.beginPath();
+          ctx.moveTo(-half, -len / 2);
+          ctx.quadraticCurveTo(-half * 0.4 + bit.bend * 0.3, len * 0.05, bit.bend, len / 2);
+          ctx.quadraticCurveTo(half * 0.4 + bit.bend * 0.3, len * 0.05, half, -len / 2);
+          ctx.closePath();
+          const ice = ctx.createLinearGradient(-half, 0, half, 0);
+          ice.addColorStop(0, 'rgba(255,255,255,.95)');
+          ice.addColorStop(0.45, 'rgba(214,234,252,.85)');
+          ice.addColorStop(1, 'rgba(150,186,226,.85)');
+          ctx.fillStyle = ice;
+          ctx.fill();
+          ctx.lineWidth = 0.6;
+          ctx.strokeStyle = 'rgba(84,116,160,.5)';
+          ctx.stroke();
+          ctx.restore();
+        } else if (bit.type === 'glint') {
+          const arm = bit.r * 2.2;
+          ctx.globalAlpha = fade;
+          ctx.lineWidth = 0.9;
+          ctx.strokeStyle = 'rgba(255,255,255,.95)';
+          ctx.beginPath();
+          ctx.moveTo(bit.x - arm, bit.y);
+          ctx.lineTo(bit.x + arm, bit.y);
+          ctx.moveTo(bit.x, bit.y - arm);
+          ctx.lineTo(bit.x, bit.y + arm);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(bit.x, bit.y, bit.r * 0.6, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(176,206,240,.9)';
+          ctx.fill();
+        }
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // The card's own CSS particles (rain, snow, mist, clouds, gusts, stars):
+    // each is pushed away from the blast as the ring passes its place, thinned
+    // out, bent over (rain), and eased back over the next second or two.
+    function stepBlastCss() {
+      const fx = weatherFx;
+      const b = fx.blast;
+      const root = els.weatherEffect;
+      if (!b || !root) return;
+      const g = fx.geo;
+      if (!b.css) {
+        const mass = { drop: 1, flake: 1.1, mist: 1.3, 'cloud-puff': 2, gust: 1, star: 5 };
+        const num = (element, name, fallback) => {
+          const value = parseFloat(element.style.getPropertyValue(name));
+          return Number.isFinite(value) ? value : fallback;
+        };
+        b.css = [...root.children].map(element => {
+          const kind = element.classList[0];
+          if (!mass[kind]) return null;
+          // Where it is, near enough: falling things are taken at mid-height.
+          let x = (num(element, '--x', 50) / 100) * g.W;
+          let y = g.H * 0.5;
+          if (kind === 'mist') {
+            x = g.W / 2;
+            y = (num(element, '--y', 50) / 100) * g.H + num(element, '--h', 60) / 2;
+          } else if (kind === 'cloud-puff') {
+            const size = num(element, '--size', 220);
+            x += size / 2;
+            y = (num(element, '--y', 30) / 100) * g.H + size / 4;
+          } else if (kind === 'star') {
+            y = (num(element, '--y', 30) / 100) * g.H;
+          } else if (kind === 'gust') {
+            x = g.W * 0.4;
+            y = (num(element, '--y', 50) / 100) * g.H;
+          }
+          return { element, kind, x, y, mass: mass[kind] };
+        }).filter(Boolean);
+        root.classList.add('wx-blasted');
+      }
+      b.css.forEach(item => {
+        const dx = item.x - b.x;
+        const dy = item.y - b.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const u = b.t - d / b.speed;
+        if (u <= 0) return;
+        const power = wxBlastPower(d);
+        // Out fast, back slowly.
+        const shape = (1 - Math.exp(-u / 0.08)) * Math.exp(-u / 0.85);
+        const push = (shape * power * 120 * g.scale) / item.mass;
+        const style = item.element.style;
+        style.setProperty('--bx', `${((dx / d) * push).toFixed(1)}px`);
+        style.setProperty('--by', `${((dy / d) * push).toFixed(1)}px`);
+        style.setProperty('--bo', (1 - Math.min(0.85, shape * power * (item.kind === 'star' ? 0.3 : 0.95))).toFixed(3));
+        if (item.kind === 'drop') style.setProperty('--bt', `${(-(dx / d) * shape * Math.min(1.2, power) * 60).toFixed(1)}deg`);
+      });
+    }
+
+    function resetBlastCss() {
+      const root = els.weatherEffect;
+      if (!root?.classList.contains('wx-blasted')) return;
+      root.classList.remove('wx-blasted');
+      [...root.children].forEach(element => {
+        ['--bx', '--by', '--bo', '--bt'].forEach(name => element.style.removeProperty(name));
+      });
+    }
+
     // --- Out of the frame: the pop-out layer -------------------------------
     //
     // A third canvas, #weatherPop, lies in front of the whole dashboard (under
@@ -10855,8 +11341,10 @@
     }
 
     function weatherPopBusy() {
-      const pop = weatherFx.pop;
-      return Boolean(pop && (pop.flare || pop.stars.length || pop.streaks.length || pop.bolt));
+      const fx = weatherFx;
+      const pop = fx.pop;
+      if (fx.blast || fx.bits.length) return true;
+      return Boolean(pop && (pop.flare || pop.stars.length || pop.streaks.length || pop.bolt || pop.kicking));
     }
 
     // How far the card's outline dips at x because of its rounded corners:
@@ -11036,9 +11524,22 @@
       });
     }
 
+    // Where the nuke's gust has knocked something on the pop-out layer to
+    // (it springs back): { x, y, vx, vy }, or none.
+    function wxKick(key) {
+      return weatherFx.pop?.kicks?.[key] || { x: 0, y: 0, vx: 0, vy: 0 };
+    }
+
+    // The sun or the moon, where it is now.
+    function wxSunNow() {
+      const sun = wxSunGeom();
+      const kick = wxKick('sun');
+      return { ...sun, x: sun.x + kick.x, y: sun.y + kick.y };
+    }
+
     function drawPopSun(ctx) {
       const fx = weatherFx;
-      const sun = wxSunGeom();
+      const sun = wxSunNow();
       const t = fx.time;
       ctx.globalAlpha = 0.9;
       wxDrawSprite(ctx, wxSunCorona(sun.r), sun.x, sun.y, 1 + Math.sin(t * 1.05) * 0.04);
@@ -11056,7 +11557,7 @@
 
     function drawPopMoon(ctx) {
       const fx = weatherFx;
-      const moon = wxSunGeom();
+      const moon = wxSunNow();
       const y = moon.y + Math.sin(fx.time * 0.6) * 1.5;
       ctx.globalAlpha = 0.85;
       wxDrawSprite(ctx, wxMoonGlow(moon.r), moon.x, y);
@@ -11074,7 +11575,7 @@
       const fx = weatherFx;
       const flare = fx.pop.flare;
       const g = fx.geo;
-      const sun = wxSunGeom();
+      const sun = wxSunNow();
       const p = Math.min(1, flare.t / WX_FLARE_S);
       const env = wxSmooth(0, 0.12, p) * (1 - wxSmooth(0.55, 1, p));
       if (env <= 0.005) return;
@@ -11347,10 +11848,14 @@
       const fx = weatherFx;
       const g = fx.geo;
       const t = fx.time;
-      wxCloudLayout().forEach(cloud => {
-        const x = cloud.x + cloud.amp * g.W * Math.sin((2 * Math.PI * t) / cloud.period + cloud.phase);
-        const y = cloud.y + Math.sin(t * 0.55 + cloud.phase) * 1.6;
-        drawPopCloud(ctx, cloud, x, y);
+      wxCloudLayout().forEach((cloud, index) => {
+        // Knocked away by the nuke's gust, thinned and stretched a little
+        // while it is out of place.
+        const kick = wxKick(`cloud${index}`);
+        const out = Math.hypot(kick.x, kick.y);
+        const x = cloud.x + kick.x + cloud.amp * g.W * Math.sin((2 * Math.PI * t) / cloud.period + cloud.phase);
+        const y = cloud.y + kick.y + Math.sin(t * 0.55 + cloud.phase) * 1.6;
+        drawPopCloud(ctx, cloud, x, y, 1 - Math.min(0.45, out / 320), 1 + Math.min(0.22, Math.hypot(kick.vx, kick.vy) / 1400));
       });
       fx.pop.wisps.forEach(wisp => {
         const p = wisp.age / wisp.life;
@@ -11400,11 +11905,25 @@
         const y = -wxRand(36, 70) * g.scale;
         pop.drops.push({ x: wxRand(0.03, 0.97) * g.W, y, y0: y, vy, vx: -0.06 * vy, len: (drizzle ? wxRand(7, 11) : wxRand(13, 20)) * g.scale });
       }
+      // The nuke's ring blows the beads off the top edge; they grow back.
+      pop.beads.forEach(bead => {
+        bead.grow = Math.min(1, (bead.grow ?? 1) + dt / 9);
+        if (!fx.blast || bead.grow < 0.3) return;
+        const r = bead.r * g.scale * bead.grow;
+        const hit = wxBlastFront(bead.u * g.W, -r * 0.5);
+        if (!hit) return;
+        spawnBlastDrop(bead.u * g.W, -r * 0.5, hit, { r, speed: 0.8 });
+        bead.grow = 0;
+      });
       pop.drops.forEach(drop => {
+        if (fx.blast) wxBlastShove(drop, drop.x, drop.y, dt, 0.7);
         drop.x += drop.vx * dt;
         drop.y += drop.vy * dt;
       });
       pop.drops = pop.drops.filter(drop => {
+        // Blown up and away by the nuke's gust.
+        if (drop.vy < 0 && drop.y < drop.y0 - 60) return false;
+        if (drop.x < -400 || drop.x > g.W + 400) return false;
         const edge = wxEdgeInset(drop.x);
         if (drop.y < edge) return true;
         const count = drizzle ? 1 + Math.floor(Math.random() * 2) : 2 + Math.floor(Math.random() * 3);
@@ -11416,10 +11935,11 @@
       });
       pop.splashes.forEach(splash => {
         splash.vy += 1100 * dt;
+        if (fx.blast) wxBlastShove(splash, splash.x, splash.y, dt, 0.4);
         splash.x += splash.vx * dt;
         splash.y += splash.vy * dt;
       });
-      pop.splashes = pop.splashes.filter(splash => splash.y < wxEdgeInset(splash.x) + (splash.x < 0 || splash.x > g.W ? 40 : 1));
+      pop.splashes = pop.splashes.filter(splash => splash.y < wxEdgeInset(splash.x) + (splash.x < 0 || splash.x > g.W ? 40 : 1) && splash.y > -300);
       pop.flashes.forEach(flash => { flash.age += dt; });
       pop.flashes = pop.flashes.filter(flash => flash.age < 0.18);
 
@@ -11430,6 +11950,12 @@
         pop.nextRunner = drizzle ? wxRand(16, 30) : wxRand(9, 18);
       }
       pop.runners.forEach(runner => {
+        // A drop running down a side is blown off it.
+        const hit = runner.state === 'run' && fx.blast ? wxBlastFront(runner.side > 0 ? g.W : 0, runner.y) : null;
+        if (hit) {
+          spawnBlastDrop(runner.side > 0 ? g.W + 1 : -1, runner.y, hit, { r: runner.r, speed: 0.8 });
+          runner.state = 'trail';
+        }
         if (runner.state === 'run') {
           runner.slipT -= dt;
           if (runner.slipT <= 0) {
@@ -11484,7 +12010,8 @@
       ctx.stroke();
       ctx.restore();
       (pop.beads || []).forEach(bead => {
-        const r = bead.r * g.scale;
+        const r = bead.r * g.scale * (bead.grow ?? 1);
+        if (r < 0.4) return;
         const x = bead.u * g.W;
         const y = -r * 0.5;
         const body = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r);
@@ -11683,7 +12210,9 @@
         const f = u - i;
         const prof = pop.capProfile[i] * (1 - f) + pop.capProfile[Math.min(pop.capProfile.length - 1, i + 1)] * f;
         const taper = wxSmooth(x0, x0 + g.radius * 1.2, x) * (1 - wxSmooth(x1 - g.radius * 1.2, x1, x));
-        return pop.cap * maxPx * prof * (0.25 + 0.75 * taper);
+        // What the nuke blew off it has not grown back yet.
+        const keep = pop.capKeep ? pop.capKeep[i] * (1 - f) + pop.capKeep[Math.min(pop.capKeep.length - 1, i + 1)] * f : 1;
+        return pop.cap * maxPx * prof * (0.25 + 0.75 * taper) * keep;
       };
       const capPath = () => {
         ctx.beginPath();
@@ -11731,6 +12260,7 @@
       ctx.strokeStyle = 'rgba(110,140,182,.32)';
       ctx.stroke();
       pop.capDrawn = pop.cap;
+      pop.capKeepDrawn = pop.capKeep ? pop.capKeep.reduce((sum, value) => sum + value, 0) : 0;
       pop.capKey = `${g.W}|${g.H}|${g.dpr}|${fx.night}`;
       pop.capTop = top;
       pop.capW = width;
@@ -11755,17 +12285,24 @@
         }));
       }
       const grown = wxSmooth(0.25, 1, pop.cap);
+      if (fx.blast) blastSnowCap(grown);
+      if (pop.capKeep) {
+        for (let index = 0; index < pop.capKeep.length; index++) pop.capKeep[index] = Math.min(1, pop.capKeep[index] + dt / 40);
+      }
       pop.icicles.forEach(icicle => {
-        if (grown < 0.3) return;
+        icicle.broken = Math.max(0, (icicle.broken || 0) - dt / 30);
+        if (grown < 0.3 || icicle.broken > 0.3) return;
         icicle.drip += dt / icicle.dripS;
         if (icicle.drip >= 1) {
           icicle.drip = 0;
           icicle.dripS = wxRand(5, 12);
-          pop.iceDrops.push({ x: icicle.x + icicle.bend, y: g.H + icicle.length * grown * g.scale + 1.5, vy: 30, r: 1.5 * g.scale });
+          pop.iceDrops.push({ x: icicle.x + icicle.bend, y: g.H + icicle.length * grown * (1 - icicle.broken) * g.scale + 1.5, vy: 30, r: 1.5 * g.scale });
         }
       });
       pop.iceDrops.forEach(drop => {
         drop.vy += WX_WATER_GRAVITY * dt;
+        if (fx.blast) wxBlastShove(drop, drop.x, drop.y, dt, 0.5);
+        if (drop.vx) drop.x += drop.vx * dt;
         drop.y += drop.vy * dt;
       });
       pop.iceDrops = pop.iceDrops.filter(drop => {
@@ -11794,9 +12331,64 @@
       pop.bokeh.forEach(flake => {
         flake.bx += flake.vx * dt;
         flake.y += flake.vy * dt;
+        if (wxBlastDrift(flake, flake.x || flake.bx, flake.y, dt, 0.7, 1)) {
+          flake.bx += flake.bvx * dt;
+          flake.y += flake.bvy * dt;
+        }
         flake.x = flake.bx + Math.sin(fx.time * 0.8 + flake.phase) * flake.sway;
       });
-      pop.bokeh = pop.bokeh.filter(flake => flake.y < g.H + 50);
+      pop.bokeh = pop.bokeh.filter(flake => flake.y < g.H + 50 && flake.y > -400 && flake.bx > -400 && flake.bx < g.W + 400);
+    }
+
+    // The ring blows the cap off the top edge where it passes, in a burst of
+    // powder, and snaps the icicles off; both grow back.
+    function blastSnowCap(grown) {
+      const fx = weatherFx;
+      const pop = fx.pop;
+      const g = fx.geo;
+      const maxPx = wxSnowCapMax();
+      if (!pop.capKeep) pop.capKeep = new Float32Array(pop.capProfile ? pop.capProfile.length : 48).fill(1);
+      const n = pop.capKeep.length;
+      for (let index = 0; index < n; index++) {
+        const keep = pop.capKeep[index];
+        const height = pop.cap * maxPx * keep * (pop.capProfile ? pop.capProfile[index] : 0.8);
+        if (height < 1) continue;
+        const x = (index / (n - 1)) * g.W;
+        const hit = wxBlastFront(x, wxEdgeInset(x) - height / 2);
+        if (!hit) continue;
+        const removed = keep * wxClamp(0.55 + 0.3 * hit.power, 0.5, 0.95);
+        pop.capKeep[index] = keep - removed;
+        const count = Math.round(removed * height * 0.5 + Math.random());
+        for (let k = 0; k < count; k++) {
+          spawnBlastPowder(x + wxRand(-0.5, 0.5) * (g.W / n), wxEdgeInset(x) - height * Math.random(), hit, { speed: 0.8, clump: Math.random() < 0.12 });
+        }
+        if (Math.random() < 0.4) spawnBlastHaze(x, -height, hit, false);
+      }
+      (pop.icicles || []).forEach(icicle => {
+        const length = icicle.length * grown * (1 - (icicle.broken || 0)) * g.scale;
+        if (length < 3) return;
+        const hit = wxBlastFront(icicle.x, g.H + length / 2);
+        if (!hit || fx.bits.length >= WX_BLAST_MAX_BITS) return;
+        const v = wxBlastThrow(hit, wxRand(160, 360) * hit.power * g.scale, wxRand(20, 120) * g.scale, 0.35);
+        fx.bits.push({
+          type: 'ice',
+          x: icicle.x,
+          y: g.H + length / 2,
+          px: icicle.x,
+          py: g.H + length / 2,
+          vx: v.vx,
+          vy: v.vy,
+          rot: 0,
+          spin: wxRand(5, 12) * (Math.sign(hit.nx) || (Math.random() < 0.5 ? -1 : 1)),
+          len: length,
+          half: (icicle.width * g.scale) / 2,
+          bend: icicle.bend,
+          age: 0,
+          life: 4
+        });
+        icicle.broken = 1;
+        icicle.drip = 0;
+      });
     }
 
     function wxBokehSprite() {
@@ -11820,7 +12412,8 @@
       const pop = fx.pop;
       const g = fx.geo;
       const key = `${g.W}|${g.H}|${g.dpr}|${fx.night}`;
-      if (!fx.capCanvas || pop.capKey !== key || Math.abs(pop.cap - pop.capDrawn) > 0.02) renderSnowCap();
+      const keepSum = pop.capKeep ? pop.capKeep.reduce((sum, value) => sum + value, 0) : 0;
+      if (!fx.capCanvas || pop.capKey !== key || Math.abs(pop.cap - pop.capDrawn) > 0.02 || Math.abs(keepSum - (pop.capKeepDrawn || 0)) > 0.3) renderSnowCap();
       ctx.drawImage(fx.capCanvas, -6, -pop.capTop, pop.capW, pop.capH);
 
       // Icicles under the card, hanging from an icy lip.
@@ -11838,7 +12431,7 @@
         ctx.stroke();
         ctx.restore();
         pop.icicles.forEach(icicle => {
-          const length = icicle.length * grown * g.scale;
+          const length = icicle.length * grown * (1 - (icicle.broken || 0)) * g.scale;
           if (length < 1) return;
           const half = (icicle.width * g.scale) / 2;
           const x = icicle.x;
@@ -11901,11 +12494,36 @@
           pop.nextStreak = wxRand(1.2, 2.8);
         }
       }
+      // Streaks of the nuke's gust race across the card, away from the
+      // blast, each starting as the ring passes its place.
+      const b = fx.blast;
+      if (b) {
+        b.seeds = b.seeds.filter(seed => {
+          const hit = wxBlastFront(seed.x, seed.y);
+          if (!hit) return true;
+          const speed = wxRand(700, 1100) * Math.min(1.3, hit.power + 0.3) * g.scale;
+          pop.streaks.push({
+            x: seed.x,
+            y: seed.y,
+            vx: hit.nx * speed,
+            vy: hit.ny * speed,
+            len: wxRand(70, 150) * Math.min(1.3, hit.power + 0.35) * g.scale,
+            amp: wxRand(1, 3),
+            phase: Math.random() * 6.28,
+            age: 0,
+            life: wxRand(0.4, 0.6)
+          });
+          return false;
+        });
+      }
       pop.streaks.forEach(streak => {
         streak.age += dt;
         streak.x += streak.vx * dt;
+        if (streak.vy) streak.y += streak.vy * dt;
       });
-      pop.streaks = pop.streaks.filter(streak => (g.side > 0 ? streak.x - streak.len < g.W + 170 : streak.x + streak.len > -170));
+      pop.streaks = pop.streaks.filter(streak => (streak.life
+        ? streak.age < streak.life
+        : g.side > 0 ? streak.x - streak.len < g.W + 170 : streak.x + streak.len > -170));
     }
 
     function spawnWindStreak() {
@@ -11927,31 +12545,38 @@
       const g = fx.geo;
       fx.pop.streaks.forEach(streak => {
         const beyond = g.side > 0 ? streak.x - g.W : -streak.x;
-        const alpha = Math.min(1, streak.age / 0.12) * (1 - wxSmooth(60, 170, beyond));
+        const alpha = streak.life
+          ? Math.min(1, streak.age / 0.06) * (1 - wxSmooth(0.45, 1, streak.age / streak.life))
+          : Math.min(1, streak.age / 0.12) * (1 - wxSmooth(60, 170, beyond));
         if (alpha <= 0.01) return;
-        const dir = Math.sign(streak.vx) || 1;
-        const tailX = streak.x - dir * streak.len;
+        // Along its flight: sideways for the wind, any way for the nuke's gust.
+        const speed = Math.hypot(streak.vx, streak.vy || 0) || 1;
+        const ux = streak.vx / speed;
+        const uy = (streak.vy || 0) / speed;
+        const tailX = streak.x - ux * streak.len;
+        const tailY = streak.y - uy * streak.len;
         const line = () => {
           ctx.beginPath();
           for (let k = 0; k <= 10; k++) {
             const t = k / 10;
-            const x = tailX + (streak.x - tailX) * t;
-            ctx.lineTo(x, streak.y + Math.sin(t * 5 + streak.phase + fx.time * 4) * streak.amp * t);
+            const wave = Math.sin(t * 5 + streak.phase + fx.time * 4) * streak.amp * t;
+            ctx.lineTo(tailX + (streak.x - tailX) * t - uy * wave, tailY + (streak.y - tailY) * t + ux * wave);
           }
         };
-        const outline = ctx.createLinearGradient(tailX, 0, streak.x, 0);
+        const outline = ctx.createLinearGradient(tailX, tailY, streak.x, streak.y);
         outline.addColorStop(0, 'rgba(70,95,135,0)');
-        outline.addColorStop(1, `rgba(70,95,135,${(0.24 * alpha).toFixed(3)})`);
-        const core = ctx.createLinearGradient(tailX, 0, streak.x, 0);
+        outline.addColorStop(1, `rgba(70,95,135,${((streak.life ? 0.34 : 0.24) * alpha).toFixed(3)})`);
+        const core = ctx.createLinearGradient(tailX, tailY, streak.x, streak.y);
         core.addColorStop(0, 'rgba(255,255,255,0)');
         core.addColorStop(1, `rgba(255,255,255,${(0.8 * alpha).toFixed(3)})`);
         ctx.lineCap = 'round';
+        const blast = Boolean(streak.life);
         line();
-        ctx.lineWidth = 2.8;
+        ctx.lineWidth = blast ? 4.2 : 2.8;
         ctx.strokeStyle = outline;
         ctx.stroke();
         line();
-        ctx.lineWidth = 1.1;
+        ctx.lineWidth = blast ? 1.9 : 1.1;
         ctx.strokeStyle = core;
         ctx.stroke();
       });
@@ -11987,6 +12612,7 @@
       }
       pop.stars.forEach(star => {
         star.age += dt;
+        if (fx.blast) wxBlastShove(star, star.x, star.y, dt, 0.3);
         star.x += star.vx * dt;
         star.y += star.vy * dt;
       });
@@ -12001,6 +12627,11 @@
       pop.wisps.forEach(wisp => {
         wisp.age += dt;
         wisp.x += wisp.vx * dt;
+        if (wisp.vy) wisp.y += wisp.vy * dt;
+        if (wxBlastDrift(wisp, wisp.x, wisp.y, dt, 0.4, 0.8)) {
+          wisp.x += wisp.bvx * dt;
+          wisp.y += wisp.bvy * dt;
+        }
       });
       pop.wisps = pop.wisps.filter(wisp => wisp.age < wisp.life);
       if (kind === 'rain' || kind === 'thunder') stepPopRain(dt);
@@ -12009,8 +12640,74 @@
         if (flashState.phase >= 0.92 || flashState.phase < 0.8) pop.bolt = null;
       }
       if (kind === 'snow') stepPopSnow(dt);
+      stepPopKicks(dt);
       stepPopWind(dt);
       void g;
+    }
+
+    // The sun, the moon and the clouds are knocked away from the blast as
+    // the ring reaches them, and a spring brings each one back. The first
+    // cloud hit has a wisp torn off it, and the sun flares.
+    function stepPopKicks(dt) {
+      const fx = weatherFx;
+      const pop = fx.pop;
+      const g = fx.geo;
+      const b = fx.blast;
+      const kind = pop.kind;
+      const bodies = [];
+      if (['sun', 'sun-cloud', 'moon', 'moon-cloud'].includes(kind)) {
+        const sun = wxSunGeom();
+        bodies.push({ key: 'sun', x: sun.x, y: sun.y, mass: 2.4, k: 5, c: 3.2 });
+      }
+      if (['clouds', 'sun-cloud', 'moon-cloud'].includes(kind)) {
+        wxCloudLayout().forEach((cloud, index) => {
+          bodies.push({ key: `cloud${index}`, x: cloud.x, y: cloud.y, w: cloud.w, mass: Math.max(0.5, cloud.w / 150), k: 3.2, c: 2.3 });
+        });
+      }
+      if (!bodies.length) return;
+      pop.kicks = pop.kicks || {};
+      let moving = false;
+      bodies.forEach(body => {
+        const kick = pop.kicks[body.key] || (pop.kicks[body.key] = { x: 0, y: 0, vx: 0, vy: 0, id: 0 });
+        if (b && kick.id !== b.id) {
+          const dx = body.x - b.x;
+          const dy = body.y - b.y;
+          const d = Math.hypot(dx, dy) || 1;
+          if (d <= b.r) {
+            kick.id = b.id;
+            const power = wxBlastPower(d);
+            const v = (430 * power * g.scale) / body.mass;
+            kick.vx += (dx / d) * v;
+            kick.vy += (dy / d) * v;
+            if (body.key === 'sun' && (kind === 'sun' || kind === 'sun-cloud') && !pop.flare) startSunFlare();
+            if (body.w && !b.tore) {
+              b.tore = true;
+              for (let index = 0; index < 2; index++) {
+                pop.wisps.push({
+                  x: body.x + wxRand(-0.2, 0.2) * body.w,
+                  y: body.y + wxRand(-0.1, 0.1) * body.w,
+                  vx: (dx / d) * wxRand(80, 170) * power * g.scale,
+                  vy: (dy / d) * wxRand(40, 110) * power * g.scale,
+                  w: body.w * wxRand(0.32, 0.45),
+                  seed: 50 + Math.floor(Math.random() * 40),
+                  age: 0,
+                  life: wxRand(7, 10)
+                });
+              }
+            }
+          }
+        }
+        kick.vx += (-body.k * kick.x - body.c * kick.vx) * dt;
+        kick.vy += (-body.k * kick.y - body.c * kick.vy) * dt;
+        kick.x += kick.vx * dt;
+        kick.y += kick.vy * dt;
+        if (Math.abs(kick.x) + Math.abs(kick.y) < 0.05 && Math.abs(kick.vx) + Math.abs(kick.vy) < 0.5) {
+          kick.x = kick.y = kick.vx = kick.vy = 0;
+        } else {
+          moving = true;
+        }
+      });
+      pop.kicking = moving;
     }
 
     function drawWeatherFxPop() {
@@ -12020,8 +12717,12 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, fx.popCanvas.width, fx.popCanvas.height);
       const pop = fx.pop;
-      if (!pop) return;
+      if (!pop && !fx.bits.length) return;
       ctx.setTransform(g.dpr, 0, 0, g.dpr, g.vx * g.dpr, g.vy * g.dpr);
+      if (!pop) {
+        drawBlastBits(ctx);
+        return;
+      }
       const kind = pop.kind;
       if (kind === 'sun' || kind === 'sun-cloud') drawPopSun(ctx);
       if (kind === 'moon' || kind === 'moon-cloud') drawPopMoon(ctx);
@@ -12033,6 +12734,7 @@
       if (kind === 'snow') drawPopSnow(ctx);
       if (pop.bolt) drawPopBolt(ctx);
       if (pop.streaks.length) drawPopWind(ctx);
+      drawBlastBits(ctx);
     }
 
     // The debug panel's "Pop-out now".
@@ -12233,6 +12935,7 @@
       if (fx.ledgeState?.wet > 0.08 || fx.ledgeState?.rivulets.length) parts.push(`${fx.ledgeState.rivulets.length} rivulets on the Upcoming strip`);
       if (fx.leak?.params.length) parts.push(`${fx.leak.kind === 'snow' ? 'flakes' : 'drops'} leaking ${(fx.leak.rate * 60).toFixed(0)}/min`);
       if (fx.pop?.flare) parts.push('flare');
+      if (fx.blast) parts.push('shock wave');
       if (fx.pop?.kind === 'snow') parts.push(`snow cap ${Math.round(fx.pop.cap * 100)}%`);
       if (!fx.running && (fx.family || fx.pop) && !wxReducedMotion.matches) parts.push('paused while the card is hidden');
       return parts.join(' · ');
@@ -12319,6 +13022,23 @@
       els.wxDebugFill.addEventListener('click', fillWeatherFxNow);
       els.wxDebugSpill.addEventListener('click', spillWeatherFxNow);
       els.wxDebugPop.addEventListener('click', popWeatherFxNow);
+      document.getElementById('wxDebugNuke')?.addEventListener('click', event => {
+        const button = event.target.closest('[data-wx-nuke]');
+        if (button) testNukeAt(button.dataset.wxNuke);
+      });
+    }
+
+    // The Q panel's nuke buttons: the panel steps aside and the nuke goes off
+    // at the left edge of the screen, in the middle, or right under the
+    // weather card, to see how the shock wave hits the card from there.
+    function testNukeAt(where) {
+      if (edgePanel.falling || nuke.boom || wxReducedMotion.matches) return;
+      closeWeatherDebug();
+      const card = els.weatherCard?.getBoundingClientRect();
+      const x = where === 'under' && card?.width
+        ? card.left + card.width / 2
+        : where === 'middle' ? window.innerWidth / 2 : window.innerWidth * 0.04;
+      setTimeout(() => launchNuke(x), 250);
     }
 
     function weatherEffectRank(code) {
@@ -14402,8 +15122,6 @@ Cancel = choose whether to delete the whole series.`);
     const EDGE_PANEL_WIGGLE_MS = 420;
     const EDGE_PANEL_GRAVITY = 2600;
     const EDGE_PANEL_FALL_MAX_MS = 4000;
-    const EDGE_PANEL_NUKE_MS = 1700;
-    const EDGE_PANEL_NUKE_SPARKS = 8;
 
     const edgePanel = { autoCloseTimer: null, peekTimer: null, drag: null, falling: false };
     const videoShare = { session: null, stream: null, retryTimer: null, qrLibrary: null };
@@ -14478,6 +15196,7 @@ Cancel = choose whether to delete the whole series.`);
         return;
       }
       const tray = els.edgePanelTray;
+      const iconEl = tray.querySelector('.edge-app-icon');
       if (tray.contains(document.activeElement)) document.activeElement.blur();
       const height = tray.offsetHeight;
       const wiggleMs = launch ? 0 : EDGE_PANEL_WIGGLE_MS;
@@ -14513,6 +15232,12 @@ Cancel = choose whether to delete the whole series.`);
         // The crouch before the jump keeps its feet where they were.
         tray.style.transform = `translate(${x}px, ${y + (height * squash) / 2}px) rotate(${angle}deg) scale(${1 + squash}, ${1 - squash})`;
         const rect = tray.getBoundingClientRect();
+        // Its hot icon spits sparks while it works loose, and trails smoke
+        // as it falls.
+        const icon = iconEl ? iconEl.getBoundingClientRect() : rect;
+        if (icon.bottom > 0 && icon.top < window.innerHeight) {
+          nukeFallTrail(icon.left + icon.width / 2, icon.top + icon.height / 2, vx, vy, elapsed < wiggleMs);
+        }
         if (rect.top < window.innerHeight && elapsed < EDGE_PANEL_FALL_MAX_MS) {
           requestAnimationFrame(frame);
           return;
@@ -14523,34 +15248,745 @@ Cancel = choose whether to delete the whole series.`);
     }
 
     function nukeEdgePanel(landingX) {
-      // Back on its dock, out of sight; the handle returns once the smoke
-      // clears.
+      // Back on its dock, out of sight; the handle returns once the cloud
+      // starts to clear.
       els.edgePanelTray.style.transform = '';
-      const nuke = document.createElement('div');
-      nuke.className = 'edge-nuke';
-      nuke.style.setProperty('--nuke-x', `${Math.round(Math.max(40, Math.min(window.innerWidth - 40, landingX)))}px`);
-      ['glare', 'dust', 'stem', 'collar', 'cap', 'flash', 'ring'].forEach(part => {
-        const piece = document.createElement('div');
-        piece.className = `edge-nuke-${part}`;
-        nuke.appendChild(piece);
-      });
-      for (let i = 0; i < EDGE_PANEL_NUKE_SPARKS; i++) {
-        const spark = document.createElement('div');
-        spark.className = 'edge-nuke-spark';
-        const direction = Math.PI * (0.1 + 0.8 * Math.random());
-        const distance = 50 + Math.random() * 90;
-        spark.style.setProperty('--spark-x', `${Math.round(Math.cos(direction) * distance)}px`);
-        spark.style.setProperty('--spark-y', `${Math.round(-Math.sin(direction) * distance)}px`);
-        nuke.appendChild(spark);
-      }
-      els.edgePanel.appendChild(nuke);
-      els.displayView?.classList.add('is-nuke-shaking');
-      setTimeout(() => {
-        nuke.remove();
-        els.displayView?.classList.remove('is-nuke-shaking');
+      const done = () => {
         els.edgePanel.classList.remove('is-falling');
         edgePanel.falling = false;
-      }, EDGE_PANEL_NUKE_MS);
+      };
+      if (!launchNuke(landingX, done)) done();
+    }
+
+    // --- The mini nuke -------------------------------------------------------
+    //
+    // Drawn on a canvas of its own over the whole window, in the edge panel's
+    // layer: in front of the dashboard and of the weather's pop-out layer.
+    // While the panel tumbles, its hot icon trails smoke and sparks. Where it
+    // goes off the bottom of the screen:
+    // - a white flash lights the room and fades to a warm glow;
+    // - a fireball swells at the ground and rises into a mushroom whose cap
+    //   rolls over on itself (a vortex ring: puffs carried up the middle, out
+    //   over the top and down the outside), its underside lit by the fire
+    //   below, cooling from orange through brown to grey;
+    // - the stem draws dust up from a flared base, and a condensation collar
+    //   flashes round it;
+    // - a shock ring races out from the ground across the whole screen. The
+    //   weather card is hit when the ring gets there (weatherFxBlast), sooner
+    //   and harder the closer the blast went off;
+    // - a surge of dust rolls out along the bottom edge;
+    // - embers, and pieces of the panel (frosted bits of the tray, red bits
+    //   of the YouTube icon, its white play triangle) fly out, the biggest
+    //   ones trailing smoke;
+    // - the dashboard shakes, and the weather's pop-out layer with it.
+    const NUKE_MS = 4300;
+    // The panel's handle comes back once the cloud starts to clear.
+    const NUKE_RELEASE_MS = 2800;
+    const NUKE_MAX_DPR = 1.5;
+    // In screen diagonals a second. The weather card uses the same speed, so
+    // it is hit just as the drawn ring reaches it.
+    const NUKE_WAVE_SPEED = 0.8;
+    const NUKE_SMOKE_TONES = {
+      hot: ['204,132,92', '134,76,56', '74,40,34'],
+      smoke: ['186,174,166', '124,112,106', '66,58,58'],
+      dust: ['232,220,204', '186,168,148', '124,108,94']
+    };
+
+    const nuke = {
+      canvas: null,
+      ctx: null,
+      raf: 0,
+      dpr: 1,
+      w: 0,
+      h: 0,
+      sprites: new Map(),
+      boom: null,
+      trail: [],
+      sparks: [],
+      shards: [],
+      fallFrom: null,
+      last: 0,
+      clean: true
+    };
+
+    function nukeCanvasReady() {
+      if (!els.edgePanel) return false;
+      if (!nuke.canvas) {
+        const canvas = document.createElement('canvas');
+        canvas.className = 'edge-nuke-canvas';
+        canvas.setAttribute('aria-hidden', 'true');
+        els.edgePanel.insertBefore(canvas, els.edgePanel.querySelector('.edge-panel-dock'));
+        nuke.canvas = canvas;
+        nuke.ctx = canvas.getContext('2d');
+      }
+      if (!nuke.ctx) return false;
+      const dpr = Math.min(NUKE_MAX_DPR, window.devicePixelRatio || 1);
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      if (dpr !== nuke.dpr) nuke.sprites.clear();
+      if (w !== nuke.w || h !== nuke.h || dpr !== nuke.dpr) {
+        nuke.canvas.width = Math.max(1, Math.round(w * dpr));
+        nuke.canvas.height = Math.max(1, Math.round(h * dpr));
+        nuke.w = w;
+        nuke.h = h;
+        nuke.dpr = dpr;
+      }
+      return true;
+    }
+
+    function nukeSprite(key, size, draw) {
+      let sprite = nuke.sprites.get(key);
+      if (sprite) return sprite;
+      sprite = document.createElement('canvas');
+      sprite.width = sprite.height = Math.ceil(size * nuke.dpr);
+      const ctx = sprite.getContext('2d');
+      ctx.scale(nuke.dpr, nuke.dpr);
+      draw(ctx, size);
+      nuke.sprites.set(key, sprite);
+      return sprite;
+    }
+
+    // A lumpy ball of smoke, lit from above: pale on top, dark underneath.
+    function nukeSmokeSprite(tone, variant) {
+      return nukeSprite(`smoke|${tone}|${variant}`, 128, (ctx, size) => {
+        const [light, mid, dark] = NUKE_SMOKE_TONES[tone];
+        const rnd = wxMulberry(11 + variant * 37);
+        const c = size / 2;
+        for (let index = 0; index < 11; index++) {
+          const a = rnd() * Math.PI * 2;
+          const d = Math.sqrt(rnd()) * size * 0.2;
+          const r = size * (0.17 + rnd() * 0.12);
+          const x = c + Math.cos(a) * d;
+          const y = c + Math.sin(a) * d * 0.85;
+          const lump = ctx.createRadialGradient(x - r * 0.2, y - r * 0.4, r * 0.05, x, y, r);
+          lump.addColorStop(0, `rgba(${light},.95)`);
+          lump.addColorStop(0.5, `rgba(${mid},.8)`);
+          lump.addColorStop(1, `rgba(${mid},0)`);
+          ctx.fillStyle = lump;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Darker underneath, and a soft round edge so neighbouring puffs
+        // melt into one another instead of showing as balls.
+        ctx.globalCompositeOperation = 'source-atop';
+        const shade = ctx.createLinearGradient(0, size * 0.25, 0, size * 0.85);
+        shade.addColorStop(0, 'rgba(255,255,255,.12)');
+        shade.addColorStop(1, `rgba(${dark},.55)`);
+        ctx.fillStyle = shade;
+        ctx.fillRect(0, 0, size, size);
+        ctx.globalCompositeOperation = 'destination-in';
+        const edge = ctx.createRadialGradient(c, c, 0, c, c, c);
+        edge.addColorStop(0, 'rgba(0,0,0,1)');
+        edge.addColorStop(0.5, 'rgba(0,0,0,.9)');
+        edge.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = edge;
+        ctx.fillRect(0, 0, size, size);
+      });
+    }
+
+    function nukeFireSprite(hot) {
+      return nukeSprite(`fire|${hot ? 1 : 0}`, 128, (ctx, size) => {
+        const c = size / 2;
+        const fire = ctx.createRadialGradient(c, c, 0, c, c, c);
+        if (hot) {
+          fire.addColorStop(0, 'rgba(255,255,242,1)');
+          fire.addColorStop(0.32, 'rgba(255,242,176,.95)');
+          fire.addColorStop(0.62, 'rgba(255,198,96,.5)');
+          fire.addColorStop(1, 'rgba(255,160,60,0)');
+        } else {
+          fire.addColorStop(0, 'rgba(255,216,124,1)');
+          fire.addColorStop(0.36, 'rgba(255,142,52,.92)');
+          fire.addColorStop(0.7, 'rgba(214,68,28,.45)');
+          fire.addColorStop(1, 'rgba(150,40,20,0)');
+        }
+        ctx.fillStyle = fire;
+        ctx.fillRect(0, 0, size, size);
+      });
+    }
+
+    // One puff of the cloud: smoke that cools from brown to grey (cool), with
+    // fire in front of it while it is hot.
+    function drawNukePuff(ctx, x, y, size, alpha, heat, cool, variant, tone = 'smoke', squash = 1) {
+      if (alpha <= 0.01 || size < 1) return;
+      const half = size / 2;
+      const tall = size * squash;
+      const smoke = alpha * (1 - Math.min(1, heat) * 0.8);
+      if (smoke > 0.01) {
+        if (tone === 'smoke' && cool < 0.99) {
+          ctx.globalAlpha = smoke * (1 - cool);
+          ctx.drawImage(nukeSmokeSprite('hot', variant), x - half, y - tall / 2, size, tall);
+        }
+        ctx.globalAlpha = smoke * (tone === 'smoke' ? cool : 1);
+        if (ctx.globalAlpha > 0.01) ctx.drawImage(nukeSmokeSprite(tone, variant), x - half, y - tall / 2, size, tall);
+      }
+      if (heat > 0.02) {
+        ctx.globalAlpha = alpha * Math.min(1, heat);
+        ctx.drawImage(nukeFireSprite(false), x - half * 0.92, y - half * 0.92, size * 0.92, size * 0.92);
+        if (heat > 0.55) {
+          ctx.globalAlpha = alpha * Math.min(1, (heat - 0.55) / 0.45);
+          ctx.drawImage(nukeFireSprite(true), x - half * 0.7, y - half * 0.7, size * 0.7, size * 0.7);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // Sets the mushroom off at x on the bottom edge of the screen. onDone is
+    // called once the cloud starts to clear. False when nothing can be drawn.
+    function launchNuke(x, onDone = null) {
+      if (!nukeCanvasReady()) return false;
+      if (nuke.boom?.onDone) nuke.boom.onDone();
+      const w = nuke.w;
+      const h = nuke.h;
+      const S = wxClamp(h * 0.34, 170, 440);
+      const diag = Math.hypot(w, h);
+      x = wxClamp(x, 30, w - 30);
+      const boom = {
+        x,
+        y: h,
+        S,
+        diag,
+        speed: diag * NUKE_WAVE_SPEED,
+        start: performance.now(),
+        onDone,
+        torus: [],
+        dome: [],
+        stem: [],
+        skirt: []
+      };
+      for (let index = 0; index < 56; index++) {
+        boom.torus.push({
+          phi: (index / 56) * Math.PI * 2 + wxRand(-0.07, 0.07),
+          theta: Math.random() * Math.PI * 2,
+          size: wxRand(0.95, 1.35),
+          heat: wxRand(0.75, 1),
+          variant: index % 4
+        });
+      }
+      for (let index = 0; index < 12; index++) {
+        boom.dome.push({ u: wxRand(-1, 1), size: wxRand(0.9, 1.3), phase: Math.random() * 6.28, variant: index % 4 });
+      }
+      for (let index = 0; index < 26; index++) {
+        boom.stem.push({ s: (index + Math.random()) / 26, size: wxRand(0.85, 1.25), phase: Math.random() * 6.28, variant: index % 4 });
+      }
+      for (let index = 0; index < 30; index++) {
+        const dir = index % 2 ? 1 : -1;
+        boom.skirt.push({
+          delay: wxRand(0.02, 0.45),
+          x: x + dir * wxRand(0, 0.08) * S,
+          y: h - wxRand(0, 0.04) * S,
+          vx: dir * S * wxRand(1.1, 3.4),
+          vy: -S * wxRand(0, 0.12),
+          size: S * wxRand(0.16, 0.26),
+          life: wxRand(2.2, 3.6),
+          age: 0,
+          variant: index % 4
+        });
+      }
+      for (let index = 0; index < 64; index++) {
+        const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * (Math.random() < 0.7 ? 0.7 : 1.05);
+        const v = S * wxRand(1.2, 4.6);
+        nuke.sparks.push({
+          x: x + wxRand(-0.05, 0.05) * S,
+          y: h - wxRand(0, 0.05) * S,
+          vx: Math.cos(a) * v,
+          vy: Math.sin(a) * v,
+          g: S * 2.6,
+          age: 0,
+          life: wxRand(0.6, 1.5),
+          w: wxRand(1.4, 2.6)
+        });
+      }
+      nuke.shards.push(...nukeShards(x, h, S));
+      nuke.fallFrom = null;
+      nuke.boom = boom;
+      weatherFxBlast(x, h, boom.speed);
+      nukeLoop();
+      return true;
+    }
+
+    // The panel in pieces: frosted bits of the tray, red bits of the YouTube
+    // icon and its white play triangle.
+    function nukeShards(x, y, S) {
+      const pieces = [];
+      const kinds = [
+        ...Array(10).fill('tray'),
+        ...Array(6).fill('red'),
+        'play',
+        'play'
+      ];
+      kinds.forEach((kind, index) => {
+        const size = kind === 'tray' ? wxRand(9, 22) : kind === 'red' ? wxRand(7, 15) : wxRand(8, 11);
+        let pts;
+        if (kind === 'play') {
+          pts = [[-size * 0.6, -size * 0.7], [size * 0.8, 0], [-size * 0.6, size * 0.7]];
+        } else {
+          const corners = 3 + Math.floor(Math.random() * 3);
+          const turn = Math.random() * 6.28;
+          pts = Array.from({ length: corners }, (_, k) => {
+            const a = turn + (k / corners) * Math.PI * 2 + wxRand(-0.3, 0.3);
+            const r = size * wxRand(0.55, 1);
+            return [Math.cos(a) * r, Math.sin(a) * r * wxRand(0.5, 1)];
+          });
+        }
+        const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.8;
+        const v = S * wxRand(2.2, 4.6);
+        pieces.push({
+          kind,
+          pts,
+          x: x + wxRand(-0.06, 0.06) * S,
+          y: y - wxRand(0.02, 0.08) * S,
+          vx: Math.cos(a) * v,
+          vy: Math.sin(a) * v,
+          g: S * 4.4,
+          rot: Math.random() * 6.28,
+          spin: wxRand(-14, 14),
+          age: 0,
+          trail: index < 4 || (kind === 'red' && index < 12),
+          trailClock: 0
+        });
+      });
+      return pieces;
+    }
+
+    // While the panel falls: smoke and sparks off its hot icon. fuse: still
+    // wiggling loose, only sparks.
+    function nukeFallTrail(x, y, vx, vy, fuse = false) {
+      if (!nukeCanvasReady()) return;
+      const from = nuke.fallFrom;
+      nuke.fallFrom = fuse ? null : { x, y };
+      if (!fuse && from) {
+        // Laid evenly along the way it came since the last frame, so the
+        // trail is one ribbon of smoke rather than a row of dots.
+        const count = Math.min(12, Math.floor(Math.hypot(x - from.x, y - from.y) / 6) + 1);
+        for (let k = 0; k < count && nuke.trail.length < 520; k++) {
+          const f = (k + Math.random()) / count;
+          nuke.trail.push({
+            x: from.x + (x - from.x) * f + wxRand(-3, 3),
+            y: from.y + (y - from.y) * f + wxRand(-3, 3),
+            vx: -vx * 0.05 + wxRand(-10, 10),
+            vy: -vy * 0.05 - wxRand(4, 14),
+            size: wxRand(14, 20),
+            grow: wxRand(24, 36),
+            age: 0,
+            life: wxRand(1, 1.5),
+            alpha: 0.22,
+            heat: 0.7
+          });
+        }
+      }
+      const sparks = fuse ? (Math.random() < 0.5 ? 1 : 0) : 2;
+      for (let index = 0; index < sparks; index++) {
+        const a = Math.random() * Math.PI * 2;
+        const v = wxRand(60, 220);
+        nuke.sparks.push({ x, y, vx: Math.cos(a) * v - vx * 0.1, vy: Math.sin(a) * v - 60 - vy * 0.1, g: 700, age: 0, life: wxRand(0.25, 0.5), w: wxRand(1, 1.8) });
+      }
+      nukeLoop();
+    }
+
+    function nukeLoop() {
+      if (nuke.raf) return;
+      nuke.last = 0;
+      nuke.raf = requestAnimationFrame(nukeFrame);
+    }
+
+    function nukeFrame(now) {
+      nuke.raf = 0;
+      if (!nukeCanvasReady()) return;
+      const dt = nuke.last ? Math.min(0.05, (now - nuke.last) / 1000) : 1 / 60;
+      nuke.last = now;
+      const boom = nuke.boom;
+      const t = boom ? Math.max(0, (now - boom.start) / 1000) : 0;
+      if (boom && boom.onDone && t * 1000 >= NUKE_RELEASE_MS) {
+        boom.onDone();
+        boom.onDone = null;
+      }
+      stepNuke(dt, t);
+      drawNuke(t);
+      nukeShakeAt(boom ? t : Infinity);
+      if (boom && t * 1000 >= NUKE_MS) nuke.boom = null;
+      if (nuke.boom || nuke.trail.length || nuke.sparks.length || nuke.shards.length) {
+        nuke.raf = requestAnimationFrame(nukeFrame);
+      } else {
+        nuke.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        nuke.ctx.clearRect(0, 0, nuke.canvas.width, nuke.canvas.height);
+        nuke.clean = true;
+      }
+    }
+
+    // The dashboard (and the weather's pop-out layer, which lies over it but
+    // outside it) shakes hard and then rumbles out.
+    function nukeShakeAt(t) {
+      let x = 0;
+      let y = 0;
+      if (t < 1.7) {
+        const a = 9 * Math.exp(-t / 0.18) + 3.5 * Math.exp(-t / 0.55);
+        x = a * (0.6 * Math.sin(t * 73) + 0.4 * Math.sin(t * 41 + 1.3));
+        y = a * (0.6 * Math.sin(t * 89 + 0.7) + 0.4 * Math.sin(t * 31 + 2.1));
+      }
+      if (!x && !y && !weatherFx.shake.x && !weatherFx.shake.y) return;
+      weatherFx.shake.x = x;
+      weatherFx.shake.y = y;
+      const value = x || y ? `${x.toFixed(1)}px ${y.toFixed(1)}px` : '';
+      if (els.displayView) els.displayView.style.translate = value;
+      if (weatherFx.popCanvas) weatherFx.popCanvas.style.translate = value;
+    }
+
+    // Where the mushroom is, t seconds in: the cap is a ring of radius R
+    // round (x, capY), of tube radius r, rolled over by spin.
+    function nukeShape(boom, t) {
+      const S = boom.S;
+      const rise = 1 - Math.exp(-t * 1.45) + 0.035 * t;
+      return {
+        capY: boom.y - S * 1.12 * rise,
+        R: S * (0.06 + 0.16 * (1 - Math.exp(-t * 1.7)) + 0.02 * t),
+        r: S * (0.065 + 0.06 * (1 - Math.exp(-t * 2.2)) + 0.01 * t),
+        spin: (3.4 * (1 - Math.exp(-t * 0.6))) / 0.6
+      };
+    }
+
+    function stepNuke(dt, t) {
+      const boom = nuke.boom;
+      if (boom) {
+        boom.skirt.forEach(puff => {
+          if (t < puff.delay) return;
+          puff.age += dt;
+          puff.vx *= Math.exp(-2.3 * dt);
+          puff.vy *= Math.exp(-1.4 * dt);
+          puff.x += puff.vx * dt;
+          puff.y += puff.vy * dt;
+        });
+      }
+      nuke.trail.forEach(puff => {
+        puff.age += dt;
+        puff.vx *= Math.exp(-1.5 * dt);
+        puff.vy = puff.vy * Math.exp(-1.5 * dt) - 10 * dt;
+        puff.x += puff.vx * dt;
+        puff.y += puff.vy * dt;
+        puff.size += puff.grow * dt;
+      });
+      nuke.trail = nuke.trail.filter(puff => puff.age < puff.life);
+      nuke.sparks.forEach(spark => {
+        spark.age += dt;
+        const drag = Math.exp(-1.1 * dt);
+        spark.vx *= drag;
+        spark.vy = spark.vy * drag + spark.g * dt;
+        spark.x += spark.vx * dt;
+        spark.y += spark.vy * dt;
+      });
+      nuke.sparks = nuke.sparks.filter(spark => spark.age < spark.life && spark.y < nuke.h + 20);
+      nuke.shards.forEach(shard => {
+        shard.age += dt;
+        shard.vx *= Math.exp(-0.3 * dt);
+        shard.vy += shard.g * dt;
+        shard.x += shard.vx * dt;
+        shard.y += shard.vy * dt;
+        shard.rot += shard.spin * dt;
+        // The biggest pieces trail smoke, like fireworks: puffs laid evenly
+        // along the step it just took, so the trail is one ribbon rather
+        // than a row of dots.
+        if (shard.trail && shard.age < 1.6) {
+          const step = Math.hypot(shard.vx, shard.vy) * dt;
+          shard.trailClock += step;
+          const spacing = 5;
+          const count = Math.floor(shard.trailClock / spacing);
+          shard.trailClock -= count * spacing;
+          for (let k = 0; k < count && nuke.trail.length < 520; k++) {
+            const back = ((k + Math.random()) / Math.max(1, count)) * dt;
+            nuke.trail.push({
+              x: shard.x - shard.vx * back + wxRand(-1.5, 1.5),
+              y: shard.y - shard.vy * back + wxRand(-1.5, 1.5),
+              vx: wxRand(-8, 8),
+              vy: wxRand(-10, 0),
+              size: wxRand(12, 17),
+              grow: wxRand(18, 28),
+              age: 0,
+              life: wxRand(0.8, 1.3),
+              alpha: 0.13 * (1 - shard.age / 1.8),
+              heat: Math.max(0, 0.8 - shard.age)
+            });
+          }
+        }
+      });
+      nuke.shards = nuke.shards.filter(shard => shard.y < nuke.h + 60 && shard.age < 5);
+    }
+
+    function drawNuke(t) {
+      const ctx = nuke.ctx;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, nuke.canvas.width, nuke.canvas.height);
+      ctx.setTransform(nuke.dpr, 0, 0, nuke.dpr, 0, 0);
+      nuke.clean = false;
+      const boom = nuke.boom;
+      if (boom) drawNukeLight(ctx, boom, t);
+      nuke.trail.forEach(puff => {
+        const p = puff.age / puff.life;
+        const alpha = puff.alpha * wxSmooth(0, 0.08, p) * (1 - wxSmooth(0.45, 1, p));
+        drawNukePuff(ctx, puff.x, puff.y, puff.size, alpha, puff.heat * Math.max(0, 1 - p * 3), 1, 0);
+      });
+      if (boom) drawNukeCloud(ctx, boom, t);
+      drawNukeShards(ctx);
+      drawNukeSparks(ctx);
+      if (boom) drawNukeFlash(ctx, boom, t);
+    }
+
+    // The warm light of the fire on the room, the shock ring, and the glow
+    // on the ground where it went off.
+    function drawNukeLight(ctx, boom, t) {
+      const { x, y, S } = boom;
+      const shape = nukeShape(boom, t);
+      const warm = 0.3 * Math.exp(-t / 1.1);
+      if (warm > 0.01) {
+        const light = ctx.createRadialGradient(x, shape.capY, 0, x, shape.capY, S * 3.2);
+        light.addColorStop(0, `rgba(255,176,90,${warm.toFixed(3)})`);
+        light.addColorStop(0.4, `rgba(255,150,70,${(warm * 0.35).toFixed(3)})`);
+        light.addColorStop(1, 'rgba(255,150,70,0)');
+        ctx.fillStyle = light;
+        ctx.fillRect(0, 0, nuke.w, nuke.h);
+      }
+      // The shock ring: a sharp bright edge with a soft band of disturbed air
+      // behind it, a darker line just inside the edge so it reads on the pale
+      // frame as well.
+      const ring = boom.speed * t;
+      const fade = Math.pow(1 - wxClamp(ring / (boom.diag * 1.15), 0, 1), 0.75) * wxSmooth(0, 0.03, t);
+      if (fade > 0.01) {
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(1, ring - 22), Math.PI, Math.PI * 2);
+        ctx.lineWidth = 30;
+        ctx.strokeStyle = `rgba(90,70,56,${(0.08 * fade).toFixed(3)})`;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(1, ring - 8), Math.PI, Math.PI * 2);
+        ctx.lineWidth = 14;
+        ctx.strokeStyle = `rgba(255,246,226,${(0.3 * fade).toFixed(3)})`;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(1, ring - 2.5), Math.PI, Math.PI * 2);
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = `rgba(110,84,64,${(0.32 * fade).toFixed(3)})`;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, ring, Math.PI, Math.PI * 2);
+        ctx.lineWidth = 2.6;
+        ctx.strokeStyle = `rgba(255,255,255,${(0.9 * fade).toFixed(3)})`;
+        ctx.stroke();
+      }
+      // A condensation dome round the fireball, gone in a moment.
+      const dome = wxClamp(t / 0.55, 0, 1);
+      if (dome < 1) {
+        const radius = S * (0.2 + 1.1 * dome);
+        const haze = ctx.createRadialGradient(x, y, radius * 0.55, x, y, radius);
+        haze.addColorStop(0, 'rgba(255,255,255,0)');
+        haze.addColorStop(0.85, `rgba(255,255,255,${(0.32 * (1 - dome)).toFixed(3)})`);
+        haze.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = haze;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, Math.PI, Math.PI * 2);
+        ctx.fill();
+      }
+      const ember = Math.exp(-t / 1.1);
+      if (ember > 0.02) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(1, 0.26);
+        const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, S * 0.65);
+        glow.addColorStop(0, `rgba(255,236,170,${(0.95 * ember).toFixed(3)})`);
+        glow.addColorStop(0.4, `rgba(255,140,50,${(0.7 * ember).toFixed(3)})`);
+        glow.addColorStop(1, 'rgba(220,70,30,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(0, 0, S * 0.65, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawNukeCloud(ctx, boom, t) {
+      const { x, y, S } = boom;
+      const shape = nukeShape(boom, t);
+      const fade = 1 - wxSmooth(2.4, 4.2, t);
+      const cool = wxSmooth(0.35, 2.2, t);
+      const grow = 1 + 0.16 * t;
+
+      // The stem: a tapered column of dust and smoke, flared at the foot
+      // and where it meets the cap, with puffs carried up it.
+      const stemTop = shape.capY + shape.r * 0.5;
+      const stemLen = Math.max(0, y - stemTop);
+      const stemW = S * (0.045 + 0.012 * t);
+      const stemIn = wxSmooth(0.08, 0.45, t) * fade;
+      const widthAt = s => stemW * (1 + 2.1 * Math.exp(-s * 6) + 0.9 * Math.exp(-(1 - s) * 5));
+      if (stemIn > 0.01 && stemLen > 4) {
+        const sway = s => Math.sin(s * 5 + t * 1.6) * stemW * 0.25;
+        ctx.beginPath();
+        for (let k = 0; k <= 12; k++) {
+          const s = k / 12;
+          ctx.lineTo(x - widthAt(s) + sway(s), y - s * stemLen);
+        }
+        for (let k = 12; k >= 0; k--) {
+          const s = k / 12;
+          ctx.lineTo(x + widthAt(s) + sway(s), y - s * stemLen);
+        }
+        ctx.closePath();
+        const column = ctx.createLinearGradient(0, y, 0, stemTop);
+        const glow = Math.exp(-t / 0.5);
+        column.addColorStop(0, `rgba(${glow > 0.3 ? '255,160,80' : '196,176,154'},${(0.85 * stemIn).toFixed(3)})`);
+        column.addColorStop(0.5, `rgba(170,150,134,${(0.75 * stemIn).toFixed(3)})`);
+        column.addColorStop(1, `rgba(128,112,104,${(0.7 * stemIn).toFixed(3)})`);
+        ctx.fillStyle = column;
+        ctx.fill();
+        boom.stem.forEach(puff => {
+          const s = (puff.s + t * 0.42) % 1;
+          const width = widthAt(s);
+          const px = x + Math.sin(s * 9 + t * 2 + puff.phase) * width * 0.35;
+          const py = y - s * stemLen;
+          const heat = 0.9 * Math.exp(-t / 0.35) * (1 - s * 0.5) + 0.35 * Math.exp(-t / 1.2) * Math.exp(-s * 3);
+          const edge = wxSmooth(0, 0.06, s) * (1 - wxSmooth(0.9, 1, s));
+          drawNukePuff(ctx, px, py, width * 2.7 * puff.size, 0.75 * stemIn * edge, heat, cool, puff.variant, s < 0.35 ? 'dust' : 'smoke');
+        });
+      }
+
+      // The condensation collar, a white ring that flashes round the stem.
+      const collar = wxClamp((t - 0.25) / 1.3, 0, 1);
+      if (collar > 0 && collar < 1 && stemLen > 20) {
+        const cy = y - stemLen * 0.5;
+        const rx = S * (0.1 + 0.34 * collar);
+        const alpha = Math.sin(Math.PI * collar) * 0.75 * fade;
+        ctx.beginPath();
+        ctx.ellipse(x, cy + 2, rx, rx * 0.22, 0, 0, Math.PI * 2);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = `rgba(120,108,100,${(0.25 * alpha).toFixed(3)})`;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.ellipse(x, cy, rx, rx * 0.22, 0, 0, Math.PI * 2);
+        ctx.lineWidth = 16 * (1 - collar) + 6;
+        ctx.strokeStyle = `rgba(255,255,255,${(0.22 * alpha).toFixed(3)})`;
+        ctx.stroke();
+        ctx.lineWidth = 7 * (1 - collar) + 3;
+        ctx.strokeStyle = `rgba(255,255,255,${(0.3 * alpha).toFixed(3)})`;
+        ctx.stroke();
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = `rgba(255,255,255,${(0.5 * alpha).toFixed(3)})`;
+        ctx.stroke();
+      }
+
+      // The cap: puffs carried round a vortex ring (up the middle, out over
+      // the top, down the outside), seen from a little above, drawn back to
+      // front. Its underside stays lit by the fire for a while.
+      const hot = Math.exp(-t / 0.6);
+      const under = 0.55 * Math.exp(-t / 1.5);
+      const puffs = [];
+      boom.torus.forEach(puff => {
+        const theta = puff.theta - shape.spin;
+        const rho = shape.R + shape.r * Math.cos(theta) * 0.9;
+        const below = Math.max(0, -Math.sin(theta));
+        puffs.push({
+          x: x + rho * Math.cos(puff.phi),
+          y: shape.capY - shape.r * Math.sin(theta) + rho * Math.sin(puff.phi) * 0.2,
+          depth: Math.sin(puff.phi) * rho,
+          size: shape.r * 2.1 * puff.size * grow,
+          heat: wxClamp(hot * puff.heat + under * below * (Math.sin(puff.phi) > 0 ? 1 : 0.6), 0, 1),
+          variant: puff.variant
+        });
+      });
+      boom.dome.forEach(puff => {
+        const u = puff.u + Math.sin(t * 0.7 + puff.phase) * 0.05;
+        puffs.push({
+          x: x + u * shape.R * 0.75,
+          y: shape.capY - shape.r * (0.55 + 0.5 * (1 - u * u)),
+          depth: -shape.R * 0.1,
+          size: shape.r * 2.1 * puff.size * grow,
+          heat: hot * 0.85,
+          variant: puff.variant
+        });
+      });
+      puffs.sort((a, b) => a.depth - b.depth);
+      puffs.forEach(puff => drawNukePuff(ctx, puff.x, puff.y, puff.size, 0.92 * fade, puff.heat, cool, puff.variant));
+
+      // The fireball itself, white hot for a moment.
+      const ball = Math.exp(-t / 0.32);
+      if (ball > 0.02) {
+        const radius = (shape.R + shape.r) * 1.25;
+        const fire = ctx.createRadialGradient(x, shape.capY, 0, x, shape.capY, radius);
+        fire.addColorStop(0, `rgba(255,255,246,${ball.toFixed(3)})`);
+        fire.addColorStop(0.35, `rgba(255,236,150,${(0.9 * ball).toFixed(3)})`);
+        fire.addColorStop(0.7, `rgba(255,150,60,${(0.45 * ball).toFixed(3)})`);
+        fire.addColorStop(1, 'rgba(255,120,40,0)');
+        ctx.fillStyle = fire;
+        ctx.beginPath();
+        ctx.arc(x, shape.capY, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // The base surge: dust rolling out along the ground both ways.
+      boom.skirt.forEach(puff => {
+        if (t < puff.delay) return;
+        const p = puff.age / puff.life;
+        if (p >= 1) return;
+        const alpha = 0.7 * wxSmooth(0, 0.1, p) * (1 - wxSmooth(0.4, 1, p));
+        drawNukePuff(ctx, puff.x, puff.y, puff.size * (1 + 1.4 * p), alpha, 0.45 * Math.exp(-puff.age / 0.25), 1, puff.variant, 'dust', 0.6);
+      });
+    }
+
+    function drawNukeShards(ctx) {
+      nuke.shards.forEach(shard => {
+        ctx.save();
+        ctx.translate(shard.x, shard.y);
+        ctx.rotate(shard.rot);
+        ctx.beginPath();
+        shard.pts.forEach(([px, py], index) => (index ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+        ctx.closePath();
+        const heat = Math.exp(-shard.age / 0.45);
+        if (heat > 0.05) {
+          ctx.lineWidth = 3.5;
+          ctx.strokeStyle = `rgba(255,140,50,${(0.8 * heat).toFixed(3)})`;
+          ctx.stroke();
+        }
+        ctx.fillStyle = shard.kind === 'red' ? '#ff1a0a' : shard.kind === 'play' ? '#ffffff' : 'rgba(255,252,247,.95)';
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = shard.kind === 'red' ? 'rgba(130,0,0,.6)' : 'rgba(110,98,88,.55)';
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+
+    // Embers, cooling from white through orange to dull red as they fly.
+    function drawNukeSparks(ctx) {
+      ctx.lineCap = 'round';
+      nuke.sparks.forEach(spark => {
+        const p = spark.age / spark.life;
+        const alpha = 1 - wxSmooth(0.6, 1, p);
+        if (alpha <= 0.01) return;
+        const colour = p < 0.25 ? '255,246,200' : p < 0.55 ? '255,180,70' : '214,86,34';
+        const tail = 0.016;
+        const tx = spark.x - spark.vx * tail;
+        const ty = spark.y - spark.vy * tail;
+        const streak = ctx.createLinearGradient(tx, ty, spark.x, spark.y);
+        streak.addColorStop(0, `rgba(${colour},0)`);
+        streak.addColorStop(1, `rgba(${colour},${alpha.toFixed(3)})`);
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(spark.x, spark.y);
+        ctx.lineWidth = spark.w * (1 - p * 0.5);
+        ctx.strokeStyle = streak;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(spark.x, spark.y, spark.w * (1.1 - p * 0.5), 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,250,226,${(alpha * (1 - p)).toFixed(3)})`;
+        ctx.fill();
+      });
+    }
+
+    // The flash: the whole room goes white for a moment.
+    function drawNukeFlash(ctx, boom, t) {
+      const level = 0.8 * wxSmooth(0, 0.025, t) * Math.exp(-Math.max(0, t - 0.025) / 0.1);
+      if (level <= 0.01) return;
+      const flash = ctx.createRadialGradient(boom.x, boom.y, 0, boom.x, boom.y, boom.diag);
+      flash.addColorStop(0, `rgba(255,253,240,${level.toFixed(3)})`);
+      flash.addColorStop(0.45, `rgba(255,244,214,${(level * 0.6).toFixed(3)})`);
+      flash.addColorStop(1, `rgba(255,236,200,${(level * 0.3).toFixed(3)})`);
+      ctx.fillStyle = flash;
+      ctx.fillRect(0, 0, nuke.w, nuke.h);
     }
 
     function peekEdgePanel() {

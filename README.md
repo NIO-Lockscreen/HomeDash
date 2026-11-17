@@ -375,8 +375,9 @@ The wall display has a hidden panel by the clock. A slim handle sits on the left
 edge of the screen, level with the clock: pull it to the right and the panel
 slides out, like Android's edge panel. A tap on the handle only nudges the panel
 out and back to show that it wants pulling, so a stray touch on the edge opens
-nothing. Tap beside the panel, push it back left, or leave it for ten seconds and
-it slides away again.
+nothing. Tap beside the panel or push it back left and it slides away again. Leave
+it for ten seconds, or pull it on to the right until it comes off, and it goes up
+in a mini nuke (see *The mini nuke* below).
 
 The pull does not have to start on the very edge. The grab area is 112px wide
 and about a third of the screen tall, so the finger can start well inside the
@@ -417,6 +418,32 @@ the × closes the player.
   a bare embed because the wall has to know whether the video is playing. Some
   owners forbid playing their videos outside YouTube; the player says so instead
   of showing a black box.
+
+### The mini nuke
+
+A panel left open wiggles loose, its YouTube icon glowing and spitting sparks like
+a lit fuse, hops off its dock and tumbles off the bottom of the screen trailing
+smoke. Pulled on to the right past open, it comes off the same way at the finger's
+speed. Where it leaves the screen it goes off:
+
+- A white flash lights the whole screen and fades to a warm orange glow.
+- A fireball swells at the bottom edge and rises into a mushroom cloud. The cap
+  rolls over on itself like a real one (a vortex ring: puffs carried up the
+  middle, out over the top and down the outside), its underside lit by the fire
+  below, cooling from orange through brown to grey. The stem draws dust up from
+  a flared base, and a white condensation collar flashes round it.
+- A shock ring races out from the blast across the whole screen. It is what hits
+  the weather card (see *The nuke's shock wave* under *Weather effects*).
+- Dust rolls out along the bottom edge both ways.
+- Embers and pieces of the panel fly out: frosted bits of the tray, red bits of
+  the YouTube icon and its white play triangle. The biggest trail smoke.
+- The dashboard shakes hard and rumbles out over about a second and a half; the
+  weather's pop-out layer shakes with it so it stays on the card.
+
+It is all drawn on one canvas in the edge panel's layer, in front of the
+dashboard, and takes about four seconds. The handle comes back after about three,
+as the cloud clears. With reduced motion the panel just slides shut. The cloud
+scales with the screen height, so it looks the same on any screen.
 
 ## Tent view on the iPhone Duo
 
@@ -629,6 +656,53 @@ edge of the Upcoming strip instead of vanishing under it.
 When there is no Upcoming strip under the card, things fall on under whatever
 card is there, as before.
 
+### The nuke's shock wave
+
+When the YouTube panel's mini nuke goes off, its shock ring sweeps over the
+weather card and blows away whatever the card's sky has on it and around it. Nothing
+here is physics. The ring is a circle growing at the same fixed speed the nuke
+draws it (0.8 screen diagonals a second), and whatever it passes is shoved straight
+away from the blast by a gust that dies away behind the ring. So where the panel
+landed decides how the card is hit:
+
+- **Which part first**: the corner nearest the blast is hit first, and the ring
+  can be seen sweeping across the card from there.
+- **Which way**: everything blows away from the blast. A blast right under the
+  card throws things up and out over its top; one far to the side blows them
+  sideways across the card and out of the other side.
+- **How hard**: the push falls off with distance. Right under the card it is
+  about three times as strong as from the far side of the screen, and the near
+  side of the card gets more than the far side.
+
+What each sky does when it is hit:
+
+- **Rain, drizzle and thunder**: the water is torn off its surface as spray and a
+  haze of it, and a good part of it is lost (a fifth to two thirds, more the closer
+  the blast). Spray flies out over the card's border, falls back into the water,
+  onto the Upcoming strip or off the screen. What is left piles up on the side away
+  from the blast and sloshes back and forth, heaves up if the blast was below,
+  and a swell runs off across it. The beads on the top edge, drops running down
+  the sides, beads under the holes and the film on the Upcoming strip are blown
+  off; streams and drips bend over in the gust. The beads grow back.
+- **Snow**: the pile, the cap on the top edge and the heap on the Upcoming strip
+  are scoured off in a burst of powder and spindrift that drifts down slowly and
+  settles back on the pile or the strip. The icicles snap off, tumble and shatter
+  on the strip. The cap grows back over about forty seconds, the icicles over
+  half a minute, the pile at its usual rate.
+- **Fog**: the mist is blown away from the card and thinned, no new mist comes
+  for two and a half seconds, then it rolls back in all at once.
+- **Clouds, sun and moon**: each is knocked away from the blast as the ring
+  reaches it and springs back over a few seconds, thinning while it is out of
+  place. A wisp tears off the clouds and drifts away. The sun flares.
+- **Every sky**: streaks of the gust race across the card away from the blast,
+  and the card's own CSS rain, snow, mist and clouds are pushed aside and thinned
+  where the ring passes (rain is bent over too), then ease back.
+
+Falling drops, flakes, mist and shooting stars caught by the gust are pushed along
+with it. Spray, powder, haze and broken icicles are drawn on the pop-out layer, so
+they fly out over the card's border. If the card is hidden or covered when the
+nuke goes off, nothing happens to it.
+
 ### When it runs
 
 The loop runs only while the card shows the weather, the page is in view, no
@@ -659,6 +733,10 @@ On the wall display, press **Q** to open a small panel in the top right corner:
   flare now*, *Shooting star now*, *Cloud drifts off*, *Mist rolls in*, *Drop
   runs down*, *Lightning now* (the card's flash jumps to its next strike) or
   *Snow flurry now*. With wind on, it also sends a few gusts.
+- **Mini nuke goes off at**: *Left edge*, *Middle* or *Under card* closes the
+  panel and sets the nuke off at that place at the bottom of the screen (without
+  the panel falling), to see how the shock wave hits the card from there.
+  *Fill up now* first gives it the most to blow away.
 - **Speed** (1×, 4×, 12×, 40×) only speeds up the filling. The leak and the
   spill always run at their real speed, so they can be judged as they will look.
 - A status line shows the sky, how full the card is and what it is doing.
