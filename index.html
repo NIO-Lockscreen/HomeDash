@@ -4137,27 +4137,29 @@
     .selected-event-media.is-sofia,
     .card3d.is-lifted > .mini-event.is-sofia {
       box-shadow:
-        0 0 0 2px rgba(255, 128, 186, 0.95),
-        0 0 20px 4px rgba(255, 102, 168, 0.45),
+        0 0 0 2px rgba(255, 128, 186, 0.48),
+        0 0 20px 4px rgba(255, 102, 168, 0.22),
         0 8px 18px rgba(70, 58, 44, 0.08);
     }
 
     .admin-event-simple.is-sofia {
-      box-shadow: 0 0 0 2px rgba(255, 128, 186, 0.9), 0 0 16px 2px rgba(255, 102, 168, 0.35);
+      box-shadow: 0 0 0 2px rgba(255, 128, 186, 0.45), 0 0 16px 2px rgba(255, 102, 168, 0.18);
     }
 
     .admin-event-simple.is-sofia .admin-event-title::after {
       content: ' ♥';
-      color: #ff4f9a;
+      color: rgba(255, 79, 154, 0.5);
     }
 
     .upcoming-grid { position: relative; }
     .selected-event-media.is-sofia { position: relative; }
 
+    /* Glow and hearts at half strength, so they stay a gentle touch. */
     .sofia-aura {
       position: absolute;
       z-index: 3;
       pointer-events: none;
+      opacity: .5;
       transition: opacity .6s ease;
     }
 
