@@ -465,6 +465,28 @@ dashboard, and takes about four seconds. The handle comes back after about three
 as the cloud clears. With reduced motion the panel just slides shut. The cloud
 scales with the screen height, so it looks the same on any screen.
 
+## Sofia's tasks
+
+A task that names Sofia gets a pink glowing ring and hearts floating up around it.
+"Names Sofia" means the word *Sofia* in its title, place or note, in any case, and
+also *Sofias* or *Sofia's* (so "Sofias bursdag" and "Hente sofia" count), but not
+a longer word that only starts with it (*Sofiahallen*), nor *Sofie* or *Sophia*.
+
+- **On an Upcoming card**: a pink ring with a softly pulsing glow, and eight
+  hearts that float up and sway around the card's edges. The card itself clips
+  what is inside it, so the hearts sit in a separate layer laid over the card's
+  place in the strip and reaching a little past it. While the cards rattle after
+  the mini nuke, the hearts step aside and come back once the cards settle.
+- **As the big task photo** (a featured task today, or one picked from the strip):
+  the ring outside, and a pink glow and hearts rising inside the photo along its
+  bottom and sides.
+- **On the phone's tent slides**: the glow and hearts inside the slide.
+- **In the admin list**: the ring and a small heart after the title.
+
+It is all CSS: only opacity and transform animate, so it runs on the compositor
+and costs next to nothing. It pauses while the camera dimmer has dimmed the
+screen, and with reduced motion the glow is steady and the hearts stand still.
+
 ## Tent view on the iPhone Duo
 
 Fold the iPhone Duo shut and stand it up like a tent, so its outer screen is

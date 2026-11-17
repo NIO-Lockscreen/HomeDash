@@ -4124,6 +4124,102 @@
       to { box-shadow: 0 0 0 2px rgba(255, 70, 30, 0.9), 0 0 28px rgba(255, 110, 40, 0.9); }
     }
 
+    /* Sofia: a task that names her (see isSofiaEvent) gets a pink ring with a
+       softly pulsing glow, and hearts that float up around it. Only opacity
+       and transform animate; it pauses while the screen is dimmed, and with
+       reduced motion the hearts just sit there. On an Upcoming card the
+       hearts sit in an aura laid over the card's grid cell and reaching a
+       little past it (the card itself clips what is inside it); the big task
+       photo, the picked-task panel and the tent slides get theirs inside the
+       photo. */
+    .mini-event.is-sofia,
+    .event-hero.is-sofia,
+    .selected-event-media.is-sofia,
+    .card3d.is-lifted > .mini-event.is-sofia {
+      box-shadow:
+        0 0 0 2px rgba(255, 128, 186, 0.95),
+        0 0 20px 4px rgba(255, 102, 168, 0.45),
+        0 8px 18px rgba(70, 58, 44, 0.08);
+    }
+
+    .admin-event-simple.is-sofia {
+      box-shadow: 0 0 0 2px rgba(255, 128, 186, 0.9), 0 0 16px 2px rgba(255, 102, 168, 0.35);
+    }
+
+    .admin-event-simple.is-sofia .admin-event-title::after {
+      content: ' ♥';
+      color: #ff4f9a;
+    }
+
+    .upcoming-grid { position: relative; }
+    .selected-event-media.is-sofia { position: relative; }
+
+    .sofia-aura {
+      position: absolute;
+      z-index: 3;
+      pointer-events: none;
+      transition: opacity .6s ease;
+    }
+
+    /* Laid over the card's grid cell, reaching 16px past it all round. */
+    .sofia-aura.is-around { inset: -16px; }
+    .sofia-aura.is-inside {
+      inset: 0;
+      overflow: hidden;
+      border-radius: inherit;
+    }
+
+    .sofia-glow {
+      position: absolute;
+      border-radius: var(--radius-md);
+      animation: sofia-glow 2.8s ease-in-out infinite alternate;
+    }
+
+    .sofia-aura.is-around .sofia-glow {
+      inset: 16px;
+      box-shadow: 0 0 30px 9px rgba(255, 102, 168, 0.5);
+    }
+
+    .sofia-aura.is-inside .sofia-glow {
+      inset: 0;
+      border-radius: inherit;
+      box-shadow: inset 0 0 40px 8px rgba(255, 102, 168, 0.5), inset 0 0 0 2px rgba(255, 160, 205, 0.8);
+    }
+
+    .sofia-heart {
+      position: absolute;
+      width: var(--s, 20px);
+      height: var(--s, 20px);
+      margin: calc(var(--s, 20px) / -2) 0 0 calc(var(--s, 20px) / -2);
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-3.5 -3.5 31 31'%3E%3Cdefs%3E%3Cfilter id='g' x='-60%25' y='-60%25' width='220%25' height='220%25'%3E%3CfeGaussianBlur stdDeviation='1.8'/%3E%3C/filter%3E%3ClinearGradient id='f' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ffa6d0'/%3E%3Cstop offset='1' stop-color='%23ff3f8e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' fill='%23ff5fa8' opacity='.75' filter='url(%23g)'/%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' fill='url(%23f)' stroke='%23fff' stroke-opacity='.55' stroke-width='.8'/%3E%3Cellipse cx='7.4' cy='7.2' rx='2.3' ry='1.4' fill='%23fff' opacity='.75' transform='rotate(-32 7.4 7.2)'/%3E%3C/svg%3E") center / contain no-repeat;
+      opacity: 0;
+      animation: sofia-heart var(--dur, 4s) ease-in-out var(--delay, 0s) infinite;
+    }
+
+    /* While the cards are rattling the aura steps aside. */
+    .upcoming-grid.is-rattling .sofia-aura { opacity: 0; transition-duration: .15s; }
+
+    body.motion-dimmed .sofia-glow,
+    body.motion-dimmed .sofia-heart { animation-play-state: paused; }
+
+    @keyframes sofia-glow {
+      from { opacity: .4; }
+      to { opacity: 1; }
+    }
+
+    @keyframes sofia-heart {
+      0% { transform: translate(0, 8px) scale(.35) rotate(-14deg); opacity: 0; }
+      16% { opacity: 1; }
+      50% { transform: translate(var(--dx, 8px), calc(var(--rise, 40px) * -0.5)) scale(1) rotate(9deg); }
+      78% { opacity: .9; }
+      100% { transform: translate(calc(var(--dx, 8px) * -0.4), calc(var(--rise, 40px) * -1)) scale(.75) rotate(-6deg); opacity: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .sofia-glow { animation: none; }
+      .sofia-heart { animation: none; opacity: .85; }
+    }
+
     /* Picture cards primed for the mini nuke. Pulling the YouTube panel out
        wraps each Upcoming photo card in a small 3D object (.card3d): the card
        is its front, a few plates behind it make its edge and its back, and a
@@ -7148,6 +7244,48 @@
       els.imageStatus.textContent = `${baseMessage} Adjust pan and zoom below before saving.`;
     }
 
+    // --- Sofia -----------------------------------------------------------------
+    //
+    // A task that names Sofia (in its title, place or note, in any case, also
+    // as "Sofias" / "Sofia's") gets a pink glowing ring and hearts floating up
+    // around it, wherever it is shown on the wall: an Upcoming card, the big
+    // task photo, the picked-task panel, and the tent slides. In the admin
+    // list it gets the ring and a heart.
+    const SOFIA_NAME = /(^|[^\p{L}])sofia(?:s|['’]s)?(?![\p{L}])/iu;
+    // Hearts round an Upcoming card, in % of the aura (the card plus 16px all
+    // round): left, top, size px, sway px, rise px, seconds, start offset s.
+    const SOFIA_HEARTS_AROUND = [
+      [3, 78, 28, -8, 44, 3.8, 0],
+      [1, 40, 22, -10, 36, 4.4, 1.3],
+      [97, 62, 30, 9, 48, 4, 0.6],
+      [95, 25, 22, 8, 34, 4.6, 2.4],
+      [20, 4, 24, -6, 36, 4.2, 3.1],
+      [74, 2, 26, 7, 40, 3.9, 1.9],
+      [50, 97, 24, 6, 42, 4.3, 2.8],
+      [86, 94, 20, -6, 36, 4.8, 0.3]
+    ];
+    // Inside a big photo: rising from its bottom edge and up its sides.
+    const SOFIA_HEARTS_INSIDE = [
+      [6, 90, 40, 10, 110, 5.2, 0],
+      [4, 52, 30, -6, 90, 5.8, 2.1],
+      [94, 82, 42, -10, 120, 5.4, 1],
+      [96, 42, 28, 8, 80, 6, 3.3],
+      [30, 97, 30, 12, 110, 5.6, 4],
+      [70, 96, 36, -8, 116, 5, 2.7],
+      [50, 93, 24, 6, 90, 6.2, 1.6]
+    ];
+
+    function isSofiaEvent(event) {
+      return Boolean(event) && SOFIA_NAME.test([event.title, event.location, event.note].filter(Boolean).join(' '));
+    }
+
+    function sofiaAuraHtml(kind, style = '') {
+      const hearts = (kind === 'inside' ? SOFIA_HEARTS_INSIDE : SOFIA_HEARTS_AROUND)
+        .map(([x, y, size, dx, rise, dur, delay]) => `<i class="sofia-heart" style="left:${x}%;top:${y}%;--s:${size}px;--dx:${dx}px;--rise:${rise}px;--dur:${dur}s;--delay:${-delay}s"></i>`)
+        .join('');
+      return `<span class="sofia-aura is-${kind}" aria-hidden="true"${style ? ` style="${style}"` : ''}><span class="sofia-glow"></span>${hearts}</span>`;
+    }
+
     function renderHeroEvent(event) {
       if (!event || event._completed) return;
       const date = new Date(event.start);
@@ -7170,6 +7308,11 @@
       els.heroTitle.textContent = event.title;
       els.heroLocation.textContent = event.location || event.note || 'Shared calendar task';
       els.heroEvent.classList.toggle('is-flipped', state.heroEventFlipped);
+      const sofia = isSofiaEvent(event);
+      els.heroEvent.classList.toggle('is-sofia', sofia);
+      const aura = els.heroEvent.querySelector(':scope > .sofia-aura');
+      if (sofia && !aura) els.heroEvent.insertAdjacentHTML('beforeend', sofiaAuraHtml('inside'));
+      else if (!sofia && aura) aura.remove();
       if (els.heroBack) {
         els.heroBack.innerHTML = `
           <div class="selected-event-kicker">Task details</div>
@@ -7209,7 +7352,7 @@
         <div class="selected-event-flip${state.selectedEventFlipped ? ' is-flipped' : ''}" data-selected-flip>
           <div class="selected-event-inner">
             <div class="selected-event-face selected-event-front">
-              <span class="selected-event-media"><img class="selected-event-image" alt="" src="${htmlEscape(first.imageUrl || placeholderFor(first.id, first.title))}" style="${imageFocusStyle(first)}" data-fallback-seed="${htmlEscape(first.id)}" data-fallback-label="${htmlEscape(first.title)}"></span>
+              <span class="selected-event-media${isSofiaEvent(first) ? ' is-sofia' : ''}"><img class="selected-event-image" alt="" src="${htmlEscape(first.imageUrl || placeholderFor(first.id, first.title))}" style="${imageFocusStyle(first)}" data-fallback-seed="${htmlEscape(first.id)}" data-fallback-label="${htmlEscape(first.title)}">${isSofiaEvent(first) ? sofiaAuraHtml('inside') : ''}</span>
               <div class="selected-event-copy">
                 <div class="selected-event-kicker">${htmlEscape(dayLabel)} · ${htmlEscape(timeLabel)}${repeat ? ` · ${htmlEscape(repeat)}` : ''}</div>
                 <h2 class="selected-event-title">${htmlEscape(first.title)}</h2>
@@ -8524,17 +8667,21 @@
 
       ensureTodayTaskCycle();
       if (els.upcomingGrid) els.upcomingGrid.style.setProperty('--upcoming-cols', String(upcomingLimit));
-      els.upcomingGrid.innerHTML = upcoming.map(event => {
+      // Sofia's hearts sit in an aura laid over the card's grid cell.
+      const columns = Math.max(1, getComputedStyle(els.upcomingGrid).gridTemplateColumns.split(' ').filter(Boolean).length);
+      els.upcomingGrid.innerHTML = upcoming.map((event, index) => {
         const date = new Date(event.start);
         const exactDate = formatUpcomingDate(date);
+        const sofia = isSofiaEvent(event);
+        const aura = sofia ? sofiaAuraHtml('around', `grid-column:${(index % columns) + 1} / span 1;grid-row:${Math.floor(index / columns) + 1} / span 1`) : '';
         return `
-          <button class="mini-event" type="button" data-upcoming-pick="${htmlEscape(event._instanceId)}" aria-label="Open ${htmlEscape(event.title)} on ${htmlEscape(exactDate)}">
+          <button class="mini-event${sofia ? ' is-sofia' : ''}" type="button" data-upcoming-pick="${htmlEscape(event._instanceId)}" aria-label="Open ${htmlEscape(event.title)} on ${htmlEscape(exactDate)}">
             <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}" style="${upcomingImageFocusStyle(event)}" data-fallback-seed="${htmlEscape(event.id)}" data-fallback-label="${htmlEscape(event.title)}">
             <span class="mini-copy">
               <span class="mini-time">${htmlEscape(exactDate)} · ${formatTime(date, false)}</span>
               <span class="mini-title">${htmlEscape(event.title)}</span>
             </span>
-          </button>
+          </button>${aura}
         `;
       }).join('');
     }
@@ -14154,7 +14301,7 @@ Cancel = choose whether to delete the whole series.`);
       const emailText = reminderSummary(event);
       const reminderText = emailText ? `<div class="admin-event-location">✉ ${htmlEscape(emailText)}</div>` : '';
       return `
-        <button class="admin-event-simple${event._completed ? ' admin-event-complete' : ''}" type="button" data-admin-card="${htmlEscape(event._instanceId)}" aria-label="Open actions for ${htmlEscape(event.title)}">
+        <button class="admin-event-simple${event._completed ? ' admin-event-complete' : ''}${isSofiaEvent(event) ? ' is-sofia' : ''}" type="button" data-admin-card="${htmlEscape(event._instanceId)}" aria-label="Open actions for ${htmlEscape(event.title)}">
           <div class="admin-event-main">
             <span class="event-thumb"><img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}" style="${imageFocusStyle(event)}" data-fallback-seed="${htmlEscape(sourceId)}" data-fallback-label="${htmlEscape(event.title)}"></span>
             <div>
@@ -16187,7 +16334,9 @@ Cancel = choose whether to delete the whole series.`);
       }
       cardRattle.items = items;
       cardRattle.boom = boom;
+      els.upcomingGrid.classList.add('is-rattling');
       if (!items.length) {
+        els.upcomingGrid.classList.remove('is-rattling');
         scheduleUnprimeCards(400);
         return;
       }
@@ -16284,6 +16433,7 @@ Cancel = choose whether to delete the whole series.`);
         if (card.shade) card.shade.style.opacity = '';
       });
       cardRattle.items = [];
+      els.upcomingGrid?.classList.remove('is-rattling');
       if (!els.edgePanel?.classList.contains('is-open')) scheduleUnprimeCards(500);
     }
 
@@ -17013,6 +17163,7 @@ Cancel = choose whether to delete the whole series.`);
           <div class="tent-slide-when">${live ? '<span class="tent-slide-live">Now</span>' : ''}<b>${htmlEscape(day)}</b><span class="tent-slide-sep">·</span><span>${htmlEscape(formatTime(start, false))}</span></div>
           ${event.location ? `<div class="tent-slide-location">${htmlEscape(event.location)}</div>` : ''}
         </div>
+        ${isSofiaEvent(event) ? sofiaAuraHtml('inside') : ''}
       `;
     }
 
