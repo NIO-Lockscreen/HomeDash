@@ -7370,7 +7370,12 @@
     // around it, wherever it is shown on the wall: an Upcoming card, the big
     // task photo, the picked-task panel, and the tent slides. In the admin
     // list it gets the ring and a heart.
+    //
+    // None of it shows before 1 December 2026 (midnight, the screen's own
+    // time); from then on it is always on. The wall redraws every minute, so it
+    // switches on by itself within a minute of midnight, no reload needed.
     const SOFIA_NAME = /(^|[^\p{L}])sofia(?:s|['’]s)?(?![\p{L}])/iu;
+    const SOFIA_FROM = new Date(2026, 11, 1).getTime();
     // Hearts round an Upcoming card, in % of the aura (the card plus 16px all
     // round): left, top, size px, sway px, rise px, seconds, start offset s.
     const SOFIA_HEARTS_AROUND = [
@@ -7395,7 +7400,7 @@
     ];
 
     function isSofiaEvent(event) {
-      return Boolean(event) && SOFIA_NAME.test([event.title, event.location, event.note].filter(Boolean).join(' '));
+      return Boolean(event) && Date.now() >= SOFIA_FROM && SOFIA_NAME.test([event.title, event.location, event.note].filter(Boolean).join(' '));
     }
 
     function sofiaAuraHtml(kind, style = '') {

@@ -544,6 +544,10 @@ A task that names Sofia gets a pink glowing ring and hearts floating up around i
 also *Sofias* or *Sofia's* (so "Sofias bursdag" and "Hente sofia" count), but not
 a longer word that only starts with it (*Sofiahallen*), nor *Sofie* or *Sophia*.
 
+None of it shows before **1 December 2026** (from midnight, in the screen's own
+time zone); from then on it is always on. The wall redraws every minute, so it
+switches on by itself within a minute of midnight, without a reload.
+
 - **On an Upcoming card**: a pink ring with a softly pulsing glow, and eight
   hearts that float up and sway around the card's edges. The card itself clips
   what is inside it, so the hearts sit in a separate layer laid over the card's
