@@ -809,6 +809,8 @@ moment, then the app.
 - **On a narrow or upright screen** the phone is laid over the middle of the
   wall instead, and the wall behind it waits: a task added on the phone drops
   into the Upcoming strip as the phone is put away.
+- **Space** on the wall (with a keyboard) puts the phone up, and presses it away
+  again, without opening the Q panel. Typing in a field keeps its space.
 - **Putting it away**: **Done** / **×** beside the phone, the home bar at the
   bottom of it, a tap outside it (over the middle of the wall), or Esc (Esc
   inside the app first closes whatever is open in it, such as the editor). The

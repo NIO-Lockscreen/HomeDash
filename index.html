@@ -21871,6 +21871,18 @@ Cancel = choose whether to delete the whole series.`);
           closePhoneApp();
         }
       }, true);
+      // Space puts the phone up, or away again, without opening the Q panel.
+      // Typing in a field keeps its space.
+      window.addEventListener('keydown', event => {
+        if (event.key !== ' ') return;
+        if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+        if (event.target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+        event.preventDefault();
+        // A focused button would also take this space as a click.
+        if (event.target?.closest?.('button, a, [role="button"]')) event.target.blur();
+        if (phoneApp.open) closePhoneApp();
+        else openPhoneApp();
+      });
       window.addEventListener('resize', () => {
         if (!phoneApp.open) return;
         if (phoneApp.docked) {
