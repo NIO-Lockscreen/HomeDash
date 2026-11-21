@@ -768,6 +768,40 @@ and a deleted item is remembered for 30 days so a slow phone retrying its *add*
 cannot bring it back. Ticked-off items are dropped from the store 30 days after
 the tick. The rules live in `api/_todos.js`.
 
+## The phone app on the wall
+
+The Q panel's **Open the phone app** (under the mode switch) lays a phone over
+the wall, and in it runs the real phone app: the same page a phone opens with
+`?admin=1`, at phone size, so it looks and works exactly as it does on a phone.
+Add tasks, change or delete them, tick off to-dos, edit stock pictures. It opens
+like an app: the phone rises from below, its screen shows the app icon for a
+moment, then the app.
+
+- **On a wide screen (a PC, the wall) the phone docks beside the calendar**: the
+  calendar slides over to the left, drawn exactly as always but smaller, and
+  the phone slides in from the right. The calendar stays live and can still be
+  tapped, so a task saved on the phone can be watched dropping into Upcoming
+  straight away. **Done** beside the phone puts everything back. (While docked,
+  the weather that spills out of its card and the ring a landing card sends out
+  are left out: they are drawn in screen pixels, the calendar is scaled.)
+- **On a narrow or upright screen** the phone is laid over the middle of the
+  wall instead, and the wall behind it waits: a task added on the phone drops
+  into the Upcoming strip as the phone is put away.
+- **Putting it away**: **Done** / **×** beside the phone, the home bar at the
+  bottom of it, a tap outside it (over the middle of the wall), or Esc (Esc
+  inside the app first closes whatever is open in it, such as the editor). The
+  idle reset puts it away after five minutes without a touch, touches inside
+  the phone included.
+- **"Change date / edit"** on the wall's task cards opens the phone on that task,
+  instead of leaving the wall for the admin page.
+- **It shares everything with the wall**, because it is the same browser: the
+  admin PIN, the queue of saves still on their way, and the screen's mode. Work
+  mode switched inside the phone switches the wall, and the other way round.
+- The phone is drawn at its real size (390×844 points) and only scaled down on a
+  screen too short for it (docked, to at most 88% of the screen's height). Its page is unloaded when the phone is put away, so
+  it does not keep syncing in the background; a save it had not finished
+  sending is still in the shared queue, and the wall sends it.
+
 ## Tent view on the iPhone Duo
 
 Fold the iPhone Duo shut and stand it up like a tent, so its outer screen is
@@ -1064,7 +1098,8 @@ unless a flare, a shooting star or a gust is on.
 
 On the wall display, press **Q** (or hold the date under the clock) to open a
 small panel in the top right corner, the **Q panel**. Its first section is the
-screen's **Mode** (see *Work mode*); the weather test follows:
+screen's **Mode** (see *Work mode*), then **Open the phone app** (see *The phone
+app on the wall*); the weather test follows:
 
 - **Sky**: Live, or one of clear, partly, clouds, fog, drizzle, rain, snow,
   thunder. Only the card's sky changes; the temperature and description stay

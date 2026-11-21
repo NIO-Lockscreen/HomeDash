@@ -5402,6 +5402,321 @@
       .stock-tile::before, .stock-tile::after { transition: none; }
     }
 
+    /* The phone app on the wall: the Q panel's "Open the phone app" lays a phone
+       over the screen with the real phone page running inside it (the admin
+       page at phone size), so tasks are added and changed exactly as on a
+       phone. The phone is drawn at its real size (390×844 points inside a
+       418×872 body) and scaled down only if the screen is too short. */
+    .phone-app-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 72;
+      display: grid;
+      place-items: center;
+      background: rgba(29, 25, 21, 0.32);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      animation: phone-backdrop-in .32s ease both;
+    }
+
+    .phone-app-overlay.is-closing { animation: phone-backdrop-out .26s ease both; pointer-events: none; }
+
+    .phone-device {
+      --phone-scale: 1;
+      position: relative;
+      width: 418px;
+      height: 872px;
+      flex: 0 0 auto;
+      padding: 14px;
+      border-radius: 64px;
+      background: linear-gradient(150deg, #57514b 0%, #1e1c1a 16%, #131211 55%, #2c2926 100%);
+      box-shadow:
+        0 0 0 1.5px #77706799,
+        inset 0 0 0 1.5px rgba(255,255,255,.12),
+        inset 0 0 0 7px #0a0908,
+        0 50px 110px rgba(20, 14, 8, .45),
+        0 18px 40px rgba(20, 14, 8, .28);
+      transform: scale(var(--phone-scale));
+      animation: phone-rise .5s cubic-bezier(.18, .9, .24, 1.06) both;
+    }
+
+    .phone-app-overlay.is-closing .phone-device { animation: phone-sink .26s cubic-bezier(.5, 0, .9, .4) both; }
+
+    @keyframes phone-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes phone-backdrop-out { from { opacity: 1; } to { opacity: 0; } }
+    @keyframes phone-rise {
+      from { opacity: 0; transform: translateY(90px) rotate(-3deg) scale(calc(var(--phone-scale) * .94)); }
+      to { opacity: 1; transform: translateY(0) rotate(0) scale(var(--phone-scale)); }
+    }
+    @keyframes phone-sink {
+      from { opacity: 1; transform: translateY(0) scale(var(--phone-scale)); }
+      to { opacity: 0; transform: translateY(70px) rotate(2deg) scale(calc(var(--phone-scale) * .96)); }
+    }
+
+    .phone-side-btn {
+      position: absolute;
+      width: 4px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, #26221f, #5d5750 60%, #2b2724);
+    }
+
+    .phone-side-btn.is-action { left: -3px; top: 150px; height: 32px; }
+    .phone-side-btn.is-volume-up { left: -3px; top: 206px; height: 62px; }
+    .phone-side-btn.is-volume-down { left: -3px; top: 280px; height: 62px; }
+    .phone-side-btn.is-power { right: -3px; top: 236px; height: 100px; }
+
+    .phone-screen {
+      position: relative;
+      width: 390px;
+      height: 844px;
+      border-radius: 50px;
+      overflow: hidden;
+      isolation: isolate;
+      background: linear-gradient(135deg, #f7f1e9 0%, #ede4d8 100%);
+    }
+
+    body.work-mode .phone-screen { background: linear-gradient(135deg, #f1f1f8 0%, #dfe2f0 100%); }
+
+    .phone-status {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 50px;
+      display: grid;
+      grid-template-columns: 1fr 130px 1fr;
+      align-items: center;
+      padding-top: 4px;
+      color: #111;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', var(--sans);
+      font-size: 16px;
+      font-weight: 650;
+      letter-spacing: -.01em;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    .phone-status-time { justify-self: center; font-variant-numeric: tabular-nums; }
+    .phone-status-icons { justify-self: center; display: inline-flex; align-items: center; gap: 6px; }
+    .phone-status-icons svg { display: block; height: 12px; width: auto; }
+
+    .phone-island {
+      position: absolute;
+      top: 11px;
+      left: 50%;
+      width: 122px;
+      height: 35px;
+      margin-left: -61px;
+      border-radius: 20px;
+      background: #000;
+      z-index: 4;
+    }
+
+    .phone-island::after {
+      content: '';
+      position: absolute;
+      right: 22px;
+      top: 12px;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #2b3550 0%, #0d1020 55%, #000 100%);
+    }
+
+    .phone-viewport {
+      position: absolute;
+      top: 50px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
+
+    .phone-viewport iframe {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: transparent;
+      opacity: 0;
+      transition: opacity .35s ease;
+    }
+
+    .phone-app-overlay.is-ready .phone-viewport iframe { opacity: 1; }
+
+    /* What a phone shows while an app starts: its icon, then the app. */
+    .phone-splash {
+      position: absolute;
+      inset: -50px 0 0;
+      display: grid;
+      place-items: center;
+      align-content: center;
+      gap: 14px;
+      color: var(--ink);
+      transition: opacity .3s ease;
+      pointer-events: none;
+    }
+
+    .phone-splash img {
+      width: 92px;
+      height: 92px;
+      border-radius: 22px;
+      box-shadow: 0 14px 30px rgba(70, 58, 44, .22);
+      animation: phone-app-launch .55s cubic-bezier(.2, .9, .3, 1.1) both;
+    }
+
+    .phone-splash span { font-size: 15px; font-weight: 850; letter-spacing: -.01em; }
+    .phone-app-overlay.is-ready .phone-splash { opacity: 0; }
+
+    @keyframes phone-app-launch {
+      from { transform: scale(.55); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .phone-home {
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      width: 160px;
+      height: 26px;
+      margin-left: -80px;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      cursor: pointer;
+      z-index: 5;
+    }
+
+    .phone-home::before {
+      content: '';
+      position: absolute;
+      left: 13px;
+      right: 13px;
+      bottom: 8px;
+      height: 5px;
+      border-radius: 3px;
+      background: rgba(17, 17, 17, .82);
+      transition: transform .15s ease, background-color .15s ease;
+    }
+
+    .phone-home:hover::before,
+    .phone-home:focus-visible::before { background: #000; transform: scaleX(1.06); }
+    .phone-home:focus-visible { outline: none; }
+
+    .phone-app-close {
+      position: absolute;
+      top: 6px;
+      right: -70px;
+      width: 48px;
+      height: 48px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.8);
+      background: rgba(255, 252, 247, .92);
+      color: var(--ink);
+      font-size: 26px;
+      line-height: 1;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      box-shadow: 0 12px 26px rgba(20, 14, 8, .22);
+    }
+
+    /* The Q panel's button that opens it. */
+    .wx-debug > #wxPhoneApp {
+      width: 100%;
+      min-height: 52px;
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      text-align: left;
+      background: linear-gradient(135deg, #fffaf3, #f3eadf);
+    }
+
+    .wx-debug > #wxPhoneApp svg { width: 24px; height: 30px; }
+    .wx-debug > #wxPhoneApp small { display: block; color: var(--muted); font-weight: 700; font-size: 11.5px; margin-top: 2px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .phone-app-overlay,
+      .phone-app-overlay.is-closing,
+      .phone-device,
+      .phone-app-overlay.is-closing .phone-device,
+      .phone-splash img { animation: none; }
+    }
+
+    /* On a wide screen (a PC, the wall) the phone docks instead: the calendar
+       moves to the left, drawn exactly as always but smaller, and stays live,
+       so whatever is added on the phone can be watched landing on it; the
+       phone slides in from the right. "Done" beside the phone, its home bar
+       or Esc put everything back. */
+    .phone-app-overlay.is-docked {
+      background: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      pointer-events: none;
+      place-items: center end;
+      padding-right: var(--dock-margin, 14px);
+      animation: none;
+    }
+
+    .phone-app-overlay.is-docked .phone-device {
+      pointer-events: auto;
+      transform-origin: right center;
+      animation: phone-dock-in .6s cubic-bezier(.2, .85, .25, 1.03) both;
+    }
+
+    .phone-app-overlay.is-docked.is-closing { animation: none; }
+    .phone-app-overlay.is-docked.is-closing .phone-device { animation: phone-dock-out .42s cubic-bezier(.55, 0, .85, .4) both; }
+
+    @keyframes phone-dock-in {
+      from { transform: translateX(calc(100% + 180px)) scale(var(--phone-scale)); }
+      to { transform: translateX(0) scale(var(--phone-scale)); }
+    }
+
+    @keyframes phone-dock-out {
+      from { transform: translateX(0) scale(var(--phone-scale)); }
+      to { transform: translateX(calc(100% + 180px)) scale(var(--phone-scale)); }
+    }
+
+    .phone-close-label { display: none; }
+
+    .phone-app-overlay.is-docked .phone-app-close {
+      right: auto;
+      left: -120px;
+      top: 4px;
+      width: auto;
+      height: 48px;
+      padding: 0 18px 0 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 900;
+      letter-spacing: .01em;
+    }
+
+    .phone-app-overlay.is-docked .phone-close-x {
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: #2f2b27;
+      color: #fff;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    body.work-mode .phone-app-overlay.is-docked .phone-close-x { background: var(--work); }
+    .phone-app-overlay.is-docked .phone-close-label { display: inline; }
+
+    body.phone-docked .screen-controls { opacity: 0 !important; pointer-events: none !important; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .phone-app-overlay.is-docked .phone-device,
+      .phone-app-overlay.is-docked.is-closing .phone-device { animation: none; }
+    }
+
   </style>
 </head>
 <body>
@@ -5891,6 +6206,7 @@
       <button type="button" id="wxModeFamily">Family calendar: hidden</button>
       <div id="wxModeNote" class="wx-mode-note"></div>
     </section>
+    <button type="button" id="wxPhoneApp"><svg viewBox="0 0 24 30" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="1.5" width="18" height="27" rx="4.5"/><path d="M9.5 5h5" stroke-linecap="round"/><path d="M9 25h6" stroke-linecap="round" stroke-width="1.6"/></svg><span>Open the phone app<small>Add and change tasks here, as on a phone</small></span></button>
     <div class="wx-debug-sep"></div>
     <div class="wx-debug-label">Weather test · sky</div>
     <div class="wx-debug-grid" id="wxDebugSky">
@@ -5939,6 +6255,33 @@
   </section>
   <div id="wxDebugBadge" class="wx-debug-badge hidden"></div>
   <canvas id="weatherPop" class="weather-pop" aria-hidden="true"></canvas>
+
+  <div id="phoneAppOverlay" class="phone-app-overlay hidden" role="dialog" aria-modal="true" aria-label="HomeDash on a phone">
+    <div id="phoneDevice" class="phone-device">
+      <span class="phone-side-btn is-action" aria-hidden="true"></span>
+      <span class="phone-side-btn is-volume-up" aria-hidden="true"></span>
+      <span class="phone-side-btn is-volume-down" aria-hidden="true"></span>
+      <span class="phone-side-btn is-power" aria-hidden="true"></span>
+      <div class="phone-screen">
+        <div class="phone-status" aria-hidden="true">
+          <span id="phoneStatusTime" class="phone-status-time">--:--</span>
+          <span></span>
+          <span class="phone-status-icons">
+            <svg viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1" fill="#111"/><rect x="5" y="5.5" width="3" height="6.5" rx="1" fill="#111"/><rect x="10" y="3" width="3" height="9" rx="1" fill="#111"/><rect x="15" y="0" width="3" height="12" rx="1" fill="#111"/></svg>
+            <svg viewBox="0 0 16 12"><path d="M8 11.2 5.7 8.9a3.3 3.3 0 0 1 4.6 0Z" fill="#111"/><path d="M3.6 6.8a6.3 6.3 0 0 1 8.8 0l-1.5 1.5a4.2 4.2 0 0 0-5.8 0Z" fill="#111"/><path d="M1.4 4.6a9.4 9.4 0 0 1 13.2 0L13.1 6a7.3 7.3 0 0 0-10.2 0Z" fill="#111"/></svg>
+            <svg viewBox="0 0 27 12"><rect x=".5" y=".5" width="23" height="11" rx="3.2" fill="none" stroke="#111" stroke-opacity=".4"/><rect x="2" y="2" width="17" height="8" rx="2" fill="#111"/><path d="M25 4v4a2 2 0 0 0 0-4Z" fill="#111" fill-opacity=".45"/></svg>
+          </span>
+        </div>
+        <span class="phone-island" aria-hidden="true"></span>
+        <div class="phone-viewport">
+          <div class="phone-splash" aria-hidden="true"><img src="/icons/icon-192.png" alt="" /><span>HomeDash</span></div>
+          <iframe id="phoneAppFrame" title="HomeDash phone app" src="about:blank"></iframe>
+        </div>
+        <button id="phoneHomeBtn" class="phone-home" type="button" aria-label="Put the phone away"></button>
+      </div>
+      <button id="phoneAppClose" class="phone-app-close" type="button" aria-label="Close the phone and go back to the normal view"><span class="phone-close-x" aria-hidden="true">×</span><span class="phone-close-label">Done</span></button>
+    </div>
+  </div>
 
   <div id="edgePanel" class="edge-panel hidden">
     <div id="edgePanelScrim" class="edge-panel-scrim"></div>
@@ -8312,12 +8655,14 @@
         || isOverlayOpen(els.configOverlay)
         || isOverlayOpen(els.dangerOverlay)
         || isOverlayOpen(els.videoQrOverlay)
-        || isOverlayOpen(els.videoPlayerOverlay);
+        || isOverlayOpen(els.videoPlayerOverlay)
+        || (phoneApp.open && !phoneApp.docked);
     }
 
     // The today view rotates through today's tasks on its own, so
     // selectedInstanceId alone does not mean somebody navigated away.
     function isHomeView() {
+      if (phoneApp.open) return false;
       if (state.cardPanelOverride) return false;
       if (state.todoAddOpen) return false;
       if (state.selectedDayKey) return false;
@@ -8338,6 +8683,7 @@
       if (isOverlayOpen(els.configOverlay)) closeConfigMenu();
       if (isOverlayOpen(els.dangerOverlay)) closeDangerMenu();
       if (isOverlayOpen(els.videoQrOverlay)) closeVideoQr();
+      closePhoneApp();
       // A playing video keeps the watchdog fed (setVideoPlaying) and is never
       // idle; a paused or finished one is.
       if (isOverlayOpen(els.videoPlayerOverlay) && !videoPlayer.playing) closeVideoPlayer();
@@ -9590,6 +9936,14 @@
       scheduleHiddenRepeatingTasksHide();
       renderUpcomingPager(allUpcomingCount, upcomingPage, maxUpcomingPage, upcomingLimit, hiddenRepeatsCount, hiddenRepeatsVisible);
 
+      // While the phone app covers the wall the strip is left as it was, so a
+      // task added on the phone drops in when the phone is put away. Docked
+      // beside the calendar it covers nothing: tasks drop in as they are saved.
+      if (phoneApp.open && !phoneApp.docked) {
+        ensureTodayTaskCycle();
+        return;
+      }
+
       // The Q panel's test card, while one is in.
       const shown = withDropTestCard(upcoming, upcomingLimit);
       if (!shown.length) {
@@ -10279,6 +10633,8 @@
         && !els.displayView.classList.contains('hidden')
         && !els.displayView.classList.contains('daily-calendar-mode')
         && !els.displayView.classList.contains('todo-mode')
+        // The canvases are drawn in screen pixels; the docked calendar is scaled.
+        && !(phoneApp.open && phoneApp.docked)
         && !els.weatherCard.classList.contains('show-selected-event')
         && !document.body.classList.contains('motion-dimmed')
         && !anyDisplayOverlayOpen();
@@ -14471,6 +14827,7 @@
         }
         if (event.key !== 'q' && event.key !== 'Q') return;
         if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+        if (phoneApp.open) return;
         if (event.target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
         if (weatherDebug.open) closeWeatherDebug();
         else openWeatherDebug();
@@ -15031,7 +15388,7 @@
       });
 
       const startHold = event => {
-        if (event.target.closest?.('.month-modal, .config-modal, .weather-modal, .danger-modal, .task-action-sheet, .edge-panel, .video-overlay, .tent-view, .wx-debug, .todo-panel, .clock-chips, input, textarea, button, select, a')) return;
+        if (event.target.closest?.('.month-modal, .config-modal, .weather-modal, .danger-modal, .task-action-sheet, .edge-panel, .video-overlay, .tent-view, .wx-debug, .todo-panel, .clock-chips, .phone-app-overlay, input, textarea, button, select, a')) return;
         if (els.monthOverlay && !els.monthOverlay.classList.contains('hidden')) return;
         state.longPressOpened = false;
         clearTimeout(state.longPressTimer);
@@ -16317,7 +16674,7 @@ Cancel = choose whether to delete the whole series.`);
         }
 
         if (editButton) {
-          location.href = `${location.pathname}?admin=1&edit=${encodeURIComponent(editButton.dataset.heroEdit)}`;
+          openTaskEditorFromWall(editButton.dataset.heroEdit);
           return true;
         }
 
@@ -18461,6 +18818,9 @@ Cancel = choose whether to delete the whole series.`);
       body.chatterT = 0;
       body.el.style.opacity = '';
       body.shadowAlpha = 1;
+      // Docked beside the phone app the calendar is drawn scaled down, while
+      // the ring is drawn in screen pixels: there the card lands without it.
+      if (phoneApp.open && phoneApp.docked) return;
       const radius = parseFloat(getComputedStyle(body.el.querySelector('.mini-event') || body.el).borderTopLeftRadius) || 16;
       const right = body.left + body.w;
       const bottom = body.top + body.h;
@@ -21270,6 +21630,215 @@ Cancel = choose whether to delete the whole series.`);
       return 'No image selected. A calm placeholder will be used.';
     }
 
+    // ---------------------------------------------------------------------
+    // The phone app on the wall
+    //
+    // The Q panel's "Open the phone app" lays a phone over the wall with the
+    // real phone page running inside it (?admin=1 in a frame 390 points wide,
+    // which the page takes for a phone), so tasks are added and changed exactly
+    // as on a phone: same PIN, same pending queue, same work mode, all shared
+    // through this browser's storage. "Change date / edit" on the wall opens a
+    // task in it too, instead of leaving the wall.
+    //
+    // While the phone is up the Upcoming strip is left as it was, so a task
+    // added on the phone drops into the strip as the phone is put away. The
+    // page inside is unloaded on close, so it does not go on syncing in the
+    // background.
+
+    const phoneApp = { open: false, docked: false, closeTimer: null, readyTimer: null, clockTimer: null };
+    // Room beside the docked phone for its "Done" button.
+    const PHONE_DOCK_GUTTER = 130;
+    const PHONE_DOCK_SHELL_EASE = 'transform .6s cubic-bezier(.2, .85, .25, 1)';
+
+    // A screen wide enough to have the calendar and the phone side by side.
+    function phoneDockWanted() {
+      return !adminMode && window.innerWidth >= 1000 && window.innerWidth / Math.max(1, window.innerHeight) >= 1.2;
+    }
+
+    // Docked: the phone as tall as fits (at most its real size), and the
+    // calendar scaled to the room left of it, its left edge at the margin. The
+    // calendar keeps its usual layout and is only scaled, so it looks exactly
+    // as always, just smaller.
+    function layoutPhoneDock() {
+      const overlay = document.getElementById('phoneAppOverlay');
+      const device = document.getElementById('phoneDevice');
+      const shell = els.displayView;
+      if (!phoneApp.docked || !overlay || !device || !shell) return;
+      const margin = Math.max(8, Math.min(20, Math.min(window.innerWidth, window.innerHeight) * 0.014));
+      const phoneScale = Math.max(0.5, Math.min(1, (window.innerHeight * 0.88) / PHONE_DEVICE_SIZE.height));
+      device.style.setProperty('--phone-scale', String(Math.round(phoneScale * 1000) / 1000));
+      overlay.style.setProperty('--dock-margin', `${Math.round(margin * 1.6)}px`);
+      const dockWidth = (PHONE_DEVICE_SIZE.width + PHONE_DOCK_GUTTER) * phoneScale + margin * 1.6;
+      const shellW = shell.offsetWidth || 1;
+      const shellH = shell.offsetHeight || 1;
+      const scale = Math.max(0.3, Math.min(1, (window.innerWidth - dockWidth - margin) / shellW, (window.innerHeight - margin * 2) / shellH));
+      const shift = margin - shell.offsetLeft;
+      shell.style.transformOrigin = 'left center';
+      shell.style.transform = `translateX(${shift.toFixed(1)}px) scale(${scale.toFixed(4)})`;
+    }
+    const PHONE_DEVICE_SIZE = { width: 418, height: 872 };
+    // The close button sits to the right of the phone.
+    const PHONE_SIDE_ROOM = 150;
+
+    function sizePhoneApp() {
+      const device = document.getElementById('phoneDevice');
+      if (!device) return;
+      const scale = Math.min(
+        1,
+        (window.innerHeight - 32) / PHONE_DEVICE_SIZE.height,
+        (window.innerWidth - 32) / (PHONE_DEVICE_SIZE.width + PHONE_SIDE_ROOM)
+      );
+      device.style.setProperty('--phone-scale', String(Math.max(0.45, Math.round(scale * 1000) / 1000)));
+    }
+
+    function updatePhoneStatusClock() {
+      const time = document.getElementById('phoneStatusTime');
+      if (time) time.textContent = formatTime(new Date(), false);
+    }
+
+    // Touches inside the phone happen in the frame's own window, which the
+    // wall's idle watchdog does not see. Hand them over, or five minutes of
+    // typing on the phone would count as five idle minutes.
+    function watchPhoneInteraction(frame) {
+      try {
+        const win = frame.contentWindow;
+        if (!win || win.__wallWatching) return;
+        win.__wallWatching = true;
+        INTERACTION_EVENTS.forEach(name => win.addEventListener(name, () => noteInteraction(), { capture: true, passive: true }));
+        // Esc puts the phone away, unless something is open inside the app
+        // (the editor, a sheet, its Q panel): that one gets the Esc instead.
+        win.addEventListener('keydown', event => {
+          if (event.key !== 'Escape' || !phoneApp.open) return;
+          const busy = win.document.querySelector('#eventEditorCard:not(.hidden), .task-action-overlay:not(.hidden), .config-overlay:not(.hidden), .danger-overlay:not(.hidden), .wx-debug:not(.hidden)');
+          if (!busy) closePhoneApp();
+        });
+      } catch {}
+    }
+
+    function openPhoneApp({ edit = '' } = {}) {
+      const overlay = document.getElementById('phoneAppOverlay');
+      const frame = document.getElementById('phoneAppFrame');
+      if (adminMode || !overlay || !frame) return;
+      const src = `${location.pathname}?admin=1${edit ? `&edit=${encodeURIComponent(edit)}` : ''}`;
+      // Already up (a task's "Change date / edit" while the phone is out):
+      // the app opens that task, the phone stays where it is.
+      if (phoneApp.open) {
+        overlay.classList.remove('is-ready');
+        frame.src = src;
+        noteInteraction();
+        return;
+      }
+      clearTimeout(phoneApp.closeTimer);
+      clearTimeout(phoneApp.readyTimer);
+      if (weatherDebug.open) closeWeatherDebug();
+      phoneApp.open = true;
+      phoneApp.docked = phoneDockWanted();
+      overlay.classList.toggle('is-docked', phoneApp.docked);
+      document.body.classList.toggle('phone-docked', phoneApp.docked);
+      if (phoneApp.docked) {
+        els.displayView.style.transition = PHONE_DOCK_SHELL_EASE;
+        layoutPhoneDock();
+      } else {
+        sizePhoneApp();
+      }
+      overlay.classList.remove('hidden', 'is-closing', 'is-ready');
+      // Restart the opening animation even if the phone was still going away.
+      overlay.style.animation = 'none';
+      void overlay.offsetWidth;
+      overlay.style.animation = '';
+      updatePhoneStatusClock();
+      clearInterval(phoneApp.clockTimer);
+      phoneApp.clockTimer = setInterval(updatePhoneStatusClock, 15 * 1000);
+      frame.src = src;
+      noteInteraction();
+      weatherFxSync();
+      setTimeout(() => document.getElementById('phoneHomeBtn')?.focus({ preventScroll: true }), 50);
+    }
+
+    function closePhoneApp() {
+      const overlay = document.getElementById('phoneAppOverlay');
+      const frame = document.getElementById('phoneAppFrame');
+      if (!phoneApp.open || !overlay) return;
+      phoneApp.open = false;
+      const wasDocked = phoneApp.docked;
+      clearTimeout(phoneApp.readyTimer);
+      clearInterval(phoneApp.clockTimer);
+      phoneApp.clockTimer = null;
+      overlay.classList.add('is-closing');
+      // The calendar slides back to the middle as the phone leaves.
+      if (wasDocked && els.displayView) {
+        els.displayView.style.transition = PHONE_DOCK_SHELL_EASE;
+        els.displayView.style.transform = '';
+      }
+      phoneApp.closeTimer = setTimeout(() => {
+        phoneApp.docked = false;
+        overlay.classList.add('hidden');
+        overlay.classList.remove('is-closing', 'is-ready', 'is-docked');
+        document.body.classList.remove('phone-docked');
+        if (els.displayView) {
+          els.displayView.style.transition = '';
+          els.displayView.style.transformOrigin = '';
+        }
+        // Unloading stops the page inside. A save it had not finished sending
+        // is still in the shared queue, and this screen sends it.
+        if (frame) frame.src = 'about:blank';
+        processPendingWrites({ silent: true }).catch(() => {});
+        weatherFxSync();
+        fitKioskToScreen();
+      }, wasDocked ? 620 : 260);
+      // What the phone saved is in this browser's storage already; draw it now,
+      // which is when a new task drops into the strip. Then check the server.
+      hydrateEventsFromLocalCache();
+      hydrateSharedListsFromCache();
+      renderFromLocalState();
+      pollSyncVersion('phone-app').catch?.(() => {});
+    }
+
+    // "Change date / edit" on the wall: the phone, opened on that task.
+    function openTaskEditorFromWall(id) {
+      if (adminMode) {
+        location.href = `${location.pathname}?admin=1&edit=${encodeURIComponent(id)}`;
+        return;
+      }
+      openPhoneApp({ edit: id });
+    }
+
+    function bindPhoneApp() {
+      const overlay = document.getElementById('phoneAppOverlay');
+      const frame = document.getElementById('phoneAppFrame');
+      if (adminMode || !overlay || !frame) return;
+      document.getElementById('wxPhoneApp')?.addEventListener('click', () => openPhoneApp());
+      document.getElementById('phoneAppClose')?.addEventListener('click', closePhoneApp);
+      document.getElementById('phoneHomeBtn')?.addEventListener('click', closePhoneApp);
+      overlay.addEventListener('click', event => {
+        if (event.target === overlay) closePhoneApp();
+      });
+      frame.addEventListener('load', () => {
+        if (!phoneApp.open || frame.src === 'about:blank') return;
+        watchPhoneInteraction(frame);
+        // A moment for the app to draw its first screen behind the splash.
+        clearTimeout(phoneApp.readyTimer);
+        phoneApp.readyTimer = setTimeout(() => {
+          if (phoneApp.open) overlay.classList.add('is-ready');
+        }, 450);
+      });
+      window.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && phoneApp.open) {
+          event.stopImmediatePropagation();
+          closePhoneApp();
+        }
+      }, true);
+      window.addEventListener('resize', () => {
+        if (!phoneApp.open) return;
+        if (phoneApp.docked) {
+          els.displayView.style.transition = '';
+          layoutPhoneDock();
+        } else {
+          sizePhoneApp();
+        }
+      });
+    }
+
     function init() {
       loadWorkMode();
       setMode();
@@ -21290,6 +21859,7 @@ Cancel = choose whether to delete the whole series.`);
       bindTodoPanel();
       bindAdminTodos();
       bindAdminStock();
+      bindPhoneApp();
       applyWorkModeChrome();
       els.returnToDisplayBtn?.addEventListener('click', goToDisplayMode);
       document.addEventListener('click', event => {
@@ -21376,7 +21946,7 @@ Cancel = choose whether to delete the whole series.`);
               return;
             }
             if (editId) {
-              location.href = `${location.pathname}?admin=1&edit=${encodeURIComponent(editId)}`;
+              openTaskEditorFromWall(editId);
               return;
             }
             if (deleteInstanceId) {
@@ -21433,7 +22003,7 @@ Cancel = choose whether to delete the whole series.`);
               return;
             }
             if (editId) {
-              location.href = `${location.pathname}?admin=1&edit=${encodeURIComponent(editId)}`;
+              openTaskEditorFromWall(editId);
               return;
             }
             if (deleteInstanceId) {
@@ -21481,6 +22051,9 @@ Cancel = choose whether to delete the whole series.`);
           return;
         }
         if (event.key === LAST_WRITE_SIGNAL_KEY) {
+          // The phone app on this screen saved something and the server
+          // answered; its reply is in the shared cache.
+          if (phoneApp.open) hydrateEventsFromLocalCache();
           hydrateDaughterPeriodsFromCache();
           hydrateSharedListsFromCache();
           renderFromLocalState();
