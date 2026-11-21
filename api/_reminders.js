@@ -776,6 +776,13 @@ async function sendDigestToRecipients(type, dateKey, recipients, email, state) {
   return result;
 }
 
+// The weekly and end-of-day emails are the family's digests. Work tasks only
+// show on a screen in work mode, so they stay out of these too. (A work task's
+// own email reminder, which somebody switched on for it, is still sent.)
+function familyEvents(events) {
+  return (Array.isArray(events) ? events : []).filter(event => String(event?.scope || 'family') !== 'work');
+}
+
 export async function syncReminderDigests(events, options = {}) {
   const now = options.now || new Date();
   const settings = await loadReminderSettings();
@@ -791,7 +798,7 @@ export async function syncReminderDigests(events, options = {}) {
       const endParts = addLocalDays(parts, 8);
       const rangeStart = localDateAt(startParts.year, startParts.month, startParts.day, 0, 0);
       const rangeEnd = localDateAt(endParts.year, endParts.month, endParts.day, 0, 0);
-      const occurrences = (Array.isArray(events) ? events : []).flatMap(event => expandEventOccurrences(event, rangeStart, rangeEnd));
+      const occurrences = familyEvents(events).flatMap(event => expandEventOccurrences(event, rangeStart, rangeEnd));
       const items = occurrences.sort((a, b) => new Date(a.start) - new Date(b.start)).map(item => ({
         title: item.title,
         when: formatDateTime(item.start),
@@ -817,7 +824,7 @@ export async function syncReminderDigests(events, options = {}) {
     }
 
     if (settings.endOfDayNewTasks && parts.hour >= 20) {
-      const items = (Array.isArray(events) ? events : [])
+      const items = familyEvents(events)
         .filter(event => dateKeyInTimeZone(event.createdAt || event.updatedAt || event.start) === todayKey)
         .sort((a, b) => new Date(a.createdAt || a.start) - new Date(b.createdAt || b.start))
         .map(event => ({

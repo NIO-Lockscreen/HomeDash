@@ -8,7 +8,6 @@ import {
   isBlobNotFoundError,
   isStaleClientCopy,
   chooseImageForStaleClient,
-  pickAutoImage,
   AUTO_IMAGE_KEYWORDS,
   autoImageIndex,
   autoImageKindOf,
@@ -19,6 +18,19 @@ import {
   applyDaughterPeriodChange,
   daughterPeriodChangeSurvived
 } from './_daughter-periods.js';
+import { normalizeTodos, applyTodoChanges, todoChangesSurvived } from './_todos.js';
+import {
+  normalizeStockLibrary,
+  seedStockLibrary,
+  effectiveStockLibrary,
+  pickStockForTitle,
+  stockMarksValid,
+  isStaleStockImage,
+  applyStockChange,
+  stockChangeSurvived,
+  reconcileStockTasks,
+  seededRandom
+} from './_stock.js';
 
 const EVENTS_PATH = 'home-organizer/events.json';
 // Every confirmed save also rewrites this marker. Screens read it straight off
@@ -34,7 +46,7 @@ const VERSION_CACHE_MAX_AGE_S = 30 * 24 * 60 * 60;
 const VERSION_MARKER_RECHECK_MS = 60 * 60 * 1000;
 // Reported on every GET so the live server build can be read straight from
 // /api/events, rather than inferred from whether a save worked.
-const API_BUILD = '2026-10-22-a';
+const API_BUILD = '2026-11-21-a';
 // Which deployment answered. A wall display runs the same page for days; this
 // is how it notices a deploy and reloads itself.
 const DEPLOYMENT_ID = String(process.env.VERCEL_DEPLOYMENT_ID || process.env.VERCEL_GIT_COMMIT_SHA || '').trim();
@@ -47,7 +59,8 @@ const VERIFY_RETRY_DELAY_MS = 250;
 // never arrives is worse than one that says the store has not caught up: stop
 // confirming in time to answer.
 const WRITE_BUDGET_MS = 7000;
-// The last confirmed document: { updatedAt, events, daughterPeriods }.
+// The last confirmed document: { updatedAt, events, daughterPeriods, todos,
+// stock, extras }.
 let eventsCache = null;
 let eventsCacheAt = 0;
 // Where screens read the version marker. Derived from events.json's own URL,
@@ -282,6 +295,21 @@ function cleanEvent(input, existing = {}, updatedAt = new Date().toISOString()) 
   const imageFocusBox = normalizeFocusBox(input.imageFocusBox, existing.imageFocusBox);
   const imageNaturalWidth = cleanPositiveInt(input.imageNaturalWidth, existing.imageNaturalWidth, 0);
   const imageNaturalHeight = cleanPositiveInt(input.imageNaturalHeight, existing.imageNaturalHeight, 0);
+  // Which stock picture the task is showing, if any. Like the borrow marks
+  // above, these live and die with the image: kept while the picture stays,
+  // taken from the device when it brings a new one, gone with no picture. An
+  // older page does not send them, so an unchanged picture keeps what it had.
+  const sameImage = imageUrl === String(existing.imageUrl || '');
+  const stockSource = sameImage
+    ? {
+      word: input.imageStockWord ?? existing.imageStockWord,
+      imageId: input.imageStockImageId ?? existing.imageStockImageId,
+      manual: input.imageStockManual ?? existing.imageStockManual
+    }
+    : { word: input.imageStockWord, imageId: input.imageStockImageId, manual: input.imageStockManual };
+  const imageStockWord = imageUrl ? String(stockSource.word || '').trim().slice(0, 60) : '';
+  const imageStockImageId = imageStockWord ? String(stockSource.imageId || '').trim().slice(0, 60) : '';
+  const imageStockManual = Boolean(imageStockImageId) && stockSource.manual === true;
   const allowedRepeats = new Set(['none', 'yearly', 'weekly', 'biweekly']);
   const repeat = allowedRepeats.has(String(input.repeat || existing.repeat || 'none'))
     ? String(input.repeat || existing.repeat || 'none')
@@ -311,11 +339,25 @@ function cleanEvent(input, existing = {}, updatedAt = new Date().toISOString()) 
     imageFocusBox,
     imageNaturalWidth,
     imageNaturalHeight,
+    imageStockWord: imageStockImageId ? imageStockWord : '',
+    imageStockImageId,
+    imageStockManual,
+    // Family or work. Only a screen in work mode shows work tasks. Older pages
+    // and changes queued on a phone before this existed send no scope, so the
+    // stored one is kept.
+    scope: cleanEventScope(input.scope ?? existing.scope),
     featured: Boolean(input.featured ?? existing.featured),
     emailReminder,
     updatedAt,
     createdAt: existing.createdAt || new Date().toISOString()
   };
+}
+
+const EVENT_SCOPES = new Set(['family', 'work']);
+
+function cleanEventScope(value) {
+  const scope = String(value || '').trim().toLowerCase();
+  return EVENT_SCOPES.has(scope) ? scope : 'family';
 }
 
 function sortEvents(events) {
@@ -336,8 +378,31 @@ function storedMd5(meta) {
   return /^[0-9a-f]{32}$/.test(etag) ? etag : '';
 }
 
+// Top-level keys this build reads and writes itself. Anything else found in
+// events.json is carried through every write untouched, so a newer build's
+// data survives a save made by this one.
+const DOCUMENT_KEYS = new Set(['updatedAt', 'events', 'daughterPeriods', 'todos', 'stock']);
+
+function documentExtras(parsed) {
+  const extras = {};
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return extras;
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!DOCUMENT_KEYS.has(key)) extras[key] = value;
+  }
+  return extras;
+}
+
+// `stock` is null until the library is first stored; until then the seed made
+// from the fysio/lege/MR photos stands in for it (effectiveStockLibrary).
 function emptyDocument() {
-  return { updatedAt: '', events: [], daughterPeriods: normalizeDaughterPeriods(null) };
+  return {
+    updatedAt: '',
+    events: [],
+    daughterPeriods: normalizeDaughterPeriods(null),
+    todos: normalizeTodos(null),
+    stock: null,
+    extras: {}
+  };
 }
 
 function rememberVersionUrl(eventsUrl) {
@@ -413,6 +478,9 @@ async function readEventsDocument({ attempts = MAX_READ_ATTEMPTS } = {}) {
     updatedAt: String(parsed?.updatedAt || ''),
     events: Array.isArray(parsed?.events) ? parsed.events : [],
     daughterPeriods: normalizeDaughterPeriods(parsed?.daughterPeriods),
+    todos: normalizeTodos(parsed?.todos),
+    stock: parsed?.stock && typeof parsed.stock === 'object' ? normalizeStockLibrary(parsed.stock) : null,
+    extras: documentExtras(parsed),
     fresh
   };
 }
@@ -455,7 +523,10 @@ function rememberEventsCache(document) {
   eventsCache = {
     updatedAt: String(document?.updatedAt || ''),
     events: sortEvents(Array.isArray(document?.events) ? document.events : []),
-    daughterPeriods: normalizeDaughterPeriods(document?.daughterPeriods)
+    daughterPeriods: normalizeDaughterPeriods(document?.daughterPeriods),
+    todos: normalizeTodos(document?.todos),
+    stock: document?.stock ? normalizeStockLibrary(document.stock) : null,
+    extras: document?.extras && typeof document.extras === 'object' ? document.extras : {}
   };
   eventsCacheAt = Date.now();
   return eventsCache;
@@ -463,11 +534,24 @@ function rememberEventsCache(document) {
 
 // Returns what was written - the document stamp, its exact byte length and its
 // MD5 - so the write can be confirmed against the store's own metadata after.
-async function saveEvents(events, daughterPeriods) {
+//
+// Everything in the document is written back on every save - the tasks, the
+// daughter periods, the to-do list, the stock library and any key this build
+// does not know - so no kind of save can drop another kind's data.
+async function saveEvents({ events, daughterPeriods, todos, stock, extras }) {
   const sorted = sortEvents(events);
   const periods = normalizeDaughterPeriods(daughterPeriods);
+  const todoList = normalizeTodos(todos);
+  const library = stock ? normalizeStockLibrary(stock) : null;
   const stamp = new Date().toISOString();
-  const body = JSON.stringify({ updatedAt: stamp, events: sorted, daughterPeriods: periods }, null, 2);
+  const body = JSON.stringify({
+    ...(extras && typeof extras === 'object' ? extras : {}),
+    updatedAt: stamp,
+    events: sorted,
+    daughterPeriods: periods,
+    todos: todoList,
+    ...(library ? { stock: library } : {})
+  }, null, 2);
   const stored = await put(EVENTS_PATH, body, {
     access: 'public',
     allowOverwrite: true,
@@ -475,7 +559,7 @@ async function saveEvents(events, daughterPeriods) {
     cacheControlMaxAge: 0
   });
   rememberVersionUrl(stored?.url);
-  const document = rememberEventsCache({ updatedAt: stamp, events: sorted, daughterPeriods: periods });
+  const document = rememberEventsCache({ updatedAt: stamp, events: sorted, daughterPeriods: periods, todos: todoList, stock: library, extras });
   return { stamp, bytes: Buffer.byteLength(body, 'utf8'), md5: md5(body), document };
 }
 
@@ -581,10 +665,15 @@ async function settleWrite(document) {
 // winner's snapshot when ours did not survive.
 //
 // `apply(events, attempt, document)` receives the freshest snapshot and returns
-// { events, verify, daughterPeriods? }, where verify(savedEvents, savedDocument)
-// reports whether this change is present in what the store actually kept. A
-// change that leaves `daughterPeriods` out keeps the stored ones. It may run
-// more than once, so it must not have side effects.
+// { events, verify, daughterPeriods?, todos?, stock? }, where
+// verify(savedEvents, savedDocument) reports whether this change is present in
+// what the store actually kept. A change that leaves `daughterPeriods`, `todos`
+// or `stock` out keeps the stored ones. It may run more than once, so it must
+// not have side effects.
+//
+// The stock library is stored on the first write of any kind: until then it is
+// the seed made from the fysio/lege/MR photos, and `document.stock` already
+// holds that seed when `apply` runs.
 //
 // Resolves to the stored document plus { verified, version }.
 async function mutateEvents(apply) {
@@ -593,8 +682,16 @@ async function mutateEvents(apply) {
     const deadline = Date.now() + WRITE_BUDGET_MS;
     for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
       const current = await readEventsForWrite();
-      const { events, verify, daughterPeriods } = await apply(current.events, attempt, current);
-      const written = await saveEvents(events, daughterPeriods ?? current.daughterPeriods);
+      if (!current.stock) current.stock = seedStockLibrary(current.events, new Date());
+      const next = await apply(current.events, attempt, current);
+      const written = await saveEvents({
+        events: next.events,
+        daughterPeriods: next.daughterPeriods ?? current.daughterPeriods,
+        todos: next.todos ?? current.todos,
+        stock: next.stock ?? current.stock,
+        extras: current.extras
+      });
+      const verify = next.verify;
       outcome = { ...written.document, verified: false };
 
       const confirmation = await confirmWrite(written, verify, deadline);
@@ -680,14 +777,16 @@ async function resolveImageUrl(inputUrl, existingUrl, options = {}) {
   return '';
 }
 
-// Picks a picture for a fysio/lege task that arrived without one, and only ever
-// returns a link the store really still answers for. Handing a dead link to a
-// new task is precisely how a placeholder spreads from one card to the next.
-// The lookups only happen on the borrow path, which is rare and short.
-async function borrowImageForTitle({ title, events, excludeId }) {
+// Picks a stock picture for a task that arrived without one and whose title
+// names a stock word, and only ever returns a link the store really still
+// answers for. Handing a dead link to a new task is precisely how a placeholder
+// spreads from one card to the next. The lookups only happen on this path,
+// which is rare and short. `random` is seeded from the request, so a retry
+// picks the same photo.
+async function stockImageForTitle({ title, stock, events, excludeId, random }) {
   const skipUrls = new Set();
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const candidate = pickAutoImage({ title, events, excludeId, skipUrls });
+    const candidate = pickStockForTitle({ title, stock, events, excludeId, skipUrls, random });
     if (!candidate) return null;
     const url = String(candidate.image?.imageUrl || '');
     if (!isOrganizerBlobImage(url) || (await organizerImageMeta(url)).exists) return candidate;
@@ -711,7 +810,9 @@ function syncFields(document) {
     updatedAt: String(document?.updatedAt || ''),
     version: String(document?.version || ''),
     versionUrl,
-    daughterPeriods: normalizeDaughterPeriods(document?.daughterPeriods)
+    daughterPeriods: normalizeDaughterPeriods(document?.daughterPeriods),
+    todos: normalizeTodos(document?.todos),
+    stock: effectiveStockLibrary(document?.stock, document?.events)
   };
 }
 
@@ -751,16 +852,20 @@ export default async function handler(req, res) {
       // Picked once, not once per write attempt, so a retry stores the same
       // picture the first attempt chose instead of rolling the dice again.
       let autoImage = null;
-      // Set when the task's stored picture was a borrow from another kind and
-      // was let go. The device is not being refused anything then: it sent back
-      // a picture nobody had chosen.
+      // Set when the task's stored picture was a borrow from another kind, or a
+      // stock picture of a word the title no longer names, and was let go. The
+      // device is not being refused anything then: it sent back a picture
+      // nobody had chosen.
       let imageReleased = false;
+      // The stock word the saved task's picture came from, for the reply.
+      let stockWordShown = '';
       // One stamp for the whole request, not one per attempt: every retry then
       // writes a byte-identical event, so a read-back that is one generation
       // behind still confirms the change instead of reporting it as lost.
       const writeStamp = new Date().toISOString();
 
-      const outcome = await mutateEvents(async currentEvents => {
+      const outcome = await mutateEvents(async (currentEvents, attempt, current) => {
+        const stock = current.stock;
         const index = payload.id ? currentEvents.findIndex(item => item.id === payload.id) : -1;
         if (isPut && index === -1) throw httpError(404, 'Event not found.');
         previousEvent = index === -1 ? null : currentEvents[index];
@@ -777,8 +882,18 @@ export default async function handler(req, res) {
         const keepsStoredImage = Boolean(previousEvent) && resolvedImageUrl === String(previousEvent.imageUrl || '');
         const releasesWrongKind = keepsStoredImage
           && isMismatchedBorrowedImage({ ...previousEvent, title: payload.title }, byId);
-        if (releasesWrongKind) imageReleased = true;
-        const imageUrl = releasesWrongKind ? '' : resolvedImageUrl;
+        // A stock picture of a word the title no longer names - "Tannlege"
+        // retitled "Middag" - goes the same way. Never one picked or framed by
+        // hand for this task.
+        const releasesStaleStock = keepsStoredImage
+          && !releasesWrongKind
+          && isStaleStockImage({
+            ...previousEvent,
+            title: payload.title,
+            imageStockManual: payload.imageStockManual ?? previousEvent.imageStockManual
+          }, stock);
+        imageReleased = releasesWrongKind || releasesStaleStock;
+        const imageUrl = imageReleased ? '' : resolvedImageUrl;
         // A picture borrowed before the kind was written down keeps it now,
         // while the task it came from is still there to ask. Tracing the borrow
         // back is a fallback for old data, not a standing arrangement: once the
@@ -790,20 +905,35 @@ export default async function handler(req, res) {
           && !String(previousEvent.imageInheritedKeyword || '').trim()
           ? autoImageKindOf(previousEvent, byId)
           : '';
-        // A fysio, lege or MR task that ends up with no picture borrows one at
-        // random from an older task of the same kind, framing included. This
+        // A task whose title names a stock word and that ends up with no
+        // picture is given one of that word's photos, framing included. This
         // only ever fills an empty slot: an image the device sent, or one the
         // task already had, has been decided above and is never overruled here.
+        // (This replaced the fysio/lege/MR borrowing; those three are the first
+        // stock words, seeded from the photos the borrowing lent.)
         if (!imageUrl && !autoImage) {
-          autoImage = await borrowImageForTitle({ title: payload.title, events: currentEvents, excludeId: payload.id });
+          autoImage = await stockImageForTitle({
+            title: payload.title,
+            stock,
+            events: currentEvents,
+            excludeId: payload.id,
+            random: seededRandom(`${writeStamp}|${payload.id || ''}|${payload.title || ''}`)
+          });
         }
-        const borrowed = imageUrl ? null : autoImage;
+        const filled = imageUrl ? null : autoImage;
         event = cleanEvent(
           {
             ...payload,
-            imageUrl,
-            ...(borrowed
-              ? { ...borrowed.image, imageInheritedFrom: borrowed.from, imageInheritedKeyword: borrowed.keyword }
+            imageUrl: filled ? filled.image.imageUrl : imageUrl,
+            ...(filled
+              ? {
+                ...filled.image,
+                imageInheritedFrom: '',
+                imageInheritedKeyword: '',
+                imageStockWord: filled.wordId,
+                imageStockImageId: filled.imageId,
+                imageStockManual: false
+              }
               : stampsKeptKind
                 ? { imageInheritedKeyword: stampsKeptKind }
                 : {})
@@ -811,6 +941,12 @@ export default async function handler(req, res) {
           previousEvent || {},
           writeStamp
         );
+        // Stock marks that do not point at a photo the library holds under the
+        // same link are dropped; the picture itself stays as the task's own.
+        if (event.imageStockImageId && !stockMarksValid(event, stock)) {
+          event = { ...event, imageStockWord: '', imageStockImageId: '', imageStockManual: false };
+        }
+        stockWordShown = event.imageStockImageId ? String(stock?.words?.[event.imageStockWord]?.word || '') : '';
         const nextEvents = [...currentEvents];
         if (index === -1) nextEvents.push(event);
         else nextEvents[index] = event;
@@ -852,13 +988,16 @@ export default async function handler(req, res) {
       // older picture sent by a stale device) and keep the stored one instead.
       // Say so in the reply, or the phone believes it just changed a picture
       // that it did not.
-      // A borrowed fysio/lege/MR picture is not a refusal: the device asked for
-      // no image at all, so nothing it sent was overruled. Neither is letting go
-      // of a picture borrowed from another kind: the device only echoed back
-      // what the task was already holding.
-      const imageAutoFilled = Boolean(event.imageInheritedFrom) && (!requestedImageUrl || imageReleased);
+      // A stock picture is not a refusal: the device asked for no image at all,
+      // so nothing it sent was overruled. Neither is letting go of a borrowed
+      // picture of another kind, or a stock picture of a word the title no
+      // longer names: the device only echoed back what the task was holding.
+      const imageAutoFilled = Boolean(autoImage)
+        && String(event.imageStockImageId || '') === String(autoImage.imageId)
+        && (!requestedImageUrl || imageReleased);
       const imageUrlAccepted = String(event.imageUrl || '') === requestedImageUrl || imageAutoFilled || imageReleased;
-      send(res, created ? 201 : 200, { ...syncFields(next), event, events: next.events, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, imageAutoFilled, imageReleased, requestedImageUrl, imageCleanup: IMAGE_CLEANUP, reminderSync });
+      const imageStock = event.imageStockImageId ? { wordId: event.imageStockWord, word: stockWordShown, imageId: event.imageStockImageId } : null;
+      send(res, created ? 201 : 200, { ...syncFields(next), event, events: next.events, localSaved: true, synced: true, idempotent: !created, imageUrlAccepted, imageAutoFilled, imageReleased, imageStock, requestedImageUrl, imageCleanup: IMAGE_CLEANUP, reminderSync });
       return;
     }
 
@@ -872,7 +1011,8 @@ export default async function handler(req, res) {
           return;
         }
         const reminderSync = await safeSyncReminders([], { all: true });
-        // Clears the tasks only; the daughter periods are kept.
+        // Clears the tasks only; the daughter periods, the to-do list and the
+        // stock pictures are kept.
         send(res, 200, { ...syncFields(outcome), events: [], localDeleted: true, synced: true, imageCleanup: IMAGE_CLEANUP, reminderSync });
         return;
       }
@@ -901,10 +1041,70 @@ export default async function handler(req, res) {
       return;
     }
 
-    // One change to the daughter periods, applied onto whatever the store holds
-    // so edits to different periods from two screens both survive.
+    // One change to the daughter periods, a batch of to-do changes, or one
+    // change to the stock pictures - each applied onto whatever the store holds,
+    // so edits to different items from two screens all survive.
     if (req.method === 'PATCH') {
       const payload = parsePayload(await readBody(req));
+
+      if (payload.todos !== undefined) {
+        const changes = Array.isArray(payload.todos) ? payload.todos : [payload.todos];
+        const outcome = await mutateEvents(async (currentEvents, attempt, current) => {
+          const expected = applyTodoChanges(current.todos, changes, new Date());
+          return {
+            events: currentEvents,
+            todos: expected,
+            verify: (savedEvents, saved) => todoChangesSurvived(saved?.todos, changes, expected)
+          };
+        });
+        if (!outcome.verified) {
+          sendUnverified(res);
+          return;
+        }
+        send(res, 200, { ...syncFields(outcome), events: outcome.events, synced: true });
+        return;
+      }
+
+      if (payload.stock !== undefined) {
+        const change = payload.stock;
+        if (!change || typeof change !== 'object') throw httpError(400, 'Nothing to change was sent.');
+        // A photo is only taken into the library once the store answers for
+        // it; a dead link there would be handed to every task of that word.
+        if (change.action === 'add-image') {
+          const url = String(change.image?.imageUrl || '').trim();
+          if (!isOrganizerBlobImage(url)) throw httpError(400, 'Only photos uploaded to the organizer can be stock pictures.');
+          if (!(await organizerImageMeta(url)).exists) throw httpError(400, 'That photo is no longer in the store. Upload it again.');
+        }
+        const stamp = new Date().toISOString();
+        let changedIds = [];
+        const outcome = await mutateEvents(async (currentEvents, attempt, current) => {
+          const now = new Date();
+          const stock = applyStockChange(current.stock, change, now);
+          // The tasks are brought in step in the same write: a reframed photo
+          // is reframed on its tasks, a removed one is swapped, and upcoming
+          // tasks with no picture that name a word are given one.
+          const reconciled = reconcileStockTasks(stock, currentEvents, { now, random: seededRandom(`${stamp}|stock`) });
+          changedIds = reconciled.changedIds;
+          const byId = new Map(reconciled.events.map(item => [String(item.id), item]));
+          return {
+            events: reconciled.events,
+            stock,
+            verify: (savedEvents, saved) => stockChangeSurvived(saved?.stock, change, stock)
+              && changedIds.every(id => {
+                const mine = byId.get(id);
+                return (savedEvents || []).some(item => String(item.id) === id
+                  && String(item.imageUrl || '') === String(mine?.imageUrl || ''));
+              })
+          };
+        });
+        if (!outcome.verified) {
+          sendUnverified(res);
+          return;
+        }
+        send(res, 200, { ...syncFields(outcome), events: outcome.events, synced: true, stockTasksChanged: changedIds.length });
+        return;
+      }
+
       const change = payload.daughterPeriod;
       if (!change || typeof change !== 'object') throw httpError(400, 'Nothing to change was sent.');
       const outcome = await mutateEvents(async (currentEvents, attempt, current) => {

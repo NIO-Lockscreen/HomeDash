@@ -180,7 +180,8 @@ along without an extra Blob read, and the marker carries their changes too.
   so a screen that is reloaded days late cannot overwrite newer edits made
   elsewhere. A device without the PIN saved keeps its old edits until it has
   one.
-- **Delete all tasks/events** clears tasks only; the periods are kept.
+- **Delete all tasks/events** clears tasks only; the periods are kept, and so
+  are the to-do list and the stock pictures.
 
 
 ## Resyncing a stuck image
@@ -213,7 +214,112 @@ If the stored image cannot be downloaded at all — it was deleted from Blob
 storage — the button says so. Pick the photo again in the file field and resync;
 that path does not depend on the dead link.
 
+## Stock pictures
+
+Some words come round again and again: the dentist, football practice, the
+physio. A **stock word** is such a word with one or more default photos. A task
+whose title names a stock word and that is saved **without** a photo of its own
+is given one of that word's photos, instead of the calm placeholder. This grew
+out of the fysio/lege/MR borrowing (below): those three are now simply the first
+stock words, and the list is managed in the app instead of being written into
+the code.
+
+### Managing the words
+
+On the phone (or the desktop admin page), open **Stock pictures** under the
+calendar. Every word is a tile showing its first photo; a word with several
+photos looks like a small stack of prints, and a word with no photo yet is
+striped. Tap a tile to open it, or **+ New word**:
+
+- **Word**: as it is written, e.g. *Tannlege*. Matching ignores case and accents.
+- **Also matches**: other ways of writing it, comma separated (*tannlegetime,
+  tannpuss*). A word with a space in it matches those words in a row.
+- **Count inside longer words too**: *Lege* then also catches *Tannlege*,
+  *Legetime* and *Legevakt*. Words shorter than four letters never do (so *MR*
+  only ever matches *MR*, *MR-time* or *MRI*), and the false friends the lege
+  rule already knew (*college*, *privilege* …) never count.
+- **Matches now** lists the upcoming task titles the word, as typed, would catch.
+- **Photos**: up to 12 per word. **+** uploads one (optimized like any task
+  photo). Tap a photo to frame it: the pan/zoom is used on every task showing
+  that photo, except tasks framed by hand. **Remove photo** and **Delete word**
+  ask first.
+
+Two words may not claim the same word or alias; the app says which word already
+has it.
+
+### Which photo a task gets
+
+- **The title decides.** A phrase match wins; otherwise the title is read from
+  the left and the first word that names a stock word decides. Within that word
+  an exact match beats a match inside a longer word, and a longer stock word
+  beats a shorter one, so *Tannlege* picks the word *Tannlege* over *Lege* once
+  both exist.
+- **Of that word's photos**, a random one among those the fewest open tasks are
+  showing, so two dentist visits in a row do not look the same.
+- **A photo you pick always wins.** The stock picture only ever fills an empty
+  slot. Upload a photo for the task and the stock picture is replaced.
+- **Picked by hand.** In the task editor, under the image field, a row says
+  which stock picture the task shows or will show. **Change** / **Pick a stock
+  picture** lists every word's photos; one picked there belongs to that task
+  whatever its title says. Moving the pan/zoom sliders on a stock picture also
+  makes it the task's own framing.
+- **Retitled.** A stock picture the title no longer names (*Tannlege* renamed
+  *Middag*) is let go on the next save, and the slot is filled with the right
+  word's photo or left to the placeholder. Never one picked or framed by hand.
+- **Own photo that matches a word.** The editor offers **Add to stock**, which
+  puts the task's photo into that word's photos.
+
+### When the library changes
+
+Every change to the library is one write, and the tasks are brought in step in
+that same write:
+
+- **A word or photo is added**: every upcoming task with no picture whose title
+  names a word gets one.
+- **A photo is reframed**: tasks showing it take the new framing, unless framed
+  by hand.
+- **A photo is removed**: tasks showing it get another photo of the word, or the
+  placeholder. A task that picked or framed it by hand keeps it as its own.
+- **A word is deleted**: its tasks keep their pictures, as their own.
+
+A task somebody gave a photo of their own is never touched. Past and completed
+tasks are left as they are.
+
+### Where it is stored
+
+The library rides in `events.json` as `stock`, next to the tasks, so every
+screen gets it with the task list it already reads (no extra Blob read), and the
+version marker carries its changes. A task showing a stock picture carries
+`imageStockWord` (the word's id), `imageStockImageId` (which photo) and
+`imageStockManual` (picked or framed by hand); like the borrow marks, they live
+and die with the picture. Changes go through the same pending queue as task
+saves: shown at once, kept on the phone until the server has them.
+
+The image sweep in the reminder cron counts the stock photos as referenced, so a
+library photo that no task happens to show is never deleted.
+
+### Seeded from the fysio/lege/MR photos
+
+Until the library is first stored, the server answers with a library made from
+the old rule: the words **Fysio**, **Lege** and **MR** (*MRI* as an alias), each
+holding the photos somebody once chose for such tasks (never a borrowed one,
+newest first, at most 12), with the framing they were given. A kind nobody has a
+photo for still gets its word, empty. The first save of any kind after this
+deploy stores that library, and from then on it is edited like any other.
+
+The rules live in `api/_stock.js` (`stockWordForTitle`, `pickStockImage`,
+`isStaleStockImage`, `reconcileStockTasks`, `applyStockChange`,
+`seedStockLibrary`) and are applied by `api/events.js` to whatever any device
+sends. The admin page holds a copy of the matcher and the picker so a task saved
+on the phone draws its stock picture straight away, and so a task saved with no
+signal still gets one. Keep the two in step.
+
 ## Fysio, lege and MR tasks borrow an old photo
+
+*Superseded by **Stock pictures** above: the server no longer lends photos
+between tasks; fysio, lege and MR are stock words now. What follows still
+applies to pictures that were borrowed before, and the matching rules for words
+inside longer words come from here.*
 
 The physio, the doctor and the MR scanner come round again and again, and nobody
 wants to pick a photo for the twentieth one. So a task whose title names one of
@@ -563,6 +669,105 @@ It is all CSS: only opacity and transform animate, so it runs on the compositor
 and costs next to nothing. It pauses while the camera dimmer has dimmed the
 screen, and with reduced motion the glow is steady and the hearts stand still.
 
+## Work mode
+
+A screen can be put in **work mode**. It then shows only the tasks made in work
+mode, and the family calendar can be shown alongside them with one tap. A screen
+in the ordinary **family mode** shows only family tasks, so work meetings never
+turn up on the family's wall or phones.
+
+### Switching it
+
+Work mode is hidden behind the **Q panel**, and it belongs to that one screen:
+switching the desk's laptop to work does not change the wall or anybody's phone.
+
+- **Wall**: press **Q**, or (no keyboard) **hold the date** under the clock for
+  about a second. A plain tap on the date still does what it always did.
+- **Phone / admin page**: **hold the clock** in the top right for about a second,
+  or press **Q** on a keyboard. On the phone the Q panel is only the mode switch.
+
+The panel's **Mode · this screen** section has **Family** / **Work**, and below
+them **Family calendar: hidden / shown**. The choice survives reloads and the
+five-minute idle reset.
+
+### What changes
+
+- **The whole frame cools** from the warm paper colour to an indigo-grey, so the
+  mode is clear at a glance. Upcoming reads *Upcoming · Work*.
+- **A Work pill** sits under the date, next to the to-do chip: *Work · family
+  hidden* or *Work · + family*. Tapping it shows or hides the family calendar.
+- **Every view filters the same way**: the big task photo, Upcoming, the week
+  dots, the day selector, the month view, the tent view on the phone and the
+  admin list. It is done once, where all of them get their tasks
+  (`expandEventsInRange`), so no view can miss it.
+- **Work tasks are marked only among family tasks** (work mode with the family
+  calendar shown): an indigo ring and a *Work* badge on the Upcoming card, a
+  ring and a *Work* tag on the big photo, an indigo dot in the month view, a
+  *Work* chip in the admin list. On their own they look like any task. Sofia's
+  pink ring wins on a task that is both.
+- **The to-do list takes the weather card's place** (see below), with a small
+  weather pill to flip back to the weather.
+- **On the phone**: a *Work* pill by the clock, *Create a new work task*, and
+  the list subtitle says which tasks are shown.
+
+### Which tasks are work
+
+A task has a `scope`: `family` or `work`. A task made on a screen in work mode is
+a work task. The editor shows a **Calendar: Family / Work** choice, but only on a
+device where work mode has been switched on at least once, or for a task that is
+already work, so it never puzzles anybody else. Older pages and changes queued
+before this existed send no scope; the server then keeps the stored one, and a
+task without one is family.
+
+- The **weekly Sunday email** and the **end-of-day new tasks** email are the
+  family's digests and leave work tasks out. A work task's own email reminder,
+  which somebody switched on for it, is still sent.
+- Work mode is *hidden*, not secret: `/api/events` is public to read (the car
+  lockscreen's calendar widget reads it), and it carries every task.
+- A wall page that was open before this deploy shows work tasks as family ones
+  until it reloads; it reloads by itself when it notices the new deploy.
+
+## To-do list
+
+Short things to get done, with no date: *Kjøpe melk*, *Send Q4 numbers*. Each
+item is on the **family** list, the **work** list, or **both**. A screen in
+family mode shows family and both; a screen in work mode shows work and both
+(the family-calendar toggle is about the calendar, not the list).
+
+### On the wall
+
+- A chip under the date says how many are open (*3 to do*). Tap it and the list
+  takes the weather card's place; tap it again, or the small weather pill in the
+  list's header, for the weather. In work mode the list is the card's home
+  content and the weather is the one you flip to. The idle reset puts the
+  card back to its mode's home.
+- **Tap a row** to tick it off (and again to put it back). The circle pops and
+  the text is struck through; the row moves to the done ones a moment later.
+- **+** opens a field at the top (the touch keyboard comes up), with Family /
+  Work / Both once work mode has been used on that screen. Enter or **Add** adds.
+- **Hold a row** for **Delete** / **Keep**.
+- Ticked-off items stay on the wall, struck through, for 12 hours or until
+  **Clear done**, which clears the ones that screen shows.
+- Like completing a task, this needs the admin PIN saved on the wall.
+
+### On the phone
+
+**To-do list** under the calendar: add, tick, tap an item's text to edit it,
+change its list, or delete it. The done ones fold away under *Done (n)* with
+**Clear all done**.
+
+### Where it is stored
+
+The list rides in `events.json` as `todos`, like the daughter periods: no extra
+Blob read, and the version marker carries changes to every screen. A burst of
+taps is saved together: each change is queued at once (so a reload loses
+nothing), and the queue sends every waiting to-do change in **one write** two and
+a half seconds after the last tap, or as soon as the page is hidden. Each change
+states its result (*done*, not *toggle*), so a retried write lands the same way,
+and a deleted item is remembered for 30 days so a slow phone retrying its *add*
+cannot bring it back. Ticked-off items are dropped from the store 30 days after
+the tick. The rules live in `api/_todos.js`.
+
 ## Tent view on the iPhone Duo
 
 Fold the iPhone Duo shut and stand it up like a tent, so its outer screen is
@@ -857,7 +1062,9 @@ unless a flare, a shooting star or a gust is on.
 
 ### Weather test panel (press Q)
 
-On the wall display, press **Q** to open a small panel in the top right corner:
+On the wall display, press **Q** (or hold the date under the clock) to open a
+small panel in the top right corner, the **Q panel**. Its first section is the
+screen's **Mode** (see *Work mode*); the weather test follows:
 
 - **Sky**: Live, or one of clear, partly, clouds, fog, drizzle, rain, snow,
   thunder. Only the card's sky changes; the temperature and description stay

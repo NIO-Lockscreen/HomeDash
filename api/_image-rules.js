@@ -35,9 +35,14 @@ export function organizerImagePathname(value) {
   return path.startsWith(IMAGE_PREFIX) ? path : '';
 }
 
-export function referencedImagePathnames(events) {
-  return new Set((Array.isArray(events) ? events : [])
-    .map(event => organizerImagePathname(event?.imageUrl))
+// Every picture something still points at: the tasks, plus `extraUrls` - the
+// stock library's photos, which have to stay even while no task shows them.
+export function referencedImagePathnames(events, extraUrls = []) {
+  return new Set([
+    ...(Array.isArray(events) ? events : []).map(event => event?.imageUrl),
+    ...(Array.isArray(extraUrls) ? extraUrls : [])
+  ]
+    .map(organizerImagePathname)
     .filter(Boolean));
 }
 
@@ -141,7 +146,7 @@ const AUTO_IMAGE_FALSE_FRIENDS = new Set(['college', 'colleges', 'privilege', 'p
 // The picture and its framing travel together. A borrowed image cropped with
 // the new task's defaults would show a different part of the photo than the
 // task it was borrowed from, which is exactly the part somebody once chose.
-const AUTO_IMAGE_FIELDS = Object.freeze([
+export const AUTO_IMAGE_FIELDS = Object.freeze([
   'imageUrl',
   'imageFocusX',
   'imageFocusY',
@@ -152,7 +157,7 @@ const AUTO_IMAGE_FIELDS = Object.freeze([
   'imageNaturalHeight'
 ]);
 
-function normalizeTitleWords(title) {
+export function normalizeTitleWords(title) {
   return String(title || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -161,7 +166,7 @@ function normalizeTitleWords(title) {
     .filter(Boolean);
 }
 
-function wordNamesKind(word, kind) {
+export function wordNamesKind(word, kind) {
   if (kind.words.includes(word)) return true;
   if (!kind.compound) return false;
   if (AUTO_IMAGE_FALSE_FRIENDS.has(word)) return false;

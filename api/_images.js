@@ -8,6 +8,7 @@ import {
   referencedImagePathnames,
   classifyImages
 } from './_image-rules.js';
+import { stockImageUrls } from './_stock.js';
 
 const EVENTS_PATH = 'home-organizer/events.json';
 const SWEEP_STATE_PATH = 'home-organizer/image-sweep.json';
@@ -87,7 +88,9 @@ export async function sweepUnreferencedImages({ now = Date.now() } = {}) {
     return { ok: true, skipped: 'events.json does not exist; nothing deleted.', graceDays: IMAGE_GRACE_DAYS };
   }
   const events = Array.isArray(eventsDoc.events) ? eventsDoc.events : [];
-  const referenced = referencedImagePathnames(events);
+  // The stock pictures count as referenced even while no task shows them:
+  // they are waiting for the next task of their word.
+  const referenced = referencedImagePathnames(events, stockImageUrls(eventsDoc.stock));
 
   const [blobs, stateDoc] = await Promise.all([listAllImages(), readJsonBlobStrict(SWEEP_STATE_PATH)]);
   const unreferencedSince = stateDoc?.unreferencedSince && typeof stateDoc.unreferencedSince === 'object'

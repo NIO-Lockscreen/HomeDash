@@ -4742,6 +4742,665 @@
       .tent-slide.is-current .tent-slide-drift { animation: none; }
       .tent-view.is-entering .tent-slides { animation: tent-fade-in 200ms ease-out both; }
     }
+    /* ---------------------------------------------------------------------
+       Work mode, the to-do list and stock pictures.
+       Work mode belongs to one screen (see WORK_MODE_KEY) and is switched in
+       the Q panel. It cools the whole frame to an indigo-grey so it reads as a
+       different mode at a glance, without changing the layout. Work tasks only
+       carry marks where they sit among family tasks (work mode with the family
+       calendar shown); on their own they look like any other task. */
+    :root {
+      --work: #4a50c8;
+      --work-ink: #2f3290;
+      --work-soft: rgba(74, 80, 200, 0.10);
+      --work-line: rgba(74, 80, 200, 0.24);
+      --work-ring: rgba(98, 106, 236, 0.55);
+      --work-glow: rgba(98, 106, 236, 0.20);
+      --todo-done: rgba(47, 43, 39, 0.38);
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(255,255,255,0.92), transparent 32%),
+        linear-gradient(135deg, #f1f1f8 0%, #dfe2f0 100%);
+      opacity: 0;
+      transition: opacity .6s ease;
+    }
+
+    body.work-mode::before { opacity: 1; }
+    /* body paints its own background over a layer behind it, so it steps
+       aside while the work tint is up. */
+    html.work-mode body { background: transparent; }
+
+    body.work-mode .kiosk-shell {
+      border-color: rgba(196, 199, 240, 0.75);
+      box-shadow: 0 18px 45px rgba(58, 62, 130, 0.14);
+    }
+
+    body.work-mode .clock-card,
+    body.work-mode .event-hero,
+    body.work-mode .upcoming-card {
+      background-color: rgba(251, 251, 255, 0.74);
+    }
+
+    .scope-suffix { color: var(--work); }
+
+    /* The chips under the date: the to-do list, and in work mode the mode
+       pill, whose tap shows or hides the family calendar. */
+    .clock-chips {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: clamp(10px, 1.3vmin, 16px);
+    }
+
+    .clock-chips:empty { display: none; }
+
+    .clock-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 32px;
+      padding: 0 13px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.74);
+      color: var(--ink);
+      font-size: 11.5px;
+      font-weight: 950;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      box-shadow: 0 8px 16px rgba(70,58,44,.06);
+      cursor: pointer;
+      transition: background-color .2s ease, color .2s ease, transform .12s ease;
+    }
+
+    .clock-chip:active { transform: scale(.97); }
+    .clock-chip svg { width: 15px; height: 15px; flex: 0 0 auto; }
+    .clock-chip .chip-count { font-variant-numeric: tabular-nums; }
+    .clock-chip.is-quiet { opacity: .72; }
+    .clock-chip.is-on { background: #2f2b27; border-color: #2f2b27; color: #fff; opacity: 1; }
+    body.work-mode .todo-chip.is-on { background: var(--work-ink); border-color: var(--work-ink); }
+
+    .mode-pill {
+      background: var(--work);
+      border-color: var(--work);
+      color: #fff;
+      box-shadow: 0 8px 18px rgba(74,80,200,.28);
+    }
+
+    .mode-pill .mode-pill-sub { opacity: .78; font-weight: 850; }
+
+    /* The to-do list takes the weather card's place: by default in work mode,
+       and in family mode while the to-do chip is on. */
+    .todo-panel { display: none; }
+
+    .kiosk-shell.todo-mode .weather-content,
+    .kiosk-shell.todo-mode .selected-event-panel,
+    .kiosk-shell.todo-mode canvas.weather-fx,
+    .kiosk-shell.todo-mode canvas.weather-spill { display: none !important; }
+
+    .kiosk-shell.todo-mode .weather-effect { opacity: .3; }
+    /* The card centres its weather; the list fills it from the top. */
+    .kiosk-shell.todo-mode .weather-card {
+      align-content: stretch;
+      grid-template-rows: minmax(0, 1fr);
+    }
+    .kiosk-shell.daily-calendar-mode .todo-panel { display: none !important; }
+
+    .kiosk-shell.todo-mode .todo-panel {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      height: 100%;
+      min-height: 0;
+      align-self: stretch;
+      cursor: default;
+    }
+
+    .todo-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 34px;
+    }
+
+    .todo-title {
+      color: var(--muted);
+      font-size: clamp(11px, .9vw, 13px);
+      font-weight: 950;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .todo-head-actions { display: flex; gap: 8px; align-items: center; }
+
+    .todo-weather-mini {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 12px 0 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.75);
+      background: rgba(255,255,255,.62);
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .todo-weather-mini .mini-ico { font-size: 17px; line-height: 1; }
+
+    .todo-round-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 0;
+      background: #2f2b27;
+      color: #fff;
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      box-shadow: 0 8px 16px rgba(47,43,39,.18);
+    }
+
+    body.work-mode .todo-round-btn { background: var(--work); box-shadow: 0 8px 16px rgba(74,80,200,.28); }
+
+    .todo-list {
+      display: grid;
+      align-content: start;
+      gap: 6px;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 2px 2px 16px;
+      -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 22px), transparent);
+      mask-image: linear-gradient(180deg, #000 calc(100% - 22px), transparent);
+    }
+
+    .todo-row {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 11px;
+      width: 100%;
+      min-height: 46px;
+      padding: 7px 12px 7px 11px;
+      border-radius: 15px;
+      border: 1px solid rgba(255,255,255,.75);
+      background: rgba(255,255,255,.82);
+      box-shadow: 0 6px 14px rgba(70,58,44,.05);
+      text-align: left;
+      color: var(--ink);
+      cursor: pointer;
+      transition: background-color .3s ease, box-shadow .3s ease;
+    }
+
+    .todo-check {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2px solid rgba(47,43,39,.30);
+      display: grid;
+      place-items: center;
+      background: rgba(255,255,255,.9);
+      transition: background-color .2s ease, border-color .2s ease;
+    }
+
+    .todo-check svg { width: 14px; height: 14px; opacity: 0; transition: opacity .15s ease; }
+    .todo-row.is-done .todo-check,
+    .admin-todo-row.is-done .todo-check { background: #2f2b27; border-color: #2f2b27; }
+    body.work-mode .todo-row.is-done .todo-check,
+    body.work-mode .admin-todo-row.is-done .todo-check { background: var(--work); border-color: var(--work); }
+    .todo-row.is-done .todo-check svg,
+    .admin-todo-row.is-done .todo-check svg { opacity: 1; }
+    .todo-row.just-checked .todo-check { animation: todo-pop .28s ease-out; }
+
+    @keyframes todo-pop {
+      0% { transform: scale(.6); }
+      65% { transform: scale(1.15); }
+      100% { transform: scale(1); }
+    }
+
+    .todo-text {
+      font-size: clamp(14px, 1.15vw, 16px);
+      font-weight: 800;
+      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    .todo-row.is-done { background: rgba(255,255,255,.5); box-shadow: none; }
+    .todo-row.is-done .todo-text,
+    .admin-todo-row.is-done .todo-text {
+      color: var(--todo-done);
+      text-decoration: line-through;
+      text-decoration-thickness: 2px;
+      text-decoration-color: rgba(47,43,39,.28);
+    }
+
+    .todo-scope {
+      font-size: 9.5px;
+      font-weight: 950;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: 4px 7px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .todo-scope.is-work { color: var(--work-ink); background: var(--work-soft); box-shadow: inset 0 0 0 1px var(--work-line); }
+    .todo-scope.is-family { color: #6b4a2c; background: rgba(200,127,78,.14); }
+    .todo-scope.is-both { color: #4b3d6b; background: linear-gradient(90deg, rgba(74,80,200,.12), rgba(200,127,78,.18)); }
+
+    .todo-row-actions { display: inline-flex; gap: 6px; }
+
+    .todo-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+      min-height: 22px;
+    }
+
+    .todo-link {
+      border: 0;
+      background: none;
+      color: var(--ink);
+      font-weight: 950;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+      padding: 4px 2px;
+    }
+
+    .todo-add-row {
+      display: grid;
+      gap: 8px;
+      padding: 8px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.9);
+      box-shadow: 0 8px 18px rgba(70,58,44,.08);
+    }
+
+    .todo-add-line { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
+
+    .todo-add-input {
+      min-width: 0;
+      height: 42px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .todo-empty {
+      display: grid;
+      place-items: center;
+      align-content: center;
+      gap: 6px;
+      min-height: 100%;
+      text-align: center;
+      color: var(--muted);
+      padding: 10px;
+    }
+
+    .todo-empty svg { width: 34px; height: 34px; opacity: .25; }
+    .todo-empty-title { font-family: var(--serif); font-size: clamp(22px, 2vw, 28px); letter-spacing: -.04em; color: var(--ink); }
+    .todo-empty-sub { font-size: 13px; font-weight: 750; }
+
+    /* Family / Work / Both, on the wall and on the phone. */
+    .scope-seg {
+      display: inline-grid;
+      grid-auto-flow: column;
+      gap: 4px;
+      padding: 4px;
+      border-radius: 999px;
+      background: rgba(47,43,39,.06);
+      justify-self: start;
+    }
+
+    .scope-seg button {
+      border: 0;
+      background: transparent;
+      border-radius: 999px;
+      min-height: 32px;
+      padding: 0 14px;
+      font-size: 12px;
+      font-weight: 950;
+      color: var(--muted);
+      letter-spacing: .04em;
+      cursor: pointer;
+    }
+
+    .scope-seg button.is-on { background: #fff; color: var(--ink); box-shadow: 0 4px 10px rgba(70,58,44,.10); }
+    .scope-seg button.is-on[data-scope="work"] { background: var(--work); color: #fff; box-shadow: 0 4px 10px rgba(74,80,200,.28); }
+    .scope-seg button.is-on[data-scope="both"] { background: linear-gradient(90deg, #4a50c8, #c87f4e); color: #fff; }
+
+    /* Work tasks among family tasks. Sofia's pink ring wins where both apply. */
+    .work-mixed .mini-event.is-work:not(.is-sofia),
+    .work-mixed .card3d.is-lifted > .mini-event.is-work:not(.is-sofia) {
+      box-shadow: 0 0 0 2px var(--work-ring), 0 0 18px 3px var(--work-glow), 0 8px 18px rgba(70,58,44,.08);
+    }
+
+    .work-mixed .card3d.has-shadow > .mini-event.is-work:not(.is-sofia) {
+      box-shadow: 0 0 0 2px var(--work-ring), 0 0 18px 3px var(--work-glow);
+    }
+
+    .work-badge {
+      position: absolute;
+      top: 9px;
+      left: 9px;
+      z-index: 3;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 22px;
+      padding: 0 8px 0 7px;
+      border-radius: 999px;
+      background: var(--work);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      box-shadow: 0 4px 10px rgba(30,32,90,.28);
+      text-shadow: none;
+    }
+
+    .work-badge svg { width: 12px; height: 12px; }
+    .work-mixed .event-hero.is-work:not(.is-sofia) { box-shadow: 0 0 0 2px var(--work-ring), 0 0 26px 4px var(--work-glow); }
+
+    .kicker-work {
+      display: inline-flex;
+      align-items: center;
+      height: 20px;
+      padding: 0 8px;
+      margin-left: 8px;
+      border-radius: 999px;
+      background: var(--work);
+      color: #fff;
+      font-size: 10px;
+      letter-spacing: .1em;
+      vertical-align: 2px;
+      text-shadow: none;
+    }
+
+    .admin-event-simple.is-work:not(.is-sofia) { box-shadow: 0 0 0 2px var(--work-ring); }
+
+    .work-chip {
+      display: inline-flex;
+      vertical-align: 2px;
+      margin-left: 6px;
+      height: 18px;
+      align-items: center;
+      padding: 0 7px;
+      border-radius: 999px;
+      background: var(--work-soft);
+      color: var(--work-ink);
+      font-size: 9.5px;
+      font-weight: 950;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      box-shadow: inset 0 0 0 1px var(--work-line);
+    }
+
+    .month-event-dot.is-work { background: var(--work); }
+
+    .tent-work-tag {
+      display: inline-flex;
+      align-items: center;
+      height: 18px;
+      padding: 0 7px;
+      margin-right: 8px;
+      border-radius: 999px;
+      background: var(--work);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    /* The Q panel's mode section. On the phone it is all the panel shows. */
+    .wx-mode-section { display: grid; gap: 8px; }
+    .wx-mode-section > #wxModeFamily { width: 100%; }
+    .wx-debug button.is-on.is-work { background: var(--work); border-color: var(--work); }
+    .wx-mode-note { color: var(--muted); font-size: 12px; font-weight: 700; line-height: 1.35; }
+    .wx-debug-sep { height: 1px; background: var(--line); margin: 2px 0; }
+    .wx-debug.is-admin > :not(.wx-debug-head):not(.wx-mode-section) { display: none !important; }
+    .wx-debug.is-admin { top: max(18px, env(safe-area-inset-top)); }
+
+    /* Phone and desktop admin: the to-do list and the stock pictures fold out
+       of the calendar card like the reminder menu, on every screen size. */
+    .admin-mode-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 11px;
+      border-radius: 999px;
+      background: var(--work);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 950;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .admin-mode-pill svg { width: 13px; height: 13px; }
+
+    .admin-fold {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: rgba(255,255,255,0.66);
+      box-shadow: 0 12px 26px rgba(70,58,44,.06);
+    }
+
+    .admin-fold.is-collapsed { gap: 0; padding-bottom: 12px; }
+    .admin-fold.is-collapsed .admin-fold-body { display: none; }
+    .admin-fold:not(.is-collapsed) .reminder-menu-chevron { transform: rotate(180deg); }
+    .admin-fold-body { display: grid; gap: 10px; }
+    .fold-count { color: var(--muted); font-size: 11px; font-weight: 950; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+    .fold-head-right { display: inline-flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+    .admin-fold-help { color: var(--muted); font-size: 12px; font-weight: 750; line-height: 1.35; }
+
+    .admin-todo-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+    .admin-todo-add input {
+      min-width: 0;
+      min-height: 46px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 0 16px;
+      font-weight: 800;
+      font-size: 15px;
+      color: var(--ink);
+    }
+    .admin-todo-add .btn { padding: 0 18px; min-height: 46px; }
+
+    .admin-todo-list { display: grid; gap: 6px; }
+
+    .admin-todo-row {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr) auto;
+      gap: 11px;
+      align-items: center;
+      min-height: 48px;
+      padding: 6px 12px;
+      border-radius: 16px;
+      background: rgba(255,255,255,.82);
+      border: 1px solid var(--line);
+    }
+
+    .admin-todo-row.is-done { background: rgba(255,255,255,.5); }
+    .admin-todo-row > button { border: 0; background: none; padding: 0; color: inherit; text-align: left; cursor: pointer; min-width: 0; }
+    .admin-todo-row .todo-text { font-size: 15px; }
+    .admin-todo-edit { display: grid; gap: 8px; padding: 10px; border-radius: 16px; background: rgba(255,255,255,.92); border: 1px solid var(--line); }
+    .admin-todo-edit input { min-height: 44px; border-radius: 999px; border: 1px solid var(--line); padding: 0 14px; font-weight: 800; font-size: 15px; color: var(--ink); background: #fff; }
+    .admin-todo-edit .button-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .admin-todo-edit .btn { min-height: 40px; padding: 0 16px; font-size: 13px; }
+
+    .todo-done-toggle {
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      text-align: left;
+      padding: 4px 2px;
+      cursor: pointer;
+    }
+
+    .stock-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+      gap: 14px;
+      padding: 6px 4px 4px;
+    }
+
+    .stock-tile {
+      position: relative;
+      aspect-ratio: 4 / 3;
+      border: 0;
+      padding: 0;
+      border-radius: 16px;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .stock-tile::before,
+    .stock-tile::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 16px;
+      background: rgba(255,255,255,.9);
+      box-shadow: 0 6px 14px rgba(70,58,44,.12);
+      border: 1px solid var(--line);
+      transition: transform .2s ease;
+    }
+
+    .stock-tile::before { transform: rotate(-5deg) translate(-3px, 2px); }
+    .stock-tile::after { transform: rotate(4deg) translate(3px, 1px); }
+    .stock-tile:hover::before { transform: rotate(-8deg) translate(-5px, 2px); }
+    .stock-tile:hover::after { transform: rotate(7deg) translate(5px, 1px); }
+    .stock-tile.is-single::before,
+    .stock-tile.is-single::after,
+    .stock-tile.is-new::before,
+    .stock-tile.is-new::after,
+    .stock-tile.is-empty::before,
+    .stock-tile.is-empty::after { display: none; }
+
+    .stock-tile-face {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #ddd5ca;
+      box-shadow: 0 8px 18px rgba(70,58,44,.14);
+    }
+
+    .stock-tile-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .stock-tile-face::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 40%, rgba(0,0,0,.72)); }
+    .stock-tile-copy { position: absolute; left: 9px; right: 9px; bottom: 7px; z-index: 2; color: #fff; text-align: left; }
+    .stock-tile-word { display: block; font-size: 14px; font-weight: 950; text-shadow: 0 2px 8px rgba(0,0,0,.4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stock-tile-count { display: block; font-size: 10px; font-weight: 900; opacity: .85; letter-spacing: .06em; text-transform: uppercase; }
+    .stock-tile.is-empty .stock-tile-face { background: repeating-linear-gradient(45deg, rgba(47,43,39,.10) 0 8px, rgba(47,43,39,.04) 8px 16px), #cfc6ba; }
+    .stock-tile.is-new .stock-tile-face { display: grid; place-items: center; background: rgba(255,255,255,.6); border: 2px dashed rgba(47,43,39,.18); box-shadow: none; }
+    .stock-tile.is-new .stock-tile-face::after { display: none; }
+    .stock-tile.is-new span { color: var(--muted); font-weight: 950; font-size: 13px; }
+
+    /* The editor: Calendar (Family / Work) and the stock picture row. */
+    .scope-field { display: grid; gap: 8px; color: var(--muted); font-weight: 900; font-size: 13px; }
+
+    .stock-image-row {
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 8px;
+      border-radius: 18px;
+      background: rgba(255,250,242,.8);
+      border: 1px solid rgba(154,128,98,.18);
+    }
+
+    .stock-image-row.is-plain { grid-template-columns: minmax(0, 1fr) auto; padding: 4px 4px 4px 12px; background: transparent; border-style: dashed; }
+    .stock-image-row img { width: 64px; height: 48px; border-radius: 12px; object-fit: cover; display: block; }
+    .stock-image-text { font-size: 13px; font-weight: 800; color: var(--ink); line-height: 1.3; min-width: 0; }
+    .stock-image-text small { display: block; color: var(--muted); font-weight: 750; font-size: 11.5px; }
+    .stock-image-actions { display: grid; gap: 6px; justify-items: end; }
+    .stock-image-row .btn { padding: 9px 14px; font-size: 13px; min-height: 0; white-space: nowrap; }
+
+    /* The stock word sheet and the picker reuse the task action sheet. */
+    .stock-sheet-head { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+    .stock-sheet-head img,
+    .stock-sheet-thumb-empty { width: 56px; height: 42px; border-radius: 12px; object-fit: cover; display: block; background: repeating-linear-gradient(45deg, rgba(47,43,39,.10) 0 6px, rgba(47,43,39,.04) 6px 12px); }
+    .stock-sheet-title { font-family: var(--serif); font-size: 26px; letter-spacing: -.04em; line-height: 1.05; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stock-sheet-sub { color: var(--muted); font-size: 12px; font-weight: 800; }
+    .stock-sheet-form { display: grid; gap: 12px; margin-top: 14px; }
+    .stock-sheet-form label { display: grid; gap: 6px; color: var(--muted); font-weight: 900; font-size: 13px; }
+    .stock-match-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 8px; }
+    .stock-match-chip { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: rgba(47,43,39,.06); color: var(--ink); font-size: 12px; font-weight: 850; }
+    .stock-photos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+
+    .stock-photo {
+      position: relative;
+      aspect-ratio: 4 / 3;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 0;
+      padding: 0;
+      background: #ddd5ca;
+      cursor: pointer;
+      box-shadow: 0 6px 14px rgba(70,58,44,.10);
+    }
+
+    .stock-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .stock-photo.is-picked { box-shadow: 0 0 0 3px #2f2b27, 0 6px 14px rgba(70,58,44,.10); }
+    .stock-photo.is-add { display: grid; place-items: center; background: rgba(255,255,255,.7); border: 2px dashed rgba(47,43,39,.2); box-shadow: none; color: var(--muted); font-size: 22px; font-weight: 800; }
+    .stock-photo.is-busy { opacity: .55; pointer-events: none; }
+    .stock-sheet-status { min-height: 16px; color: var(--muted); font-size: 12px; font-weight: 800; }
+    .stock-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .stock-sheet-actions .btn { flex: 1 1 auto; }
+    .stock-picker-group { display: grid; gap: 8px; margin-top: 14px; }
+    .stock-picker-label { color: var(--muted); font-size: 12px; font-weight: 950; letter-spacing: .08em; text-transform: uppercase; }
+    .stock-picker-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+    .task-action-sheet.stock-sheet { max-height: min(86vh, 760px); overflow-y: auto; overscroll-behavior: contain; }
+
+    @media (prefers-reduced-motion: reduce) {
+      body::before { transition: none; }
+      .todo-row.just-checked .todo-check { animation: none; }
+      .stock-tile::before, .stock-tile::after { transition: none; }
+    }
 
   </style>
 </head>
@@ -4753,6 +5412,7 @@
         <div>
           <div class="time-line"><span id="timeDisplay">10:42</span><span id="ampmDisplay" class="ampm" aria-hidden="true"></span></div>
           <div id="dateDisplay" class="date-line">Monday, May 12</div>
+          <div id="clockChips" class="clock-chips" aria-label="To-do list and mode"></div>
           <div id="weekView" class="week-view" aria-label="Week overview"></div>
         </div>
       </article>
@@ -4773,6 +5433,7 @@
         </div>
         <div id="selectedEventPanel" class="selected-event-panel" aria-live="polite"></div>
         <div id="dailyCalendarPanel" class="daily-calendar-panel" aria-live="polite"></div>
+        <div id="todoPanel" class="todo-panel" role="region" aria-label="To-do list"></div>
       </article>
     </section>
 
@@ -4794,7 +5455,7 @@
     <section class="upcoming-card">
       <canvas id="upcomingFx" class="upcoming-fx" aria-hidden="true"></canvas>
       <div class="upcoming-head">
-        <h2 class="section-title">Upcoming</h2>
+        <h2 id="upcomingTitle" class="section-title">Upcoming</h2>
         <div id="upcomingPager" class="upcoming-pager" aria-label="Upcoming task navigation"></div>
       </div>
       <div id="upcomingGrid" class="upcoming-grid"></div>
@@ -4808,7 +5469,8 @@
         <div class="admin-subtitle">Phone calendar mode. See upcoming tasks first, then open the task editor only when you need it.</div>
       </div>
       <div class="admin-header-actions">
-        <div class="pill" id="adminClock">--:--</div>
+        <span id="adminModePill" class="admin-mode-pill hidden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18"/></svg>Work</span>
+        <div class="pill" id="adminClock" title="Hold for the Q panel">--:--</div>
         <button id="returnToDisplayBtn" class="btn desktop-return-btn" type="button">View home screen</button>
       </div>
     </header>
@@ -4846,6 +5508,26 @@
           </label>
         </div>
       </div>
+      <section id="adminTodoFold" class="admin-fold is-collapsed hidden" aria-label="To-do list">
+        <button id="adminTodoToggle" class="reminder-menu-toggle" type="button" aria-expanded="false" aria-controls="adminTodoBody">
+          <span class="reminder-menu-toggle-text">
+            <span class="phone-reminder-menu-title">To-do list</span>
+            <span id="adminTodoSubtitle" class="reminder-menu-toggle-subtitle">Shown on the wall. Tap a circle to tick it off.</span>
+          </span>
+          <span class="fold-head-right"><span id="adminTodoCount" class="fold-count"></span><span class="reminder-menu-chevron" aria-hidden="true">⌄</span></span>
+        </button>
+        <div id="adminTodoBody" class="admin-fold-body"></div>
+      </section>
+      <section id="adminStockFold" class="admin-fold is-collapsed hidden" aria-label="Stock pictures">
+        <button id="adminStockToggle" class="reminder-menu-toggle" type="button" aria-expanded="false" aria-controls="adminStockBody">
+          <span class="reminder-menu-toggle-text">
+            <span class="phone-reminder-menu-title">Stock pictures</span>
+            <span class="reminder-menu-toggle-subtitle">Default photos for words that come up again and again.</span>
+          </span>
+          <span class="fold-head-right"><span id="adminStockCount" class="fold-count"></span><span class="reminder-menu-chevron" aria-hidden="true">⌄</span></span>
+        </button>
+        <div id="adminStockBody" class="admin-fold-body"></div>
+      </section>
       <div id="phoneReminderMenu" class="phone-reminder-menu is-collapsed" aria-label="Reminder menu">
         <div class="reminder-menu-header">
           <button id="reminderMenuToggle" class="reminder-menu-toggle" type="button" aria-expanded="false" aria-controls="phoneReminderMenuBody">
@@ -4913,6 +5595,13 @@
       </div>
     </section>
 
+    <section id="stockSheetOverlay" class="task-action-overlay hidden" aria-hidden="true">
+      <div class="task-action-sheet stock-sheet" role="dialog" aria-modal="true" aria-label="Stock pictures">
+        <div id="stockSheetContent"></div>
+      </div>
+      <input id="stockPhotoInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
+    </section>
+
     <section id="eventEditorCard" class="admin-card event-editor-card hidden">
       <div class="event-editor-head">
         <div>
@@ -4929,6 +5618,15 @@
           Title
           <input id="titleInput" required maxlength="80" placeholder="Enjoy each day" />
         </label>
+
+        <div id="scopeField" class="scope-field hidden">
+          Calendar
+          <input id="scopeInput" type="hidden" value="family" />
+          <div id="scopeSeg" class="scope-seg" role="group" aria-label="Calendar">
+            <button type="button" data-scope="family">Family</button>
+            <button type="button" data-scope="work">Work</button>
+          </div>
+        </div>
 
         <div class="two-col">
           <label>
@@ -4986,6 +5684,7 @@
         </label>
         <input id="imageUrlInput" type="hidden" />
         <div id="imageStatus" class="image-status">No image selected. A calm placeholder will be used.</div>
+        <div id="stockImageRow" class="stock-image-row hidden" aria-live="polite"></div>
 
         <div id="imageResyncRow" class="image-resync-row hidden">
           <button id="resyncImageBtn" class="btn secondary" type="button">Resync image</button>
@@ -5178,12 +5877,22 @@
   <section id="wxDebug" class="wx-debug hidden" role="dialog" aria-label="Weather test">
     <div class="wx-debug-head">
       <div>
-        <div class="wx-debug-title">Weather test</div>
-        <div class="wx-debug-hint">Q or Esc closes · the test stays on</div>
+        <div class="wx-debug-title">Q panel</div>
+        <div id="wxDebugHint" class="wx-debug-hint">Q or Esc closes · the test stays on</div>
       </div>
-      <button id="wxDebugClose" type="button" aria-label="Close weather test">×</button>
+      <button id="wxDebugClose" type="button" aria-label="Close the Q panel">×</button>
     </div>
-    <div class="wx-debug-label">Sky</div>
+    <section id="wxModeSection" class="wx-mode-section" aria-label="Mode">
+      <div class="wx-debug-label">Mode · this screen</div>
+      <div class="wx-debug-grid two">
+        <button type="button" data-work-mode="family">Family</button>
+        <button type="button" data-work-mode="work">Work</button>
+      </div>
+      <button type="button" id="wxModeFamily">Family calendar: hidden</button>
+      <div id="wxModeNote" class="wx-mode-note"></div>
+    </section>
+    <div class="wx-debug-sep"></div>
+    <div class="wx-debug-label">Weather test · sky</div>
     <div class="wx-debug-grid" id="wxDebugSky">
       <button type="button" data-wx-sky="live">Live</button>
       <button type="button" data-wx-sky="clear">Clear</button>
@@ -5308,7 +6017,7 @@
     // build the same way, so a device running stale cached JavaScript, or a
     // deploy that never landed, can be told apart from a real sync fault
     // instead of being guessed at.
-    const APP_BUILD = '2026-10-22-a';
+    const APP_BUILD = '2026-11-21-a';
     // Blob-efficient sync. Every save on the server also rewrites a tiny
     // version marker in Blob storage, and screens read that marker straight
     // off the Blob CDN every SYNC_VERSION_POLL_MS. An unchanged marker is a CDN
@@ -5373,6 +6082,24 @@
     const DAUGHTER_PERIODS_CACHE_KEY = 'homeOrganizerDaughterPeriodsV2';
     const DAUGHTER_PERIODS_MIGRATED_KEY = 'homeOrganizerDaughterPeriodsMigrated';
     const DAUGHTER_PERIOD_IMPORT_OP_ID = 'period-import-from-this-device';
+    // The to-do list and the stock pictures ride in events.json next to the
+    // tasks, like the daughter periods; these hold this screen's last copy.
+    const TODOS_CACHE_KEY = 'homeOrganizerTodosV1';
+    const STOCK_CACHE_KEY = 'homeOrganizerStockV1';
+    // Ticks and additions wait this long for more before they are sent, so a
+    // burst of taps on the wall costs one write rather than one each.
+    const TODO_FLUSH_DELAY_MS = 2500;
+    const TODO_BATCH_MAX_CHANGES = 60;
+    // Work mode belongs to this screen only: { on, showFamily }.
+    const WORK_MODE_KEY = 'homeOrganizerWorkMode';
+    // Set the first time work mode is switched on here. Until then the task
+    // editor does not offer the Family / Work choice at all.
+    const WORK_MODE_UNLOCKED_KEY = 'homeOrganizerWorkModeUnlocked';
+    const TODO_MENU_EXPANDED_KEY = 'homeOrganizerTodoMenuExpanded';
+    const STOCK_MENU_EXPANDED_KEY = 'homeOrganizerStockMenuExpanded';
+    // A ticked-off to-do stays on the wall this long, struck through, unless
+    // it is cleared sooner.
+    const TODO_DONE_VISIBLE_MS = 12 * 60 * 60 * 1000;
     const DAUGHTER_ANCHOR_START_KEY = '2026-05-13';
     const DAUGHTER_ANCHOR_END_KEY = '2026-05-20';
     const DAUGHTER_PERIOD_INTERVAL_DAYS = 14;
@@ -5425,6 +6152,28 @@
       // The server's copy; daughterPeriodOverrides is this plus queued edits.
       serverDaughterPeriods: { overrides: {}, extra: {} },
       renderedDaughterPeriodsJson: '',
+      // The server's to-do list and stock library; what is shown is these plus
+      // this screen's queued changes. serverStock stays null until a reply
+      // brings the library.
+      serverTodos: { items: {}, deleted: {} },
+      serverStock: null,
+      renderedSharedListsJson: '',
+      todoFlushTimer: null,
+      // Which panel the weather card shows when it is not the day selector:
+      // null (the mode's own default), 'todo' or 'weather'.
+      cardPanelOverride: null,
+      todoAddOpen: false,
+      todoAddScope: '',
+      todoConfirmDeleteId: '',
+      adminTodoEditId: '',
+      adminTodoDoneOpen: false,
+      todoMenuExpanded: localStorage.getItem('homeOrganizerTodoMenuExpanded') === '1',
+      stockMenuExpanded: localStorage.getItem('homeOrganizerStockMenuExpanded') === '1',
+      stockSheetWordId: '',
+      stockSheetImageId: '',
+      stockSheetIsNew: false,
+      pendingStockPick: null,
+      stockFramingTouched: false,
       weatherFocusDate: null,
       weatherEffectKey: null,
       dangerHoldTimer: null,
@@ -6442,7 +7191,7 @@
         if (period?.customized || period?.extra) classes.push('custom-daughter');
         if (period && period.periodKey === selectedKey) classes.push('selected-period');
         const dots = dayEvents.length
-          ? `<div class="month-day-events">${dayEvents.map(() => '<span class="month-event-dot"></span>').join('')}</div>`
+          ? `<div class="month-day-events">${dayEvents.map(item => `<span class="month-event-dot${showsWorkMark(item) ? ' is-work' : ''}"></span>`).join('')}</div>`
           : '';
         html.push(`
           <button class="${classes.join(' ')}" type="button" data-month-day="${key}" ${period ? `data-daughter-period="${period.periodKey}"` : ''} aria-label="${htmlEscape(formatPeriodDate(day))}${period ? ', daughter day' : ''}${dayEvents.length ? `, ${dayEvents.length} task${dayEvents.length === 1 ? '' : 's'}` : ''}">
@@ -6698,7 +7447,13 @@
       const startRange = new Date(rangeStart);
       const endRange = new Date(rangeEnd);
 
-      state.events.forEach(event => {
+      // Work mode filters here, once, for every view: the hero, the Upcoming
+      // strip, the week dots, the day selector, the month view, the tent view
+      // and the admin list all take their tasks from this function. Code that
+      // reads state.events directly sees every task on purpose (editing by id,
+      // the stock picture counts, the card-drop bookkeeping).
+      const visibleEvents = options.allScopes ? state.events : state.events.filter(eventScopeVisible);
+      visibleEvents.forEach(event => {
         const repeat = event.repeat || 'none';
         const start = parseEventDate(event.start);
         if (!start) return;
@@ -7429,6 +8184,9 @@
         els.heroImage.dataset.focusBound = '1';
       }
       els.heroKicker.textContent = `${dayLabel} · ${formatTime(date, false)}${repeat ? ` · ${repeat}` : ''}`;
+      const heroWork = showsWorkMark(event);
+      if (heroWork) els.heroKicker.insertAdjacentHTML('beforeend', '<span class="kicker-work">Work</span>');
+      els.heroEvent.classList.toggle('is-work', heroWork);
       els.heroTitle.textContent = event.title;
       els.heroLocation.textContent = event.location || event.note || 'Shared calendar task';
       els.heroEvent.classList.toggle('is-flipped', state.heroEventFlipped);
@@ -7560,6 +8318,8 @@
     // The today view rotates through today's tasks on its own, so
     // selectedInstanceId alone does not mean somebody navigated away.
     function isHomeView() {
+      if (state.cardPanelOverride) return false;
+      if (state.todoAddOpen) return false;
       if (state.selectedDayKey) return false;
       if (state.dailyCalendarMode) return false;
       if (state.upcomingPage) return false;
@@ -7582,6 +8342,10 @@
       // idle; a paused or finished one is.
       if (isOverlayOpen(els.videoPlayerOverlay) && !videoPlayer.playing) closeVideoPlayer();
       state.hiddenRepeatingTasksVisibleUntil = 0;
+      state.cardPanelOverride = null;
+      state.todoAddOpen = false;
+      state.todoConfirmDeleteId = '';
+      flushTodoChanges();
       clearTaskCardFlipBackTimer();
       clearSelectedDayPreview();
     }
@@ -7886,6 +8650,7 @@
       renderDisplay();
       renderAdminEvents();
       refreshDaughterPeriodsView();
+      refreshSharedListsView();
     }
 
     function getPendingWrites() {
@@ -7996,6 +8761,9 @@
         imageNaturalWidth: Number(event.imageNaturalWidth || 0) || 0,
         imageNaturalHeight: Number(event.imageNaturalHeight || 0) || 0,
         featured: Boolean(event.featured),
+        scope: String(event.scope || 'family'),
+        imageStockWord: String(event.imageStockWord || ''),
+        imageStockImageId: String(event.imageStockImageId || ''),
         emailReminder: {
           enabled: Boolean(reminder.enabled),
           recipients: Array.isArray(reminder.recipients) ? [...new Set(reminder.recipients.map(String))].sort() : []
@@ -8174,7 +8942,7 @@
       state.lastWriteError = {
         status: Number(error?.status) || 0,
         message: String(error?.message || 'Unknown error.'),
-        title: String(op?.event?.title || (op?.method === 'PERIOD' ? 'Daughter period' : '')),
+        title: String(op?.event?.title || ({ PERIOD: 'Daughter period', TODO: 'To-do list', STOCK: 'Stock pictures' }[op?.method] || '')),
         at: new Date().toISOString()
       };
     }
@@ -8300,6 +9068,14 @@
         options.method = 'PATCH';
         options.headers['Content-Type'] = 'application/json';
         options.body = JSON.stringify({ daughterPeriod: op.change });
+      } else if (op.method === 'TODO') {
+        options.method = 'PATCH';
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify({ todos: op.changes || [] });
+      } else if (op.method === 'STOCK') {
+        options.method = 'PATCH';
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify({ stock: op.change });
       } else {
         options.headers['Content-Type'] = 'application/json';
         options.body = JSON.stringify(op.event);
@@ -8352,10 +9128,33 @@
           for (const op of queue) {
             const opEventId = op.method === 'PERIOD'
               ? `period:${op.change?.key || op.change?.action || ''}`
-              : String(op.event?.id || op.id || '');
+              : op.method === 'TODO'
+                ? 'todo'
+                : op.method === 'STOCK'
+                  ? 'stock'
+                  : String(op.event?.id || op.id || '');
             if (opEventId && blockedEventIds.has(opEventId)) continue;
+            // To-do changes go out together: every queued to-do op, read fresh
+            // (more taps may have landed while an earlier save was in flight),
+            // in one write. Ops already sent with an earlier batch are skipped.
+            let sendOp = op;
+            let batchedOpIds = [op.opId];
+            if (op.method === 'TODO') {
+              const freshTodoOps = getPendingWrites().filter(item => item.method === 'TODO');
+              if (!freshTodoOps.some(item => item.opId === op.opId)) continue;
+              const batch = [];
+              let changes = [];
+              for (const item of freshTodoOps) {
+                const itemChanges = Array.isArray(item.changes) ? item.changes : [];
+                if (batch.length && changes.length + itemChanges.length > TODO_BATCH_MAX_CHANGES) break;
+                batch.push(item);
+                changes = changes.concat(itemChanges);
+              }
+              sendOp = { ...op, changes };
+              batchedOpIds = batch.map(item => item.opId);
+            }
             try {
-              const data = await performServerWrite(op);
+              const data = await performServerWrite(sendOp);
               state.lastWriteError = null;
               rememberServerBuild(data.build);
               noteServerDeployment(data.deployment);
@@ -8364,6 +9163,8 @@
               // just moved for it is not news to this screen.
               markSyncVersionSeen(data.version);
               if (data.daughterPeriods) applyServerDaughterPeriods(data.daughterPeriods);
+              applyServerSharedLists(data);
+              if (op.method === 'TODO') batchedOpIds.forEach(removeQueuedWrite);
               if (op.opId === DAUGHTER_PERIOD_IMPORT_OP_ID) {
                 try { localStorage.setItem(DAUGHTER_PERIODS_MIGRATED_KEY, '1'); } catch {}
               }
@@ -8385,6 +9186,7 @@
               rememberWriteError(error, op);
               if (!isRetryableError(error)) {
                 removeQueuedWrite(op.opId);
+                if (op.method === 'TODO') batchedOpIds.forEach(removeQueuedWrite);
                 if (op.event?.id) forgetLocalEvent(op.event.id);
                 refreshEventsFromServerEvents();
                 // A non-retryable failure means the save is permanently rejected and
@@ -8434,6 +9236,7 @@
         renderDisplay();
         renderAdminEvents();
         refreshDaughterPeriodsView();
+        refreshSharedListsView();
         schedulePendingWriteRetry();
       }
       if (fatalError) throw fatalError;
@@ -8474,6 +9277,7 @@
           state.serverEventsFresh = confirmed;
           rememberCachedEvents(state.serverEvents);
           if (data.daughterPeriods) applyServerDaughterPeriods(data.daughterPeriods);
+          applyServerSharedLists(data);
         }
         if (confirmed) {
           state.lastFreshEventLoadAt = Date.now();
@@ -8493,6 +9297,7 @@
       renderDisplay();
       renderAdminEvents();
       refreshDaughterPeriodsView();
+      refreshSharedListsView();
       processPendingWrites({ silent: true });
       // Wait until the task is actually loaded before opening the editor, so a
       // deep link still works if the first read did not include it yet.
@@ -8765,8 +9570,11 @@
       els.displayView.classList.toggle('no-daily', !hasMainEvent);
       els.displayView.classList.toggle('daily-calendar-mode', Boolean(hasMainEvent && state.dailyCalendarMode));
       state.weatherFocusDate = main ? new Date(main.date || main.start) : new Date();
+      els.displayView.classList.toggle('todo-mode', todoPanelShown(hasMainEvent));
       renderWeather();
       renderDailyCalendarPanel();
+      renderTodoPanel();
+      renderClockChips();
 
       if (!hasMainEvent) {
         renderWeekView();
@@ -8786,7 +9594,7 @@
       const shown = withDropTestCard(upcoming, upcomingLimit);
       if (!shown.length) {
         if (els.upcomingGrid) els.upcomingGrid.style.setProperty('--upcoming-cols', String(getUpcomingDisplayLimit()));
-        setUpcomingCards('<div class="empty-upcoming" style="grid-column:1/-1">No upcoming events yet</div>', shown);
+        setUpcomingCards(`<div class="empty-upcoming" style="grid-column:1/-1">${workMode.on && !workMode.showFamily ? 'No upcoming work tasks' : 'No upcoming events yet'}</div>`, shown);
         ensureTodayTaskCycle();
         noteKnownEvents();
         return;
@@ -8801,8 +9609,9 @@
         const exactDate = formatUpcomingDate(date);
         const sofia = isSofiaEvent(event);
         const aura = sofia ? sofiaAuraHtml('around', `grid-column:${(index % columns) + 1} / span 1;grid-row:${Math.floor(index / columns) + 1} / span 1`) : '';
+        const work = showsWorkMark(event);
         return `
-          <button class="mini-event${sofia ? ' is-sofia' : ''}" type="button" data-upcoming-pick="${htmlEscape(event._instanceId)}" aria-label="Open ${htmlEscape(event.title)} on ${htmlEscape(exactDate)}">
+          <button class="mini-event${sofia ? ' is-sofia' : ''}${work ? ' is-work' : ''}" type="button" data-upcoming-pick="${htmlEscape(event._instanceId)}" aria-label="Open ${htmlEscape(event.title)} on ${htmlEscape(exactDate)}${work ? ' (work)' : ''}">${work ? workBadgeHtml() : ''}
             <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}" style="${upcomingImageFocusStyle(event)}" data-fallback-seed="${htmlEscape(event.id)}" data-fallback-label="${htmlEscape(event.title)}">
             <span class="mini-copy">
               <span class="mini-time">${htmlEscape(exactDate)} · ${formatTime(date, false)}</span>
@@ -9469,6 +10278,7 @@
         && document.visibilityState === 'visible'
         && !els.displayView.classList.contains('hidden')
         && !els.displayView.classList.contains('daily-calendar-mode')
+        && !els.displayView.classList.contains('todo-mode')
         && !els.weatherCard.classList.contains('show-selected-event')
         && !document.body.classList.contains('motion-dimmed')
         && !anyDisplayOverlayOpen();
@@ -13619,9 +14429,12 @@
     }
 
     function openWeatherDebug() {
-      if (adminMode || !els.wxDebug) return;
+      if (!els.wxDebug) return;
       weatherDebug.open = true;
       els.wxDebug.classList.remove('hidden');
+      renderWorkModeControls();
+      // On the phone the Q panel is only the mode switch.
+      if (adminMode) return;
       renderWeatherDebug();
       clearInterval(weatherDebug.statusTimer);
       weatherDebug.statusTimer = setInterval(() => {
@@ -13640,11 +14453,17 @@
         weatherFx.speed = 1;
         renderWeather();
       }
-      renderWeatherDebug();
+      if (!adminMode) renderWeatherDebug();
     }
 
     function bindWeatherDebug() {
-      if (adminMode || !els.wxDebug) return;
+      if (!els.wxDebug) return;
+      bindWorkModeControls();
+      if (adminMode) {
+        els.wxDebug.classList.add('is-admin');
+        const hint = document.getElementById('wxDebugHint');
+        if (hint) hint.textContent = 'Hold the clock or press Q to open it again';
+      }
       window.addEventListener('keydown', event => {
         if (event.key === 'Escape' && weatherDebug.open) {
           closeWeatherDebug();
@@ -13657,6 +14476,7 @@
         else openWeatherDebug();
       });
       els.wxDebugClose.addEventListener('click', () => closeWeatherDebug());
+      if (adminMode) return;
       els.wxDebug.addEventListener('click', event => {
         const sky = event.target.closest('[data-wx-sky]');
         if (sky) setWeatherDebugSky(sky.dataset.wxSky);
@@ -14211,7 +15031,7 @@
       });
 
       const startHold = event => {
-        if (event.target.closest?.('.month-modal, .config-modal, .weather-modal, .danger-modal, .task-action-sheet, .edge-panel, .video-overlay, .tent-view, .wx-debug, input, textarea, button, select, a')) return;
+        if (event.target.closest?.('.month-modal, .config-modal, .weather-modal, .danger-modal, .task-action-sheet, .edge-panel, .video-overlay, .tent-view, .wx-debug, .todo-panel, .clock-chips, input, textarea, button, select, a')) return;
         if (els.monthOverlay && !els.monthOverlay.classList.contains('hidden')) return;
         state.longPressOpened = false;
         clearTimeout(state.longPressTimer);
@@ -14263,6 +15083,10 @@
       els.saveEventBtn.textContent = 'Save event';
       els.imageStatus.textContent = noImageStatusText('');
       setImageResyncVisible(false);
+      state.pendingStockPick = null;
+      state.stockFramingTouched = false;
+      renderScopeField(newTaskScope());
+      renderStockImageRow();
       setStatus('');
       const start = new Date(Date.now() + 60 * 60 * 1000);
       start.setMinutes(0, 0, 0);
@@ -14515,6 +15339,10 @@
     // lege or MR task will be handed an old photo of its own kind on save, so it
     // must not promise a placeholder.
     function noImageStatusText(title) {
+      // Once the stock library is known it decides; the lege borrowing it
+      // grew out of only stands in until then.
+      const stockText = stockNoImageStatusText(title);
+      if (stockText) return stockText;
       const keyword = autoImageKeyword(title);
       if (keyword && pickAutoImage(title, els.eventId?.value || '')) {
         return `No image selected. A photo from an older ${autoImageKeywordLabel(keyword)} task will be used automatically.`;
@@ -14739,11 +15567,11 @@ Cancel = choose whether to delete the whole series.`);
       const emailText = reminderSummary(event);
       const reminderText = emailText ? `<div class="admin-event-location">✉ ${htmlEscape(emailText)}</div>` : '';
       return `
-        <button class="admin-event-simple${event._completed ? ' admin-event-complete' : ''}${isSofiaEvent(event) ? ' is-sofia' : ''}" type="button" data-admin-card="${htmlEscape(event._instanceId)}" aria-label="Open actions for ${htmlEscape(event.title)}">
+        <button class="admin-event-simple${event._completed ? ' admin-event-complete' : ''}${isSofiaEvent(event) ? ' is-sofia' : ''}${showsWorkMark(event) ? ' is-work' : ''}" type="button" data-admin-card="${htmlEscape(event._instanceId)}" aria-label="Open actions for ${htmlEscape(event.title)}">
           <div class="admin-event-main">
             <span class="event-thumb"><img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(sourceId, event.title))}" style="${imageFocusStyle(event)}" data-fallback-seed="${htmlEscape(sourceId)}" data-fallback-label="${htmlEscape(event.title)}"></span>
             <div>
-              <div class="admin-event-title">${htmlEscape(event.title)} ${event.featured ? '· Featured' : ''}${completeText}</div>
+              <div class="admin-event-title">${htmlEscape(event.title)} ${event.featured ? '· Featured' : ''}${showsWorkMark(event) ? '<span class="work-chip">Work</span>' : ''}${completeText}</div>
               <div class="admin-event-meta">${htmlEscape(dateText)}</div>
               ${locationText}
               ${reminderText}
@@ -14864,13 +15692,18 @@ Cancel = choose whether to delete the whole series.`);
           : hiddenFrequentRepeats
             ? ` Frequent repeats are limited to this month and next month. ${hiddenFrequentRepeats} later repeat${hiddenFrequentRepeats === 1 ? '' : 's'} hidden.`
             : ' Frequent repeats are limited to this month and next month.';
+        const workOnly = workMode.on && !workMode.showFamily;
+        const kind = workOnly ? 'work task' : 'saved task';
+        const where = workMode.on ? (workMode.showFamily ? '. Work mode, with the family calendar.' : '. Work mode, family calendar hidden.') : ' across your shared calendar.';
         els.adminListSubtitle.textContent = futureEvents.length
-          ? `${futureEvents.length} upcoming saved task${futureEvents.length === 1 ? '' : 's'} across your shared calendar.${repeatNote}`
-          : `No upcoming tasks shown. Create your first task/event.${repeatNote}`;
+          ? `${futureEvents.length} upcoming ${kind}${futureEvents.length === 1 ? '' : 's'}${where}${repeatNote}`
+          : `No upcoming ${workOnly ? 'work ' : ''}tasks shown. Create your first ${workOnly ? 'work task' : 'task/event'}.${repeatNote}`;
       }
 
       if (!futureEvents.length) {
-        els.adminEvents.innerHTML = '<div class="empty-upcoming">No events yet. Tap “Create a new task/event” to add one.</div>';
+        els.adminEvents.innerHTML = workMode.on && !workMode.showFamily
+          ? '<div class="empty-upcoming">No work tasks yet. Tap “Create a new work task” to add one.</div>'
+          : '<div class="empty-upcoming">No events yet. Tap “Create a new task/event” to add one.</div>';
         return;
       }
 
@@ -14921,14 +15754,20 @@ Cancel = choose whether to delete the whole series.`);
       state.imageFocusToken += 1;
       setManualImageControls(state.pendingImageFocus);
       setManualImagePreviewSource(event.imageUrl || '');
+      state.pendingStockPick = null;
+      state.stockFramingTouched = false;
+      renderScopeField(eventScope(event));
       els.imageStatus.textContent = event.imageUrl
-        ? isMismatchedBorrowedImage(event, autoImageIndex(state.events || []))
+        ? event.imageStockImageId
+          ? 'A stock picture. It is kept unless you upload a photo or pick another one.'
+          : isMismatchedBorrowedImage(event, autoImageIndex(state.events || []))
           ? `Borrowed from an older ${autoImageKeywordLabel(autoImageKindOf(event, autoImageIndex(state.events || [])))} task, which is not what this one is about. Saving replaces it with a photo of the right kind, or with the placeholder. Upload a photo to keep one of your own.`
           : event.imageInheritedFrom
             ? 'Borrowed from an older task with the same kind of title. It is kept unless you upload a photo. Adjust pan/zoom below if needed.'
             : 'Current image will be kept unless you upload a new one. Adjust pan/zoom below if needed.'
         : noImageStatusText(event.title);
       setImageResyncVisible(true);
+      renderStockImageRow();
       els.saveEventBtn.textContent = 'Update event';
       if (els.eventEditorTitle) els.eventEditorTitle.textContent = 'Edit task/event';
       showEventEditor();
@@ -15129,7 +15968,12 @@ Cancel = choose whether to delete the whole series.`);
         if (adminMode) return;
         // Do not let the day buttons inside the clock card trigger "return to today".
         // Only the actual clock/date area should use this shortcut.
-        if (event.target?.closest?.('.week-view, .week-day, .daily-calendar-panel, .daily-calendar-day')) return;
+        if (event.target?.closest?.('.week-view, .week-day, .daily-calendar-panel, .daily-calendar-day, .clock-chips')) return;
+        // A hold on the date opened the Q panel; that is not a tap.
+        if (qPanelHold.fired) {
+          qPanelHold.fired = false;
+          return;
+        }
         const now = Date.now();
         const isDoublePress = now - lastPress < DOUBLE_PRESS_MS;
 
@@ -15278,12 +16122,37 @@ Cancel = choose whether to delete the whole series.`);
           const releasesWrongKind = Boolean(editedEvent)
             && uploadedUrl === String(editedEvent.imageUrl || '')
             && isMismatchedBorrowedImage({ ...editedEvent, title: els.titleInput.value }, autoImageIndex(state.events || []));
-          const imageUrl = releasesWrongKind ? '' : uploadedUrl;
-          // A fysio, lege or MR task saved without a picture borrows one from an
-          // older task of the same kind. The server decides this too, for
-          // whatever any device sends it; picking here as well means this
-          // device never draws the card with a placeholder first.
-          const borrowed = imageUrl ? null : pickAutoImage(els.titleInput.value, els.eventId.value);
+          // Stock pictures. A photo picked by hand from the stock pictures, or a
+          // stock picture reframed with the sliders, belongs to this task: it is
+          // never swapped when the title changes. Any other stock picture of a
+          // word the title no longer names is let go, as the server does.
+          const stock = effectiveStock();
+          const keepsStoredImage = Boolean(editedEvent) && uploadedUrl === String(editedEvent.imageUrl || '');
+          const stockPick = state.pendingStockPick && state.pendingStockPick.imageUrl === uploadedUrl ? state.pendingStockPick : null;
+          const keptStockMarks = keepsStoredImage && editedEvent.imageStockImageId
+            ? {
+                imageStockWord: String(editedEvent.imageStockWord || ''),
+                imageStockImageId: String(editedEvent.imageStockImageId || ''),
+                imageStockManual: editedEvent.imageStockManual === true || state.stockFramingTouched
+              }
+            : null;
+          const releasesStaleStock = Boolean(stock) && keepsStoredImage && !releasesWrongKind && !stockPick
+            && isStaleStockImageClient({ ...editedEvent, title: els.titleInput.value, imageStockManual: keptStockMarks?.imageStockManual }, stock);
+          const imageUrl = releasesWrongKind || releasesStaleStock ? '' : uploadedUrl;
+          // A task whose title names a stock word and that is saved without a
+          // picture gets one of that word's photos. The server decides this too,
+          // for whatever any device sends it; picking here as well means this
+          // device never draws the card with a placeholder first. Until the
+          // library has reached this device, the lege borrowing stands in.
+          const stockFill = imageUrl || !stock ? null : pickStockForTitleClient(els.titleInput.value, stock, els.eventId.value);
+          const borrowed = imageUrl || stock ? null : pickAutoImage(els.titleInput.value, els.eventId.value);
+          const stockMarks = stockFill
+            ? { ...stockFill.image, imageInheritedFrom: '', imageInheritedKeyword: '', imageStockWord: stockFill.wordId, imageStockImageId: stockFill.imageId, imageStockManual: false }
+            : stockPick
+              ? { imageInheritedFrom: '', imageInheritedKeyword: '', imageStockWord: stockPick.wordId, imageStockImageId: stockPick.imageId, imageStockManual: true }
+              : keptStockMarks && !releasesStaleStock
+                ? keptStockMarks
+                : { imageStockWord: '', imageStockImageId: '', imageStockManual: false };
           // A picture that is neither new nor let go keeps the marks saying
           // where it came from, so this device's own copy does not read a
           // borrowed photo as one somebody chose while the save is in flight.
@@ -15321,15 +16190,25 @@ Cancel = choose whether to delete the whole series.`);
               : releasesWrongKind
                 ? { imageInheritedFrom: '', imageInheritedKeyword: '' }
                 : keptBorrowMarks),
+            ...stockMarks,
+            imageUrl: stockFill ? stockFill.image.imageUrl : borrowed ? borrowed.image.imageUrl : imageUrl,
+            scope: document.getElementById('scopeInput')?.value === 'work' ? 'work' : 'family',
             featured: els.featuredInput.checked
           };
           const saved = await saveEvent(payload);
           resetForm();
-          setStatus(borrowed
-            ? `Saved instantly on this device, with a photo from an older ${autoImageKeywordLabel(borrowed.keyword)} task. Syncing to the server in the background.`
-            : releasesWrongKind
-              ? 'Saved instantly on this device. The borrowed photo belonged to another kind of task and was let go; no photo of the right kind exists yet, so the placeholder is used. Syncing to the server in the background.'
-              : 'Saved instantly on this device. Syncing to the server in the background.');
+          const scopeNote = payload.scope === 'work' && !workMode.on ? ' Saved as a work task: it shows on screens in work mode.' : '';
+          setStatus(stockFill
+            ? `Saved instantly on this device, with the stock picture for “${stockFill.word}”. Syncing to the server in the background.${scopeNote}`
+            : releasesStaleStock
+              ? `Saved instantly on this device. The title no longer names the stock picture's word, so it was let go. Syncing to the server in the background.${scopeNote}`
+              : scopeNote
+                ? `Saved instantly on this device.${scopeNote}`
+                : borrowed
+                  ? `Saved instantly on this device, with a photo from an older ${autoImageKeywordLabel(borrowed.keyword)} task. Syncing to the server in the background.`
+                  : releasesWrongKind
+                    ? 'Saved instantly on this device. The borrowed photo belonged to another kind of task and was let go; no photo of the right kind exists yet, so the placeholder is used. Syncing to the server in the background.'
+                    : 'Saved instantly on this device. Syncing to the server in the background.');
           closeEventEditor({ reset: false });
           closeAdminTaskActions();
           renderAdminEvents();
@@ -15377,6 +16256,7 @@ Cancel = choose whether to delete the whole series.`);
       // picking an upcoming task.
       if (state.dailyCalendarMode) return false;
       if (els.weatherCard?.classList.contains('show-selected-event')) return false;
+      if (els.displayView?.classList.contains('todo-mode')) return false;
       return true;
     }
 
@@ -15384,7 +16264,7 @@ Cancel = choose whether to delete the whole series.`);
       let pressStartedOnWeather = false;
       const isWeatherReadoutTarget = target => Boolean(
         target?.closest &&
-        !target.closest('.selected-event-panel, .daily-calendar-panel, button, a')
+        !target.closest('.selected-event-panel, .daily-calendar-panel, .todo-panel, button, a')
       );
 
       // Remember where the press began. A day button can be re-rendered out of
@@ -18468,7 +19348,7 @@ Cancel = choose whether to delete the whole series.`);
         <div class="tent-slide-scrim"></div>
         <div class="tent-slide-caption">
           <div class="tent-slide-title">${htmlEscape(event.title || 'Untitled task')}</div>
-          <div class="tent-slide-when">${live ? '<span class="tent-slide-live">Now</span>' : ''}<b>${htmlEscape(day)}</b><span class="tent-slide-sep">·</span><span>${htmlEscape(formatTime(start, false))}</span></div>
+          <div class="tent-slide-when">${showsWorkMark(event) ? '<span class="tent-work-tag">Work</span>' : ''}${live ? '<span class="tent-slide-live">Now</span>' : ''}<b>${htmlEscape(day)}</b><span class="tent-slide-sep">·</span><span>${htmlEscape(formatTime(start, false))}</span></div>
           ${event.location ? `<div class="tent-slide-location">${htmlEscape(event.location)}</div>` : ''}
         </div>
         ${isSofiaEvent(event) ? sofiaAuraHtml('inside') : ''}
@@ -18952,7 +19832,1446 @@ Cancel = choose whether to delete the whole series.`);
       syncTentView();
     }
 
+    // ---------------------------------------------------------------------
+    // Work mode
+    //
+    // A screen in work mode shows only the tasks made in work mode; the family
+    // calendar can be shown alongside them with one tap. It is switched in the
+    // Q panel (press Q, hold the date on the wall, or hold the clock on the
+    // phone) and belongs to this screen only, so turning it on at the desk does
+    // not change the wall or anybody else's phone. A screen in family mode
+    // shows only family tasks.
+
+    const workMode = { on: false, showFamily: false };
+    // A hold on the date (wall) or the clock pill (phone) opens the Q panel.
+    const qPanelHold = { timer: null, fired: false };
+    const Q_PANEL_HOLD_MS = 950;
+
+    const BRIEFCASE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18"/></svg>';
+    const CHECKLIST_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="m8 12.2 2.7 2.7L16.2 9"/></svg>';
+    const TICK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5.5 12.5 4.2 4.2L18.5 7.8"/></svg>';
+
+    function loadWorkMode() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(WORK_MODE_KEY) || 'null');
+        workMode.on = parsed?.on === true;
+        workMode.showFamily = parsed?.showFamily === true;
+      } catch {
+        workMode.on = false;
+        workMode.showFamily = false;
+      }
+    }
+
+    function saveWorkMode() {
+      try { localStorage.setItem(WORK_MODE_KEY, JSON.stringify(workMode)); } catch {}
+    }
+
+    function workModeUnlocked() {
+      try { return localStorage.getItem(WORK_MODE_UNLOCKED_KEY) === '1'; } catch { return false; }
+    }
+
+    function eventScope(event) {
+      return String(event?.scope || '') === 'work' ? 'work' : 'family';
+    }
+
+    function eventScopeVisible(event) {
+      const scope = eventScope(event);
+      if (!workMode.on) return scope === 'family';
+      return scope === 'work' || workMode.showFamily;
+    }
+
+    // To-dos: work mode shows work and both, family mode family and both. The
+    // family-calendar toggle is about the calendar, not the list.
+    function todoScopeVisible(scope) {
+      const value = String(scope || 'family');
+      if (value === 'both') return true;
+      return workMode.on ? value === 'work' : value === 'family';
+    }
+
+    // Work tasks only carry a mark where they sit among family tasks.
+    function showsWorkMark(event) {
+      return workMode.on && workMode.showFamily && eventScope(event) === 'work';
+    }
+
+    function workBadgeHtml() {
+      return `<span class="work-badge">${BRIEFCASE_SVG}Work</span>`;
+    }
+
+    function newTaskScope() {
+      return workMode.on ? 'work' : 'family';
+    }
+
+    function setWorkMode(on) {
+      workMode.on = Boolean(on);
+      if (workMode.on) {
+        try { localStorage.setItem(WORK_MODE_UNLOCKED_KEY, '1'); } catch {}
+      }
+      saveWorkMode();
+      applyWorkModeChrome();
+    }
+
+    function setWorkShowFamily(show) {
+      if (!workMode.on) return;
+      workMode.showFamily = Boolean(show);
+      saveWorkMode();
+      applyWorkModeChrome();
+    }
+
+    // Everything that looks different in work mode, and a fresh render. The
+    // card-drop bookkeeping reads every task regardless of mode, so switching
+    // never makes cards "drop in" as if they were new.
+    function applyWorkModeChrome() {
+      document.documentElement.classList.toggle('work-mode', workMode.on);
+      document.body.classList.toggle('work-mode', workMode.on);
+      els.displayView?.classList.toggle('work-only', workMode.on && !workMode.showFamily);
+      els.displayView?.classList.toggle('work-mixed', workMode.on && workMode.showFamily);
+      const title = document.getElementById('upcomingTitle');
+      if (title) title.innerHTML = workMode.on && !workMode.showFamily ? 'Upcoming <span class="scope-suffix">· Work</span>' : 'Upcoming';
+      document.getElementById('adminModePill')?.classList.toggle('hidden', !workMode.on);
+      if (els.newTaskBtn) els.newTaskBtn.textContent = workMode.on ? 'Create a new work task' : 'Create a new task/event';
+      state.upcomingPage = 0;
+      state.cardPanelOverride = null;
+      state.todoAddOpen = false;
+      renderWorkModeControls();
+      renderScopeField();
+      if (adminMode) {
+        renderAdminEvents();
+        renderAdminTodos();
+      } else {
+        clearSelectedDayPreview();
+      }
+      if (els.monthOverlay && !els.monthOverlay.classList.contains('hidden')) renderMonthView();
+      renderTentView();
+    }
+
+    function renderWorkModeControls() {
+      const section = document.getElementById('wxModeSection');
+      if (!section) return;
+      section.querySelectorAll('[data-work-mode]').forEach(button => {
+        const on = (button.dataset.workMode === 'work') === workMode.on;
+        button.classList.toggle('is-on', on);
+        button.classList.toggle('is-work', on && workMode.on);
+        button.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      const family = document.getElementById('wxModeFamily');
+      if (family) {
+        family.disabled = !workMode.on;
+        family.classList.toggle('is-on', workMode.on && workMode.showFamily);
+        family.setAttribute('aria-pressed', workMode.on && workMode.showFamily ? 'true' : 'false');
+        family.textContent = workMode.on
+          ? `Family calendar: ${workMode.showFamily ? 'shown' : 'hidden'}`
+          : 'Family calendar: shown';
+      }
+      const note = document.getElementById('wxModeNote');
+      if (note) {
+        note.textContent = workMode.on
+          ? adminMode
+            ? 'New tasks and to-dos made on this phone are work. Only screens in work mode show them.'
+            : 'New tasks and to-dos made on this screen are work. Tap the Work pill under the clock to show the family calendar too.'
+          : 'This screen shows the family calendar. Work tasks only show on a screen in work mode.';
+      }
+    }
+
+    function bindWorkModeControls() {
+      document.getElementById('wxModeSection')?.addEventListener('click', event => {
+        const mode = event.target.closest('[data-work-mode]')?.dataset.workMode;
+        if (mode) {
+          setWorkMode(mode === 'work');
+          return;
+        }
+        if (event.target.closest('#wxModeFamily') && workMode.on) setWorkShowFamily(!workMode.showFamily);
+      });
+    }
+
+    // The Q panel without a keyboard: hold the date on the wall, or the clock
+    // pill on the phone. A plain tap on the date still does what it always did.
+    function bindQPanelHolds() {
+      const target = adminMode ? document.getElementById('adminClock') : els.dateDisplay;
+      if (!target) return;
+      const cancel = () => {
+        clearTimeout(qPanelHold.timer);
+        qPanelHold.timer = null;
+      };
+      target.addEventListener('pointerdown', event => {
+        // Keeps the hold-anywhere month view from starting underneath.
+        event.stopPropagation();
+        qPanelHold.fired = false;
+        cancel();
+        qPanelHold.timer = setTimeout(() => {
+          qPanelHold.timer = null;
+          qPanelHold.fired = true;
+          openWeatherDebug();
+        }, Q_PANEL_HOLD_MS);
+      });
+      target.addEventListener('pointerup', event => {
+        cancel();
+        if (qPanelHold.fired) {
+          event.stopPropagation();
+          qPanelHold.fired = false;
+        }
+      });
+      target.addEventListener('pointercancel', cancel);
+      target.addEventListener('pointermove', event => {
+        if (Math.abs(event.movementX || 0) + Math.abs(event.movementY || 0) > 12) cancel();
+      });
+      target.addEventListener('contextmenu', event => event.preventDefault());
+    }
+
+    // The Family / Work choice in the task editor. Only offered on a device
+    // where work mode has been switched on at least once, or for a task that is
+    // already work, so it never puzzles anybody else.
+    function renderScopeField(forcedScope) {
+      const field = document.getElementById('scopeField');
+      const input = document.getElementById('scopeInput');
+      if (!field || !input) return;
+      if (forcedScope) input.value = forcedScope === 'work' ? 'work' : 'family';
+      const scope = input.value === 'work' ? 'work' : 'family';
+      field.classList.toggle('hidden', !(workModeUnlocked() || workMode.on || scope === 'work'));
+      field.querySelectorAll('[data-scope]').forEach(button => {
+        button.classList.toggle('is-on', button.dataset.scope === scope);
+        button.setAttribute('aria-pressed', button.dataset.scope === scope ? 'true' : 'false');
+      });
+    }
+
+    // ---------------------------------------------------------------------
+    // The to-do list and the stock pictures, as this screen knows them: the
+    // server's copy plus this screen's changes that are still on their way.
+
+    function normalizeTodosShape(value) {
+      const source = value && typeof value === 'object' ? value : {};
+      const items = source.items && typeof source.items === 'object' && !Array.isArray(source.items) ? { ...source.items } : {};
+      const deleted = source.deleted && typeof source.deleted === 'object' && !Array.isArray(source.deleted) ? { ...source.deleted } : {};
+      return { items, deleted };
+    }
+
+    function normalizeStockShape(value) {
+      if (!value || typeof value !== 'object') return null;
+      const words = value.words && typeof value.words === 'object' && !Array.isArray(value.words) ? value.words : {};
+      const clean = {};
+      Object.entries(words).forEach(([id, entry]) => {
+        if (!entry || typeof entry !== 'object' || !String(entry.word || '').trim()) return;
+        clean[id] = {
+          word: String(entry.word),
+          aliases: Array.isArray(entry.aliases) ? entry.aliases.map(String) : [],
+          compound: entry.compound !== false,
+          images: Array.isArray(entry.images) ? entry.images.filter(image => image && image.id && image.imageUrl) : [],
+          updatedAt: String(entry.updatedAt || '')
+        };
+      });
+      return { seededAt: String(value.seededAt || ''), words: clean };
+    }
+
+    function applyServerSharedLists(data) {
+      if (!data || typeof data !== 'object') return;
+      if (data.todos && typeof data.todos === 'object') {
+        state.serverTodos = normalizeTodosShape(data.todos);
+        try { localStorage.setItem(TODOS_CACHE_KEY, JSON.stringify(state.serverTodos)); } catch {}
+      }
+      if (data.stock && typeof data.stock === 'object') {
+        state.serverStock = normalizeStockShape(data.stock);
+        try { localStorage.setItem(STOCK_CACHE_KEY, JSON.stringify(state.serverStock)); } catch {}
+      }
+    }
+
+    function hydrateSharedListsFromCache() {
+      try {
+        const todos = JSON.parse(localStorage.getItem(TODOS_CACHE_KEY) || 'null');
+        if (todos) state.serverTodos = normalizeTodosShape(todos);
+      } catch {}
+      try {
+        const stock = JSON.parse(localStorage.getItem(STOCK_CACHE_KEY) || 'null');
+        if (stock) state.serverStock = normalizeStockShape(stock);
+      } catch {}
+    }
+
+    // Mirrors applyTodoChanges in api/_todos.js, so a tick shows at once and a
+    // refresh that lands before the server has it does not undo it.
+    function applyTodoChangeLocally(todos, change, nowIso) {
+      const action = String(change?.action || '');
+      const id = String(change?.id || '');
+      if (action === 'add') {
+        if (!id || todos.items[id] || todos.deleted[id]) return;
+        const text = String(change.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+        if (!text) return;
+        todos.items[id] = { text, scope: change.scope || 'family', done: false, doneAt: '', createdAt: nowIso, updatedAt: nowIso };
+      } else if (action === 'set') {
+        const item = todos.items[id];
+        if (!item) return;
+        const text = change.text === undefined ? item.text : String(change.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+        if (!text) return;
+        todos.items[id] = { ...item, text, scope: change.scope === undefined ? item.scope : change.scope, updatedAt: nowIso };
+      } else if (action === 'check') {
+        const item = todos.items[id];
+        if (!item) return;
+        const done = change.done === true;
+        if (item.done === done) return;
+        todos.items[id] = { ...item, done, doneAt: done ? (change.at || nowIso) : '', updatedAt: nowIso };
+      } else if (action === 'delete') {
+        delete todos.items[id];
+        todos.deleted[id] = nowIso;
+      } else if (action === 'clear-done') {
+        (Array.isArray(change.ids) ? change.ids : []).forEach(itemId => {
+          if (!todos.items[itemId]?.done) return;
+          delete todos.items[itemId];
+          todos.deleted[itemId] = nowIso;
+        });
+      }
+    }
+
+    function effectiveTodos() {
+      const todos = normalizeTodosShape(state.serverTodos);
+      const nowIso = new Date().toISOString();
+      getPendingWrites()
+        .filter(op => op.method === 'TODO')
+        .forEach(op => (Array.isArray(op.changes) ? op.changes : []).forEach(change => applyTodoChangeLocally(todos, change, op.createdAt || nowIso)));
+      return todos;
+    }
+
+    function applyStockChangeLocally(stock, change) {
+      const action = String(change?.action || '');
+      if (action === 'set-word') {
+        const existing = stock.words[change.id];
+        const aliases = Array.isArray(change.aliases) ? change.aliases : String(change.aliases || '').split(',').map(item => item.trim()).filter(Boolean);
+        stock.words[change.id] = { word: String(change.word || '').trim(), aliases, compound: change.compound !== false, images: existing?.images || [], updatedAt: '' };
+        return;
+      }
+      if (action === 'delete-word') {
+        delete stock.words[change.id];
+        return;
+      }
+      const entry = stock.words[change?.wordId];
+      if (!entry) return;
+      if (action === 'add-image' && change.image?.imageUrl && !entry.images.some(image => image.id === change.image.id || image.imageUrl === change.image.imageUrl)) {
+        stock.words[change.wordId] = { ...entry, images: [...entry.images, { imageFocusX: 50, imageFocusY: 38, imageZoom: 1.01, imageFocusSource: 'manual', ...change.image }] };
+      } else if (action === 'set-image') {
+        stock.words[change.wordId] = {
+          ...entry,
+          images: entry.images.map(image => (image.id === change.imageId
+            ? { ...image, imageFocusX: change.imageFocusX ?? image.imageFocusX, imageFocusY: change.imageFocusY ?? image.imageFocusY, imageZoom: change.imageZoom ?? image.imageZoom }
+            : image))
+        };
+      } else if (action === 'delete-image') {
+        stock.words[change.wordId] = { ...entry, images: entry.images.filter(image => image.id !== change.imageId) };
+      }
+    }
+
+    // null until a reply from the server has brought the library.
+    function effectiveStock() {
+      if (!state.serverStock) return null;
+      const stock = { seededAt: state.serverStock.seededAt, words: {} };
+      Object.entries(state.serverStock.words).forEach(([id, entry]) => {
+        stock.words[id] = { ...entry, images: [...entry.images] };
+      });
+      getPendingWrites()
+        .filter(op => op.method === 'STOCK')
+        .forEach(op => applyStockChangeLocally(stock, op.change));
+      return stock;
+    }
+
+    // A refresh can bring another screen's to-do or stock edit. Redraw what
+    // shows them, only when something really changed, and never the part
+    // somebody is typing into.
+    function refreshSharedListsView() {
+      const json = JSON.stringify([effectiveTodos(), effectiveStock(), workMode]);
+      if (json === state.renderedSharedListsJson) return;
+      state.renderedSharedListsJson = json;
+      if (adminMode) {
+        renderAdminTodos();
+        renderAdminStock();
+        renderStockImageRow();
+        if (state.stockSheetWordId && !document.getElementById('stockSheetOverlay')?.classList.contains('hidden')) renderStockSheet({ keepInputs: true });
+      } else {
+        renderTodoPanel();
+        renderClockChips();
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // The to-do list
+
+    function newTodoId() {
+      return `todo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    }
+
+    // Every change is queued at once (so it survives a reload) and sent after a
+    // short pause, together with whatever else was tapped meanwhile: the queue
+    // sends all waiting to-do changes in one write.
+    function queueTodoChange(change) {
+      if (!adminMode && !ensureDisplayActionPin()) return false;
+      if (adminMode && !getPin().trim()) {
+        setStatus('Save the admin PIN on this phone first.', true);
+        return false;
+      }
+      queueWrite({
+        opId: `todo-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+        method: 'TODO',
+        changes: [change],
+        createdAt: new Date().toISOString()
+      });
+      clearTimeout(state.todoFlushTimer);
+      state.todoFlushTimer = setTimeout(flushTodoChanges, TODO_FLUSH_DELAY_MS);
+      refreshSharedListsView();
+      updateLocalQueueStatus();
+      return true;
+    }
+
+    function flushTodoChanges() {
+      clearTimeout(state.todoFlushTimer);
+      state.todoFlushTimer = null;
+      if (!getPendingWrites().some(op => op.method === 'TODO')) return;
+      processPendingWrites({ silent: true }).catch(() => {});
+    }
+
+    // What this screen's mode shows, open first (newest on top), then the ones
+    // ticked off, which leave the wall TODO_DONE_VISIBLE_MS after the tick.
+    // A row ticked a moment ago keeps its place briefly so it does not jump
+    // away under the finger.
+    function visibleTodos({ forWall = false } = {}) {
+      const now = Date.now();
+      const items = Object.entries(effectiveTodos().items)
+        .map(([id, item]) => ({ id, ...item }))
+        .filter(item => todoScopeVisible(item.scope));
+      const settling = item => item.done && state.todoJustCheckedId === item.id && now - state.todoJustCheckedAt < 1300;
+      const open = items
+        .filter(item => !item.done || settling(item))
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+      const done = items
+        .filter(item => item.done && !settling(item))
+        .filter(item => !forWall || !Date.parse(item.doneAt || '') || now - Date.parse(item.doneAt) < TODO_DONE_VISIBLE_MS)
+        .sort((a, b) => String(b.doneAt || '').localeCompare(String(a.doneAt || '')));
+      return { open, done, openCount: items.filter(item => !item.done).length };
+    }
+
+    function todoPanelShown(hasMainEvent) {
+      if (hasMainEvent && state.dailyCalendarMode) return false;
+      if (state.cardPanelOverride) return state.cardPanelOverride === 'todo';
+      return workMode.on;
+    }
+
+    function todoScopeTag(scope) {
+      // Only tags that tell something: "both" always, and on a screen that
+      // shows one list, nothing else.
+      if (scope === 'both') return '<span class="todo-scope is-both">Both</span>';
+      return '';
+    }
+
+    function scopeSegHtml(selected, { withBoth = true, attr = 'data-scope' } = {}) {
+      const options = [['family', 'Family'], ['work', 'Work'], ...(withBoth ? [['both', 'Both']] : [])];
+      return `<div class="scope-seg" role="group" aria-label="Which list">${options.map(([value, label]) => `<button type="button" ${attr}="${value}" data-scope="${value}" class="${selected === value ? 'is-on' : ''}" aria-pressed="${selected === value}">${label}</button>`).join('')}</div>`;
+    }
+
+    function renderClockChips() {
+      const host = document.getElementById('clockChips');
+      if (!host || adminMode) return;
+      const { openCount } = visibleTodos({ forWall: true });
+      const todoOn = Boolean(els.displayView?.classList.contains('todo-mode'));
+      const todoLabel = openCount ? `<span class="chip-count">${openCount}</span> to do` : 'To-do';
+      let html = `<button class="clock-chip todo-chip${todoOn ? ' is-on' : ''}${!openCount && !todoOn ? ' is-quiet' : ''}" type="button" data-todo-chip aria-pressed="${todoOn}">${CHECKLIST_SVG}<span>${todoLabel}</span></button>`;
+      if (workMode.on) {
+        html += `<button class="clock-chip mode-pill" type="button" data-mode-pill aria-pressed="${workMode.showFamily}" aria-label="Work mode. ${workMode.showFamily ? 'Hide' : 'Show'} the family calendar">${BRIEFCASE_SVG}<span>Work <span class="mode-pill-sub">· ${workMode.showFamily ? '+ family' : 'family hidden'}</span></span></button>`;
+      }
+      if (host.dataset.html !== html) {
+        host.dataset.html = html;
+        host.innerHTML = html;
+      }
+    }
+
+    function todoRowHtml(item, { wall = true } = {}) {
+      const justChecked = state.todoJustCheckedId === item.id && Date.now() - state.todoJustCheckedAt < 400;
+      if (wall && state.todoConfirmDeleteId === item.id) {
+        return `
+          <div class="todo-row is-confirm" data-todo-row="${htmlEscape(item.id)}">
+            <span class="todo-check" aria-hidden="true"></span>
+            <span class="todo-text">${htmlEscape(item.text)}</span>
+            <span class="todo-row-actions">
+              <button class="tiny-btn danger" type="button" data-todo-delete="${htmlEscape(item.id)}">Delete</button>
+              <button class="tiny-btn" type="button" data-todo-keep>Keep</button>
+            </span>
+          </div>`;
+      }
+      return `
+        <button class="todo-row${item.done ? ' is-done' : ''}${justChecked ? ' just-checked' : ''}" type="button" data-todo-toggle="${htmlEscape(item.id)}" aria-pressed="${item.done}">
+          <span class="todo-check" aria-hidden="true">${TICK_SVG}</span>
+          <span class="todo-text">${htmlEscape(item.text)}</span>
+          ${todoScopeTag(item.scope)}
+        </button>`;
+    }
+
+    function weatherMiniHtml() {
+      const icon = els.weatherIcon?.textContent?.trim() || '';
+      const temp = els.weatherTemp?.textContent?.trim() || '';
+      if (!icon && !temp) return '';
+      return `<button class="todo-weather-mini" type="button" data-todo-weather aria-label="Show the weather"><span class="mini-ico" aria-hidden="true">${htmlEscape(icon)}</span>${htmlEscape(temp)}</button>`;
+    }
+
+    function renderTodoPanel() {
+      const panel = document.getElementById('todoPanel');
+      if (!panel || adminMode) return;
+      if (!els.displayView?.classList.contains('todo-mode')) {
+        if (panel.dataset.html) {
+          panel.dataset.html = '';
+          panel.innerHTML = '';
+        }
+        return;
+      }
+      const { open, done } = visibleTodos({ forWall: true });
+      const title = workMode.on ? 'To do <span class="scope-suffix">· Work</span>' : 'To do';
+      const addScope = state.todoAddScope || newTaskScope();
+      const addRow = state.todoAddOpen ? `
+        <div class="todo-add-row">
+          <div class="todo-add-line">
+            <input class="todo-add-input" id="todoAddInput" maxlength="120" placeholder="What needs doing?" autocomplete="off" enterkeyhint="done" />
+            <button class="tiny-btn done" type="button" data-todo-add-save>Add</button>
+            <button class="tiny-btn" type="button" data-todo-add-cancel aria-label="Cancel">×</button>
+          </div>
+          ${workModeUnlocked() ? scopeSegHtml(addScope, { attr: 'data-todo-add-scope' }) : ''}
+        </div>` : '';
+      const rows = [...open, ...done].map(item => todoRowHtml(item)).join('');
+      const empty = !open.length && !done.length && !state.todoAddOpen ? `
+        <div class="todo-empty">
+          ${CHECKLIST_SVG}
+          <div class="todo-empty-title">Nothing to do</div>
+          <div class="todo-empty-sub">Add one from the phone, or tap +</div>
+        </div>` : '';
+      const html = `
+        <div class="todo-head">
+          <div class="todo-title">${title}</div>
+          <div class="todo-head-actions">
+            ${weatherMiniHtml()}
+            <button class="todo-round-btn" type="button" data-todo-add aria-label="Add a to-do">+</button>
+          </div>
+        </div>
+        <div class="todo-list">${addRow}${rows}${empty}</div>
+        <div class="todo-foot">
+          <span>${done.length ? `${done.length} done` : open.length ? `${open.length} open` : ''}</span>
+          ${done.length ? '<button class="todo-link" type="button" data-todo-clear>Clear done</button>' : ''}
+        </div>`;
+      if (panel.dataset.html === html) return;
+      // Keep what is being typed, and the keyboard up, across a redraw.
+      const input = document.getElementById('todoAddInput');
+      const typing = input && document.activeElement === input;
+      const typed = input ? input.value : '';
+      const scrollTop = panel.querySelector('.todo-list')?.scrollTop || 0;
+      panel.dataset.html = html;
+      panel.innerHTML = html;
+      const list = panel.querySelector('.todo-list');
+      if (list) list.scrollTop = scrollTop;
+      const fresh = document.getElementById('todoAddInput');
+      if (fresh) {
+        fresh.value = typed;
+        if (typing || state.todoAddFocusPending) {
+          state.todoAddFocusPending = false;
+          fresh.focus({ preventScroll: true });
+          fresh.setSelectionRange(fresh.value.length, fresh.value.length);
+        }
+      }
+    }
+
+    function submitWallTodo() {
+      const input = document.getElementById('todoAddInput');
+      const text = String(input?.value || '').replace(/\s+/g, ' ').trim();
+      if (!text) {
+        input?.focus();
+        return;
+      }
+      // Emptied before the change is queued: queueing redraws the panel, and
+      // the redraw carries over whatever the field still holds.
+      if (input) input.value = '';
+      const ok = queueTodoChange({ action: 'add', id: newTodoId(), text, scope: state.todoAddScope || newTaskScope() });
+      if (!ok) {
+        const fresh = document.getElementById('todoAddInput');
+        if (fresh) fresh.value = text;
+        return;
+      }
+      // The wall goes back to the plain list, so the new item is in plain view;
+      // + opens the field again for the next one.
+      state.todoAddOpen = false;
+      if (document.activeElement?.blur) document.activeElement.blur();
+      renderTodoPanel();
+    }
+
+    function setCardPanel(panel) {
+      // The chip shows the list; the weather pill brings the weather back. The
+      // mode's own default needs no override, so the idle reset has nothing
+      // to undo.
+      const fallback = workMode.on ? 'todo' : 'weather';
+      state.cardPanelOverride = panel === fallback ? null : panel;
+      if (panel === 'todo' && state.dailyCalendarMode) state.dailyCalendarMode = false;
+      state.todoAddOpen = false;
+      state.todoConfirmDeleteId = '';
+      flushTodoChanges();
+      noteInteraction();
+      renderDisplay();
+    }
+
+    function bindTodoPanel() {
+      if (adminMode) return;
+      const chips = document.getElementById('clockChips');
+      chips?.addEventListener('pointerdown', event => event.stopPropagation());
+      chips?.addEventListener('click', event => {
+        event.stopPropagation();
+        if (event.target.closest('[data-todo-chip]')) {
+          setCardPanel(els.displayView.classList.contains('todo-mode') ? 'weather' : 'todo');
+          return;
+        }
+        if (event.target.closest('[data-mode-pill]')) setWorkShowFamily(!workMode.showFamily);
+      });
+
+      const panel = document.getElementById('todoPanel');
+      if (!panel) return;
+      let holdTimer = null;
+      let holdFired = false;
+      const cancelHold = () => {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      };
+      panel.addEventListener('pointerdown', event => {
+        // The weather card behind opens the weekly forecast on a tap, and the
+        // page opens the month view on a hold; neither belongs to the list.
+        event.stopPropagation();
+        holdFired = false;
+        cancelHold();
+        const row = event.target.closest('[data-todo-toggle]');
+        if (!row) return;
+        holdTimer = setTimeout(() => {
+          holdFired = true;
+          state.todoConfirmDeleteId = row.dataset.todoToggle;
+          renderTodoPanel();
+        }, 700);
+      });
+      panel.addEventListener('pointerup', cancelHold);
+      panel.addEventListener('pointercancel', cancelHold);
+      panel.addEventListener('pointermove', event => {
+        if (Math.abs(event.movementX || 0) + Math.abs(event.movementY || 0) > 10) cancelHold();
+      });
+      panel.addEventListener('contextmenu', event => event.preventDefault());
+      panel.addEventListener('click', event => {
+        event.stopPropagation();
+        if (holdFired) {
+          holdFired = false;
+          return;
+        }
+        const toggle = event.target.closest('[data-todo-toggle]')?.dataset.todoToggle;
+        if (toggle) {
+          const item = effectiveTodos().items[toggle];
+          if (!item) return;
+          const done = !item.done;
+          if (queueTodoChange({ action: 'check', id: toggle, done })) {
+            state.todoJustCheckedId = done ? toggle : '';
+            state.todoJustCheckedAt = Date.now();
+            renderTodoPanel();
+            renderClockChips();
+            if (done) setTimeout(() => { renderTodoPanel(); renderClockChips(); }, 1350);
+          }
+          return;
+        }
+        const del = event.target.closest('[data-todo-delete]')?.dataset.todoDelete;
+        if (del) {
+          state.todoConfirmDeleteId = '';
+          queueTodoChange({ action: 'delete', id: del });
+          renderTodoPanel();
+          renderClockChips();
+          return;
+        }
+        if (event.target.closest('[data-todo-keep]')) {
+          state.todoConfirmDeleteId = '';
+          renderTodoPanel();
+          return;
+        }
+        if (event.target.closest('[data-todo-add]')) {
+          state.todoAddOpen = !state.todoAddOpen;
+          state.todoAddScope = newTaskScope();
+          state.todoAddFocusPending = state.todoAddOpen;
+          renderTodoPanel();
+          return;
+        }
+        const scope = event.target.closest('[data-todo-add-scope]')?.dataset.todoAddScope;
+        if (scope) {
+          state.todoAddScope = scope;
+          state.todoAddFocusPending = true;
+          renderTodoPanel();
+          return;
+        }
+        if (event.target.closest('[data-todo-add-save]')) {
+          submitWallTodo();
+          return;
+        }
+        if (event.target.closest('[data-todo-add-cancel]')) {
+          state.todoAddOpen = false;
+          renderTodoPanel();
+          return;
+        }
+        if (event.target.closest('[data-todo-clear]')) {
+          const ids = visibleTodos({ forWall: true }).done.map(item => item.id);
+          if (ids.length) queueTodoChange({ action: 'clear-done', ids });
+          renderTodoPanel();
+          renderClockChips();
+          return;
+        }
+        if (event.target.closest('[data-todo-weather]')) setCardPanel('weather');
+      });
+      panel.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && event.target.id === 'todoAddInput') {
+          event.preventDefault();
+          submitWallTodo();
+        }
+        if (event.key === 'Escape' && event.target.id === 'todoAddInput') {
+          state.todoAddOpen = false;
+          renderTodoPanel();
+        }
+      });
+      // Anything still waiting goes out before the page sleeps or closes.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushTodoChanges();
+      });
+      window.addEventListener('pagehide', flushTodoChanges);
+    }
+
+    function setFoldExpanded(fold, toggle, key, expanded) {
+      fold?.classList.toggle('is-collapsed', !expanded);
+      toggle?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      try { localStorage.setItem(key, expanded ? '1' : '0'); } catch {}
+    }
+
+    function renderAdminTodos() {
+      const fold = document.getElementById('adminTodoFold');
+      const body = document.getElementById('adminTodoBody');
+      if (!adminMode || !fold || !body) return;
+      fold.classList.remove('hidden');
+      setFoldExpanded(fold, document.getElementById('adminTodoToggle'), TODO_MENU_EXPANDED_KEY, state.todoMenuExpanded);
+      const { open, done, openCount } = visibleTodos();
+      const count = document.getElementById('adminTodoCount');
+      if (count) count.textContent = openCount ? `${openCount} open` : '';
+      const subtitle = document.getElementById('adminTodoSubtitle');
+      if (subtitle) subtitle.textContent = workMode.on ? 'Your work list, plus the things on both lists.' : 'Shown on the wall. Tap a circle to tick it off.';
+      const scope = state.adminTodoScope || newTaskScope();
+      const rowHtml = item => {
+        if (state.adminTodoEditId === item.id) {
+          return `
+            <div class="admin-todo-edit" data-admin-todo-editing="${htmlEscape(item.id)}">
+              <input id="adminTodoEditInput" maxlength="120" value="${htmlEscape(item.text)}" autocomplete="off" />
+              ${workModeUnlocked() ? scopeSegHtml(state.adminTodoEditScope || item.scope, { attr: 'data-admin-todo-edit-scope' }) : ''}
+              <div class="button-row">
+                <button class="btn" type="button" data-admin-todo-save="${htmlEscape(item.id)}">Save</button>
+                <button class="btn secondary" type="button" data-admin-todo-cancel>Cancel</button>
+                <button class="btn danger" type="button" data-admin-todo-delete="${htmlEscape(item.id)}">Delete</button>
+              </div>
+            </div>`;
+        }
+        return `
+          <div class="admin-todo-row${item.done ? ' is-done' : ''}">
+            <button type="button" data-admin-todo-check="${htmlEscape(item.id)}" aria-label="${item.done ? 'Put back' : 'Tick off'} ${htmlEscape(item.text)}" aria-pressed="${item.done}"><span class="todo-check">${TICK_SVG}</span></button>
+            <button type="button" data-admin-todo-edit="${htmlEscape(item.id)}"><span class="todo-text">${htmlEscape(item.text)}</span></button>
+            ${todoScopeTag(item.scope)}
+          </div>`;
+      };
+      const editing = document.getElementById('adminTodoEditInput');
+      const adding = document.getElementById('adminTodoAddInput');
+      const keepEdit = editing ? editing.value : null;
+      const keepAdd = adding ? adding.value : '';
+      const focused = document.activeElement?.id || '';
+      body.innerHTML = `
+        <div class="admin-todo-add">
+          <input id="adminTodoAddInput" maxlength="120" placeholder="New to-do…" autocomplete="off" enterkeyhint="done" />
+          <button class="btn" type="button" data-admin-todo-add>Add</button>
+        </div>
+        ${workModeUnlocked() ? scopeSegHtml(scope, { attr: 'data-admin-todo-scope' }) : ''}
+        <div class="admin-todo-list">
+          ${open.length ? open.map(rowHtml).join('') : '<div class="admin-fold-help">Nothing on the list. Add the first thing above.</div>'}
+        </div>
+        ${done.length ? `
+          <button class="todo-done-toggle" type="button" data-admin-todo-done-toggle aria-expanded="${state.adminTodoDoneOpen}">${state.adminTodoDoneOpen ? '▾' : '▸'} Done (${done.length})</button>
+          ${state.adminTodoDoneOpen ? `<div class="admin-todo-list">${done.map(rowHtml).join('')}</div><button class="btn secondary" type="button" data-admin-todo-clear>Clear all done</button>` : ''}` : ''}
+      `;
+      const addInput = document.getElementById('adminTodoAddInput');
+      if (addInput) addInput.value = keepAdd;
+      const editInput = document.getElementById('adminTodoEditInput');
+      if (editInput && keepEdit !== null) editInput.value = keepEdit;
+      if (focused === 'adminTodoAddInput') addInput?.focus({ preventScroll: true });
+      if (focused === 'adminTodoEditInput' || state.adminTodoFocusEdit) {
+        state.adminTodoFocusEdit = false;
+        editInput?.focus({ preventScroll: true });
+      }
+    }
+
+    function bindAdminTodos() {
+      if (!adminMode) return;
+      const fold = document.getElementById('adminTodoFold');
+      const toggle = document.getElementById('adminTodoToggle');
+      toggle?.addEventListener('click', () => {
+        state.todoMenuExpanded = !state.todoMenuExpanded;
+        setFoldExpanded(fold, toggle, TODO_MENU_EXPANDED_KEY, state.todoMenuExpanded);
+      });
+      const body = document.getElementById('adminTodoBody');
+      if (!body) return;
+      const addTodo = () => {
+        const input = document.getElementById('adminTodoAddInput');
+        const text = String(input?.value || '').replace(/\s+/g, ' ').trim();
+        if (!text) {
+          input?.focus();
+          return;
+        }
+        if (input) input.value = '';
+        queueTodoChange({ action: 'add', id: newTodoId(), text, scope: state.adminTodoScope || newTaskScope() });
+        document.getElementById('adminTodoAddInput')?.focus({ preventScroll: true });
+      };
+      const saveEdit = id => {
+        const text = String(document.getElementById('adminTodoEditInput')?.value || '').replace(/\s+/g, ' ').trim();
+        if (!text) return;
+        const item = effectiveTodos().items[id];
+        const scope = state.adminTodoEditScope || item?.scope;
+        state.adminTodoEditId = '';
+        state.adminTodoEditScope = '';
+        queueTodoChange({ action: 'set', id, text, scope });
+        renderAdminTodos();
+      };
+      body.addEventListener('click', event => {
+        if (event.target.closest('[data-admin-todo-add]')) return addTodo();
+        const scope = event.target.closest('[data-admin-todo-scope]')?.dataset.adminTodoScope;
+        if (scope) {
+          state.adminTodoScope = scope;
+          return renderAdminTodos();
+        }
+        const check = event.target.closest('[data-admin-todo-check]')?.dataset.adminTodoCheck;
+        if (check) {
+          const item = effectiveTodos().items[check];
+          if (item) queueTodoChange({ action: 'check', id: check, done: !item.done });
+          return;
+        }
+        const edit = event.target.closest('[data-admin-todo-edit]')?.dataset.adminTodoEdit;
+        if (edit) {
+          state.adminTodoEditId = edit;
+          state.adminTodoEditScope = '';
+          state.adminTodoFocusEdit = true;
+          return renderAdminTodos();
+        }
+        const editScope = event.target.closest('[data-admin-todo-edit-scope]')?.dataset.adminTodoEditScope;
+        if (editScope) {
+          state.adminTodoEditScope = editScope;
+          return renderAdminTodos();
+        }
+        const save = event.target.closest('[data-admin-todo-save]')?.dataset.adminTodoSave;
+        if (save) return saveEdit(save);
+        if (event.target.closest('[data-admin-todo-cancel]')) {
+          state.adminTodoEditId = '';
+          return renderAdminTodos();
+        }
+        const del = event.target.closest('[data-admin-todo-delete]')?.dataset.adminTodoDelete;
+        if (del) {
+          state.adminTodoEditId = '';
+          queueTodoChange({ action: 'delete', id: del });
+          return renderAdminTodos();
+        }
+        if (event.target.closest('[data-admin-todo-done-toggle]')) {
+          state.adminTodoDoneOpen = !state.adminTodoDoneOpen;
+          return renderAdminTodos();
+        }
+        if (event.target.closest('[data-admin-todo-clear]')) {
+          const ids = visibleTodos().done.map(item => item.id);
+          if (ids.length) queueTodoChange({ action: 'clear-done', ids });
+        }
+      });
+      body.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        if (event.target.id === 'adminTodoAddInput') {
+          event.preventDefault();
+          addTodo();
+        } else if (event.target.id === 'adminTodoEditInput') {
+          event.preventDefault();
+          saveEdit(state.adminTodoEditId);
+        }
+      });
+    }
+
+    // ---------------------------------------------------------------------
+    // Stock pictures
+    //
+    // Mirrors stockWordForTitle / pickStockImage / isStaleStockImage in
+    // api/_stock.js, which is what actually decides: the server applies it to
+    // whatever any device sends. This copy is here so a task saved on the phone
+    // draws its stock picture straight away, and so a task saved with no signal
+    // still gets one. Keep the two in step. (The word rules themselves - the
+    // false friends, "inside a longer word" - are the lege rule's, above.)
+
+    const STOCK_COMPOUND_MIN_LENGTH = 4;
+
+    function normalizeStockWords(text) {
+      return String(text || '')
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .split(/[^a-z0-9æøå]+/)
+        .filter(Boolean);
+    }
+
+    function stockEntryTerms(entry) {
+      return [entry.word, ...(entry.aliases || [])]
+        .map(term => normalizeStockWords(term).join(' '))
+        .filter(term => term.length >= 2);
+    }
+
+    function stockWordForTitle(title, stock) {
+      if (!stock) return null;
+      const words = normalizeStockWords(title);
+      if (!words.length) return null;
+      const padded = ` ${words.join(' ')} `;
+      const entries = Object.entries(stock.words || {});
+      let best = null;
+      entries.forEach(([id, entry]) => {
+        stockEntryTerms(entry).forEach(term => {
+          if (!term.includes(' ') || !padded.includes(` ${term} `)) return;
+          if (!best || term.length > best.term.length) best = { id, entry, term };
+        });
+      });
+      if (best) return best;
+      for (const word of words) {
+        let wordBest = null;
+        let wordScore = 0;
+        entries.forEach(([id, entry]) => {
+          stockEntryTerms(entry).forEach(term => {
+            if (term.includes(' ')) return;
+            let score = 0;
+            if (word === term) score = 1000 + term.length;
+            else if (entry.compound && term.length >= STOCK_COMPOUND_MIN_LENGTH
+              && wordNamesKind(word, { keyword: term, compound: true, words: [] })) score = term.length;
+            if (score > wordScore) {
+              wordScore = score;
+              wordBest = { id, entry, term };
+            }
+          });
+        });
+        if (wordBest) return wordBest;
+      }
+      return null;
+    }
+
+    function stockImageFieldsClient(image) {
+      return {
+        imageUrl: String(image.imageUrl || ''),
+        imageFocusX: clampPercent(image.imageFocusX, 50),
+        imageFocusY: clampPercent(image.imageFocusY, 38),
+        imageFocusSource: image.imageFocusSource || 'manual',
+        imageZoom: clampZoom(image.imageZoom, 1.01),
+        ...focusPayloadExtras(image)
+      };
+    }
+
+    function pickStockImageClient(wordId, stock, excludeId = '') {
+      const entry = stock?.words?.[wordId];
+      const images = entry?.images || [];
+      if (!images.length) return null;
+      const counts = new Map(images.map(image => [image.id, 0]));
+      (state.events || []).forEach(event => {
+        if (String(event.id || '') === String(excludeId || '') || event.completed) return;
+        if (String(event.imageStockWord || '') !== String(wordId)) return;
+        const id = String(event.imageStockImageId || '');
+        if (counts.has(id)) counts.set(id, counts.get(id) + 1);
+      });
+      const least = Math.min(...counts.values());
+      const pool = images.filter(image => counts.get(image.id) === least);
+      const image = pool[Math.floor(Math.random() * pool.length)] || pool[0];
+      return { wordId, word: entry.word, imageId: image.id, image: stockImageFieldsClient(image) };
+    }
+
+    function pickStockForTitleClient(title, stock, excludeId = '') {
+      const match = stockWordForTitle(title, stock);
+      return match ? pickStockImageClient(match.id, stock, excludeId) : null;
+    }
+
+    function isStaleStockImageClient(event, stock) {
+      const wordId = String(event?.imageStockWord || '');
+      if (!wordId || !String(event?.imageUrl || '').trim() || event?.imageStockManual === true) return false;
+      return stockWordForTitle(event?.title, stock)?.id !== wordId;
+    }
+
+    // The stock photo a link belongs to, if any: { wordId, entry, image }.
+    function stockImageByUrl(url, stock = effectiveStock()) {
+      const text = String(url || '').trim();
+      if (!text || !stock) return null;
+      for (const [wordId, entry] of Object.entries(stock.words)) {
+        const image = entry.images.find(item => item.imageUrl === text);
+        if (image) return { wordId, entry, image };
+      }
+      return null;
+    }
+
+    function stockUsageCount(wordId) {
+      const now = Date.now() - 24 * 60 * 60 * 1000;
+      return (state.events || []).filter(event => String(event.imageStockWord || '') === String(wordId)
+        && !event.completed
+        && ((event.repeat || 'none') !== 'none' || Date.parse(event.start || '') >= now)).length;
+    }
+
+    function sortedStockEntries(stock) {
+      return Object.entries(stock?.words || {})
+        .sort(([, a], [, b]) => a.word.localeCompare(b.word, undefined, { sensitivity: 'base' }));
+    }
+
+    function newStockId(prefix) {
+      return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    }
+
+    function queueStockChange(change) {
+      if (!getPin().trim()) {
+        alert('Save the admin PIN on this phone first.');
+        return false;
+      }
+      queueWrite({
+        opId: `stock-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+        method: 'STOCK',
+        change,
+        createdAt: new Date().toISOString()
+      });
+      updateLocalQueueStatus();
+      refreshSharedListsView();
+      processPendingWrites({ silent: true }).catch(() => {});
+      return true;
+    }
+
+    function stockThumbHtml(image, className = '') {
+      return image
+        ? `<img${className ? ` class="${className}"` : ''} alt="" src="${htmlEscape(image.imageUrl)}" style="${imageFocusStyle(image)}" loading="lazy">`
+        : '';
+    }
+
+    function renderAdminStock() {
+      const fold = document.getElementById('adminStockFold');
+      const body = document.getElementById('adminStockBody');
+      if (!adminMode || !fold || !body) return;
+      const stock = effectiveStock();
+      fold.classList.toggle('hidden', !stock);
+      if (!stock) return;
+      setFoldExpanded(fold, document.getElementById('adminStockToggle'), STOCK_MENU_EXPANDED_KEY, state.stockMenuExpanded);
+      const entries = sortedStockEntries(stock);
+      const count = document.getElementById('adminStockCount');
+      if (count) count.textContent = `${entries.length} word${entries.length === 1 ? '' : 's'}`;
+      const tiles = entries.map(([id, entry]) => {
+        const first = entry.images[0];
+        const kind = !entry.images.length ? ' is-empty' : entry.images.length === 1 ? ' is-single' : '';
+        return `
+          <button class="stock-tile${kind}" type="button" data-stock-word="${htmlEscape(id)}" aria-label="${htmlEscape(entry.word)}, ${entry.images.length} photo${entry.images.length === 1 ? '' : 's'}">
+            <span class="stock-tile-face">${stockThumbHtml(first)}</span>
+            <span class="stock-tile-copy">
+              <span class="stock-tile-word">${htmlEscape(entry.word)}</span>
+              <span class="stock-tile-count">${entry.images.length ? `${entry.images.length} photo${entry.images.length === 1 ? '' : 's'}` : 'No photo yet'}</span>
+            </span>
+          </button>`;
+      }).join('');
+      body.innerHTML = `
+        <div class="admin-fold-help">A task saved without a photo of its own gets one of its word's photos. A photo you pick for a task always wins.</div>
+        <div class="stock-grid">
+          ${tiles}
+          <button class="stock-tile is-new" type="button" data-stock-new><span class="stock-tile-face"><span>+ New word</span></span></button>
+        </div>
+        ${entries.length ? '' : '<div class="admin-fold-help">No stock words yet. Add a word like “Tannlege” and pick its picture.</div>'}`;
+    }
+
+    function bindAdminStock() {
+      if (!adminMode) return;
+      const fold = document.getElementById('adminStockFold');
+      const toggle = document.getElementById('adminStockToggle');
+      toggle?.addEventListener('click', () => {
+        state.stockMenuExpanded = !state.stockMenuExpanded;
+        setFoldExpanded(fold, toggle, STOCK_MENU_EXPANDED_KEY, state.stockMenuExpanded);
+      });
+      document.getElementById('adminStockBody')?.addEventListener('click', event => {
+        const word = event.target.closest('[data-stock-word]')?.dataset.stockWord;
+        if (word) return openStockSheet(word);
+        if (event.target.closest('[data-stock-new]')) openStockSheet(newStockId('sw'), { isNew: true });
+      });
+
+      const overlay = document.getElementById('stockSheetOverlay');
+      overlay?.addEventListener('click', event => {
+        if (event.target === overlay) closeStockSheet();
+      });
+      document.getElementById('stockSheetContent')?.addEventListener('click', handleStockSheetClick);
+      document.getElementById('stockSheetContent')?.addEventListener('input', event => {
+        if (event.target.matches('#stockWordInput, #stockAliasInput, #stockCompoundInput')) renderStockMatchChips();
+        if (event.target.matches('#stockFocusX, #stockFocusY, #stockZoom')) updateStockFramingPreview();
+      });
+      document.getElementById('stockSheetContent')?.addEventListener('change', event => {
+        if (event.target.matches('#stockCompoundInput')) renderStockMatchChips();
+      });
+      document.getElementById('stockPhotoInput')?.addEventListener('change', handleStockPhotoPicked);
+      window.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !overlay?.classList.contains('hidden')) closeStockSheet();
+      });
+
+      // The editor's stock row, the picture picker, and the framing sliders:
+      // moving them on a stock picture frames it for this task alone.
+      document.getElementById('stockImageRow')?.addEventListener('click', handleStockRowClick);
+      [els.imageFocusXInput, els.imageFocusYInput, els.imageZoomInput].forEach(input => {
+        input?.addEventListener('input', () => {
+          state.stockFramingTouched = true;
+        });
+      });
+      els.imageInput?.addEventListener('change', () => {
+        state.pendingStockPick = null;
+        renderStockImageRow();
+      });
+      els.titleInput?.addEventListener('input', renderStockImageRow);
+      document.getElementById('scopeSeg')?.addEventListener('click', event => {
+        const scope = event.target.closest('[data-scope]')?.dataset.scope;
+        if (scope) renderScopeField(scope);
+      });
+    }
+
+    function openStockSheet(wordId, { isNew = false } = {}) {
+      state.stockSheetMode = 'word';
+      state.stockSheetWordId = wordId;
+      state.stockSheetIsNew = isNew;
+      const entry = effectiveStock()?.words?.[wordId];
+      state.stockSheetImageId = entry?.images?.[0]?.id || '';
+      state.stockSheetStatus = '';
+      const overlay = document.getElementById('stockSheetOverlay');
+      overlay?.classList.remove('hidden');
+      overlay?.setAttribute('aria-hidden', 'false');
+      renderStockSheet();
+      if (isNew) setTimeout(() => document.getElementById('stockWordInput')?.focus(), 60);
+    }
+
+    function openStockPicker() {
+      state.stockSheetMode = 'picker';
+      state.stockSheetWordId = 'picker';
+      const overlay = document.getElementById('stockSheetOverlay');
+      overlay?.classList.remove('hidden');
+      overlay?.setAttribute('aria-hidden', 'false');
+      renderStockSheet();
+    }
+
+    function closeStockSheet() {
+      state.stockSheetWordId = '';
+      state.stockSheetMode = '';
+      const overlay = document.getElementById('stockSheetOverlay');
+      overlay?.classList.add('hidden');
+      overlay?.setAttribute('aria-hidden', 'true');
+      const content = document.getElementById('stockSheetContent');
+      if (content) content.innerHTML = '';
+    }
+
+    function renderStockSheet({ keepInputs = false } = {}) {
+      const content = document.getElementById('stockSheetContent');
+      if (!content) return;
+      const stock = effectiveStock() || { words: {} };
+      if (state.stockSheetMode === 'picker') {
+        const groups = sortedStockEntries(stock).filter(([, entry]) => entry.images.length);
+        content.innerHTML = `
+          <div class="stock-sheet-head">
+            <span class="stock-sheet-thumb-empty"></span>
+            <div><h3 class="stock-sheet-title">Pick a stock picture</h3><div class="stock-sheet-sub">For this task only. The task keeps it whatever its title says.</div></div>
+            <button class="btn secondary" type="button" data-stock-close>Close</button>
+          </div>
+          ${groups.length ? groups.map(([wordId, entry]) => `
+            <div class="stock-picker-group">
+              <div class="stock-picker-label">${htmlEscape(entry.word)}</div>
+              <div class="stock-picker-row">${entry.images.map(image => `<button class="stock-photo" type="button" data-stock-pick="${htmlEscape(wordId)}" data-stock-pick-image="${htmlEscape(image.id)}" aria-label="${htmlEscape(entry.word)} photo">${stockThumbHtml(image)}</button>`).join('')}</div>
+            </div>`).join('') : '<div class="admin-fold-help" style="margin-top:14px">No stock pictures yet. Add some under Stock pictures in the calendar.</div>'}`;
+        return;
+      }
+
+      const wordId = state.stockSheetWordId;
+      const entry = stock.words?.[wordId];
+      const isNew = state.stockSheetIsNew && !entry;
+      const typedWord = keepInputs ? document.getElementById('stockWordInput')?.value : null;
+      const typedAlias = keepInputs ? document.getElementById('stockAliasInput')?.value : null;
+      const typedCompound = keepInputs ? document.getElementById('stockCompoundInput')?.checked : null;
+      const images = entry?.images || [];
+      if (!images.some(image => image.id === state.stockSheetImageId)) state.stockSheetImageId = images[0]?.id || '';
+      const picked = images.find(image => image.id === state.stockSheetImageId);
+      const usage = entry ? stockUsageCount(wordId) : 0;
+      content.innerHTML = `
+        <div class="stock-sheet-head">
+          ${images[0] ? stockThumbHtml(images[0]) : '<span class="stock-sheet-thumb-empty"></span>'}
+          <div>
+            <h3 class="stock-sheet-title">${htmlEscape(entry?.word || 'New stock word')}</h3>
+            <div class="stock-sheet-sub">${entry ? `Used by ${usage} upcoming task${usage === 1 ? '' : 's'} · ${images.length} photo${images.length === 1 ? '' : 's'}` : 'Name the word, save it, then add its photos.'}</div>
+          </div>
+          <button class="btn secondary" type="button" data-stock-close>Close</button>
+        </div>
+        <div class="stock-sheet-form">
+          <label>Word<input id="stockWordInput" maxlength="40" placeholder="Tannlege" autocomplete="off" /></label>
+          <label>Also matches, optional<input id="stockAliasInput" maxlength="200" placeholder="tannlegetime, tannpuss" autocomplete="off" /></label>
+          <label class="checkbox-row" style="display:flex;color:var(--ink)"><input id="stockCompoundInput" type="checkbox" /> Count inside longer words too (Tannlegetime, Legevakt …)</label>
+          <div><div class="stock-picker-label">Matches now</div><div id="stockMatchChips" class="stock-match-chips"></div></div>
+          ${entry ? `
+            <div class="stock-picker-label">Photos</div>
+            <div class="stock-photos">
+              ${images.map(image => `<button class="stock-photo${image.id === state.stockSheetImageId ? ' is-picked' : ''}" type="button" data-stock-photo="${htmlEscape(image.id)}" aria-label="Photo">${stockThumbHtml(image)}</button>`).join('')}
+              ${images.length < 12 ? `<button class="stock-photo is-add${state.stockUploading ? ' is-busy' : ''}" type="button" data-stock-add-photo aria-label="Add a photo">${state.stockUploading ? '…' : '+'}</button>` : ''}
+            </div>
+            ${picked ? `
+              <section class="manual-image-editor visible" aria-label="Framing of the picked photo">
+                <div class="image-preview-card">
+                  <img id="stockPreview" alt="" src="${htmlEscape(picked.imageUrl)}" style="${imageFocusStyle(picked)}" />
+                  <div class="image-preview-copy">
+                    <div class="image-preview-kicker">Stock picture</div>
+                    <div class="image-preview-title">${htmlEscape(entry.word)}</div>
+                  </div>
+                </div>
+                <div class="manual-image-controls">
+                  <label>Pan left / right<input id="stockFocusX" type="range" min="0" max="100" step="1" value="${clampPercent(picked.imageFocusX, 50)}" /></label>
+                  <label>Pan up / down<input id="stockFocusY" type="range" min="0" max="100" step="1" value="${clampPercent(picked.imageFocusY, 38)}" /></label>
+                  <label>Zoom<input id="stockZoom" type="range" min="1" max="1.8" step="0.01" value="${clampZoom(picked.imageZoom, 1.01)}" /></label>
+                  <div class="manual-image-actions">
+                    <button class="btn secondary" type="button" data-stock-save-framing>Save framing</button>
+                    <button class="btn danger" type="button" data-stock-remove-photo>Remove photo</button>
+                  </div>
+                  <div class="manual-image-help">The framing is used on every task showing this photo, except tasks framed by hand.</div>
+                </div>
+              </section>` : ''}` : ''}
+          <div id="stockSheetStatus" class="stock-sheet-status">${htmlEscape(state.stockSheetStatus || '')}</div>
+          <div class="stock-sheet-actions">
+            <button class="btn" type="button" data-stock-save-word>${isNew ? 'Save word' : 'Save changes'}</button>
+            ${entry ? '<button class="btn danger" type="button" data-stock-delete-word>Delete word</button>' : ''}
+          </div>
+        </div>`;
+      const wordInput = document.getElementById('stockWordInput');
+      const aliasInput = document.getElementById('stockAliasInput');
+      const compoundInput = document.getElementById('stockCompoundInput');
+      if (wordInput) wordInput.value = typedWord ?? entry?.word ?? '';
+      if (aliasInput) aliasInput.value = typedAlias ?? (entry?.aliases || []).join(', ');
+      if (compoundInput) compoundInput.checked = typedCompound ?? (entry ? entry.compound !== false : true);
+      renderStockMatchChips();
+    }
+
+    // Which upcoming task titles the word as typed would match, live.
+    function renderStockMatchChips() {
+      const host = document.getElementById('stockMatchChips');
+      if (!host) return;
+      const word = document.getElementById('stockWordInput')?.value || '';
+      const aliases = String(document.getElementById('stockAliasInput')?.value || '').split(',').map(item => item.trim()).filter(Boolean);
+      const compound = Boolean(document.getElementById('stockCompoundInput')?.checked);
+      if (normalizeStockWords(word).join(' ').length < 2) {
+        host.innerHTML = '<span class="admin-fold-help">Type the word to see which tasks it catches.</span>';
+        return;
+      }
+      const candidate = { words: { candidate: { word, aliases, compound, images: [] } } };
+      const now = Date.now() - 24 * 60 * 60 * 1000;
+      const seen = new Set();
+      const hits = (state.events || [])
+        .filter(event => (event.repeat || 'none') !== 'none' || Date.parse(event.start || '') >= now)
+        .sort((a, b) => new Date(a.start) - new Date(b.start))
+        .filter(event => stockWordForTitle(event.title, candidate))
+        .filter(event => {
+          const key = String(event.title || '').trim().toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 8);
+      host.innerHTML = hits.length
+        ? hits.map(event => `<span class="stock-match-chip">${htmlEscape(event.title)}</span>`).join('')
+        : '<span class="admin-fold-help">No upcoming task names it yet.</span>';
+    }
+
+    function updateStockFramingPreview() {
+      const preview = document.getElementById('stockPreview');
+      if (!preview) return;
+      preview.setAttribute('style', imageFocusStyle({
+        imageFocusX: document.getElementById('stockFocusX')?.value,
+        imageFocusY: document.getElementById('stockFocusY')?.value,
+        imageZoom: document.getElementById('stockZoom')?.value
+      }));
+    }
+
+    function setStockSheetStatus(text) {
+      state.stockSheetStatus = text;
+      const line = document.getElementById('stockSheetStatus');
+      if (line) line.textContent = text;
+    }
+
+    function handleStockSheetClick(event) {
+      if (event.target.closest('[data-stock-close]')) return closeStockSheet();
+
+      const pickWord = event.target.closest('[data-stock-pick]')?.dataset.stockPick;
+      if (pickWord) {
+        const imageId = event.target.closest('[data-stock-pick]').dataset.stockPickImage;
+        const entry = effectiveStock()?.words?.[pickWord];
+        const image = entry?.images.find(item => item.id === imageId);
+        if (image) applyStockPickToEditor(pickWord, entry, image);
+        return closeStockSheet();
+      }
+
+      const photo = event.target.closest('[data-stock-photo]')?.dataset.stockPhoto;
+      if (photo) {
+        state.stockSheetImageId = photo;
+        return renderStockSheet({ keepInputs: true });
+      }
+      if (event.target.closest('[data-stock-add-photo]')) {
+        document.getElementById('stockPhotoInput')?.click();
+        return;
+      }
+
+      const wordId = state.stockSheetWordId;
+      if (event.target.closest('[data-stock-save-word]')) {
+        const word = String(document.getElementById('stockWordInput')?.value || '').replace(/\s+/g, ' ').trim();
+        if (normalizeStockWords(word).join(' ').length < 2) {
+          setStockSheetStatus('Write the word, at least two letters.');
+          return;
+        }
+        // The same word may not belong to two entries; the server refuses that
+        // too, but saying so here saves a round trip.
+        const aliases = String(document.getElementById('stockAliasInput')?.value || '').split(',').map(item => item.trim()).filter(Boolean);
+        const terms = stockEntryTerms({ word, aliases });
+        const clash = sortedStockEntries(effectiveStock()).find(([id, entry]) => id !== wordId && stockEntryTerms(entry).some(term => terms.includes(term)));
+        if (clash) {
+          setStockSheetStatus(`That is already part of the stock word “${clash[1].word}”.`);
+          return;
+        }
+        const ok = queueStockChange({ action: 'set-word', id: wordId, word, aliases, compound: Boolean(document.getElementById('stockCompoundInput')?.checked) });
+        if (!ok) return;
+        state.stockSheetIsNew = false;
+        state.stockSheetStatus = 'Saved. Upcoming tasks that name it and have no photo get one of its photos.';
+        renderStockSheet();
+        return;
+      }
+      if (event.target.closest('[data-stock-delete-word]')) {
+        const entry = effectiveStock()?.words?.[wordId];
+        if (!entry || !confirm(`Delete the stock word “${entry.word}”? Tasks showing its photos keep them.`)) return;
+        queueStockChange({ action: 'delete-word', id: wordId });
+        return closeStockSheet();
+      }
+      if (event.target.closest('[data-stock-save-framing]')) {
+        const ok = queueStockChange({
+          action: 'set-image',
+          wordId,
+          imageId: state.stockSheetImageId,
+          imageFocusX: clampPercent(document.getElementById('stockFocusX')?.value, 50),
+          imageFocusY: clampPercent(document.getElementById('stockFocusY')?.value, 38),
+          imageZoom: clampZoom(document.getElementById('stockZoom')?.value, 1.01),
+          imageFocusSource: 'manual'
+        });
+        if (ok) setStockSheetStatus('Framing saved. Tasks showing this photo take it, unless framed by hand.');
+        return;
+      }
+      if (event.target.closest('[data-stock-remove-photo]')) {
+        if (!confirm('Remove this photo from the word? Tasks showing it get another of its photos, or the placeholder.')) return;
+        queueStockChange({ action: 'delete-image', wordId, imageId: state.stockSheetImageId });
+        state.stockSheetImageId = '';
+        renderStockSheet({ keepInputs: true });
+      }
+    }
+
+    async function handleStockPhotoPicked(event) {
+      const input = event.target;
+      const file = input.files?.[0];
+      input.value = '';
+      const wordId = state.stockSheetWordId;
+      if (!file || !wordId || !effectiveStock()?.words?.[wordId]) return;
+      if (!getPin().trim()) {
+        setStockSheetStatus('Save the admin PIN on this phone first.');
+        return;
+      }
+      state.stockUploading = true;
+      renderStockSheet({ keepInputs: true });
+      setStockSheetStatus('Uploading photo…');
+      try {
+        const uploadFile = await compressImageForUpload(file);
+        if (uploadFile.size > MAX_UPLOAD_BYTES) throw new Error('The photo is still over 4 MB after compression. Try another one.');
+        const url = await uploadImageFile(uploadFile);
+        const imageId = newStockId('si');
+        queueStockChange({ action: 'add-image', wordId, image: { id: imageId, imageUrl: url, imageFocusX: 50, imageFocusY: 38, imageZoom: 1.01, imageFocusSource: 'manual' } });
+        state.stockSheetImageId = imageId;
+        state.stockSheetStatus = 'Photo added. Frame it below if the faces are cut off.';
+      } catch (error) {
+        state.stockSheetStatus = error.message || 'The photo could not be uploaded.';
+      } finally {
+        state.stockUploading = false;
+        if (state.stockSheetWordId === wordId) renderStockSheet({ keepInputs: true });
+      }
+    }
+
+    function applyStockPickToEditor(wordId, entry, image) {
+      els.imageInput.value = '';
+      els.imageUrlInput.value = image.imageUrl;
+      state.pendingStockPick = { wordId, imageId: image.id, imageUrl: image.imageUrl, word: entry.word };
+      state.stockFramingTouched = false;
+      state.pendingImageFocus = {
+        imageFocusX: clampPercent(image.imageFocusX, 50),
+        imageFocusY: clampPercent(image.imageFocusY, 38),
+        imageZoom: clampZoom(image.imageZoom, 1.01),
+        imageFocusSource: image.imageFocusSource || 'manual',
+        ...focusPayloadExtras(image)
+      };
+      state.imageFocusToken += 1;
+      setManualImageControls(state.pendingImageFocus);
+      setManualImagePreviewSource(image.imageUrl);
+      els.imageStatus.textContent = `Stock picture for “${entry.word}” picked for this task.`;
+      renderStockImageRow();
+    }
+
+    // The row under the image field: which stock picture this task shows or
+    // will show, and a way to pick one by hand.
+    function renderStockImageRow() {
+      const row = document.getElementById('stockImageRow');
+      if (!row) return;
+      const stock = effectiveStock();
+      const hasPhotos = stock && Object.values(stock.words).some(entry => entry.images.length);
+      if (!stock || els.imageInput?.files?.length) {
+        row.classList.add('hidden');
+        return;
+      }
+      const title = els.titleInput?.value || '';
+      const currentUrl = String(els.imageUrlInput?.value || '').trim();
+      const edited = els.eventId?.value ? getSourceEvent(els.eventId.value) : null;
+      const match = stockWordForTitle(title, stock);
+      const carried = currentUrl ? stockImageByUrl(currentUrl, stock) : null;
+      let html = '';
+      let plain = false;
+      if (state.pendingStockPick && state.pendingStockPick.imageUrl === currentUrl && carried) {
+        html = `${stockThumbHtml(carried.image)}<div class="stock-image-text">Stock picture for “${htmlEscape(carried.entry.word)}”<small>Picked by hand for this task.</small></div><div class="stock-image-actions"><button class="btn secondary" type="button" data-stock-row-pick>Change</button></div>`;
+      } else if (carried && edited && edited.imageStockImageId && String(edited.imageUrl || '') === currentUrl) {
+        const manual = edited.imageStockManual === true;
+        const stale = !manual && match?.id !== carried.wordId;
+        html = `${stockThumbHtml(carried.image)}<div class="stock-image-text">Stock picture for “${htmlEscape(carried.entry.word)}”<small>${stale ? 'The title no longer names it, so saving swaps it.' : manual ? 'Framed for this task.' : 'Follows the stock library.'}</small></div><div class="stock-image-actions"><button class="btn secondary" type="button" data-stock-row-pick>Change</button></div>`;
+      } else if (carried) {
+        html = `${stockThumbHtml(carried.image)}<div class="stock-image-text">This photo is also a stock picture for “${htmlEscape(carried.entry.word)}”<small>It is this task's own, so the library never swaps it.</small></div><div class="stock-image-actions"><button class="btn secondary" type="button" data-stock-row-pick>Change</button></div>`;
+      } else if (!currentUrl && match && match.entry.images.length) {
+        const count = match.entry.images.length;
+        html = `${stockThumbHtml(match.entry.images[0])}<div class="stock-image-text">Uses the stock picture for “${htmlEscape(match.entry.word)}”<small>${count > 1 ? `One of ${count} pictures. ` : ''}Pick a photo above to use your own.</small></div><div class="stock-image-actions"><button class="btn secondary" type="button" data-stock-row-pick>Change</button></div>`;
+      } else if (!currentUrl && match) {
+        plain = true;
+        html = `<div class="stock-image-text">“${htmlEscape(match.entry.word)}” is a stock word with no photo yet.<small>Add one under Stock pictures and every task like this gets it.</small></div><div class="stock-image-actions"><button class="btn secondary" type="button" data-stock-row-open="${htmlEscape(match.id)}">Add photo</button></div>`;
+      } else if (currentUrl && !carried && match && match.entry.images.length < 12 && /home-organizer\/images\//.test(currentUrl)) {
+        plain = true;
+        html = `<div class="stock-image-text">Use this photo for every “${htmlEscape(match.entry.word)}” task?<small>Adds it to the stock pictures. This task keeps it either way.</small></div><div class="stock-image-actions"><button class="btn secondary" type="button" data-stock-row-add="${htmlEscape(match.id)}">Add to stock</button></div>`;
+      } else if (hasPhotos) {
+        plain = true;
+        html = '<div class="stock-image-text"><small>Or use one of the stock pictures.</small></div><div class="stock-image-actions"><button class="btn secondary" type="button" data-stock-row-pick>Pick a stock picture</button></div>';
+      }
+      row.classList.toggle('hidden', !html);
+      row.classList.toggle('is-plain', plain);
+      row.innerHTML = html;
+    }
+
+    function handleStockRowClick(event) {
+      if (event.target.closest('[data-stock-row-pick]')) return openStockPicker();
+      const open = event.target.closest('[data-stock-row-open]')?.dataset.stockRowOpen;
+      if (open) return openStockSheet(open);
+      const add = event.target.closest('[data-stock-row-add]')?.dataset.stockRowAdd;
+      if (add) {
+        const url = String(els.imageUrlInput?.value || '').trim();
+        if (!url) return;
+        const focus = currentImageFocusPayload();
+        const ok = queueStockChange({ action: 'add-image', wordId: add, image: { id: newStockId('si'), imageUrl: url, ...focus } });
+        if (ok) {
+          const row = document.getElementById('stockImageRow');
+          if (row) row.innerHTML = `<div class="stock-image-text">Added to the stock pictures.<small>Upcoming tasks that name it and have no photo get one of its photos.</small></div>`;
+        }
+      }
+    }
+
+    // What the editor says under the image field while no picture is picked.
+    function stockNoImageStatusText(title) {
+      const stock = effectiveStock();
+      if (!stock) return '';
+      const match = stockWordForTitle(title, stock);
+      if (match?.entry.images.length) return `No image selected. The stock picture for “${match.entry.word}” will be used.`;
+      return 'No image selected. A calm placeholder will be used.';
+    }
+
     function init() {
+      loadWorkMode();
       setMode();
       window.addEventListener('resize', () => { fitKioskToScreen(); if (!adminMode) renderDisplay(); });
       window.addEventListener('orientationchange', () => setTimeout(fitKioskToScreen, 250));
@@ -18967,6 +21286,11 @@ Cancel = choose whether to delete the whole series.`);
       bindEdgePanel();
       bindVideoOverlays();
       bindWeatherDebug();
+      bindQPanelHolds();
+      bindTodoPanel();
+      bindAdminTodos();
+      bindAdminStock();
+      applyWorkModeChrome();
       els.returnToDisplayBtn?.addEventListener('click', goToDisplayMode);
       document.addEventListener('click', event => {
         handleHeroBackActionClick(event);
@@ -19140,6 +21464,7 @@ Cancel = choose whether to delete the whole series.`);
       fetchWeather();
       setInterval(fetchWeather, 30 * 60 * 1000);
       hydrateDaughterPeriodsFromCache();
+      hydrateSharedListsFromCache();
       queueDaughterPeriodImport();
       hydrateEventsFromLocalCache();
       // Page boot should always spend one fresh read so the dashboard starts with newest data.
@@ -19150,8 +21475,14 @@ Cancel = choose whether to delete the whole series.`);
       startSyncVersionPolling();
       window.addEventListener('online', () => processPendingWrites({ silent: true }));
       window.addEventListener('storage', event => {
+        if (event.key === WORK_MODE_KEY) {
+          loadWorkMode();
+          applyWorkModeChrome();
+          return;
+        }
         if (event.key === LAST_WRITE_SIGNAL_KEY) {
           hydrateDaughterPeriodsFromCache();
+          hydrateSharedListsFromCache();
           renderFromLocalState();
           // Another open tab already updated local state. Do not spend a Blob read here.
         }
