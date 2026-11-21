@@ -8,7 +8,11 @@ const RESEND_SCHEDULE_HORIZON_MS = 8 * 24 * 60 * 60 * 1000; // Only queue near-t
 const RESEND_SEND_NOW_GRACE_MS = 90 * 1000;
 const MAX_OCCURRENCE_LOOKAHEAD_MS = 8 * 24 * 60 * 60 * 1000;
 const DEFAULT_TIME_ZONE = 'Europe/Oslo';
-const HARD_CODED_REMINDER_RECIPIENTS = new Set(['theresesaksgard@hotmail.com', 'diemetrix@gmail.com']);
+// The only address reminders and digests go to. Every send path filters
+// through this, so a task, a setting or a scheduled reminder that still lists
+// another address sends nothing there: the cron cancels such a scheduled email
+// at Resend and schedules it again without that address.
+const HARD_CODED_REMINDER_RECIPIENTS = new Set(['diemetrix@gmail.com']);
 
 function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());

@@ -70,7 +70,9 @@ let versionMarkerCheckedAt = 0;
 // Serializes mutations that land on the same warm instance so they cannot
 // read-modify-write over each other locally.
 let mutationChain = Promise.resolve();
-const HARD_CODED_REMINDER_RECIPIENTS = new Set(['theresesaksgard@hotmail.com', 'diemetrix@gmail.com']);
+// The only address reminders go to. A task or setting still listing another
+// address is read without it, so nothing is ever sent there.
+const HARD_CODED_REMINDER_RECIPIENTS = new Set(['diemetrix@gmail.com']);
 
 function send(res, status, payload) {
   res.statusCode = status;

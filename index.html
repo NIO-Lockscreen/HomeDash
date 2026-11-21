@@ -5865,11 +5865,6 @@
             </label>
             <div class="email-contact-list reminder-digest-recipients" aria-label="Weekly email recipients">
               <label class="email-contact-row">
-                <input type="checkbox" data-weekly-recipient value="theresesaksgard@hotmail.com" />
-                <span>Therese</span>
-                <small>Weekly</small>
-              </label>
-              <label class="email-contact-row">
                 <input type="checkbox" data-weekly-recipient value="diemetrix@gmail.com" />
                 <span>Thomas</span>
                 <small>Weekly</small>
@@ -5885,11 +5880,6 @@
               </span>
             </label>
             <div class="email-contact-list reminder-digest-recipients" aria-label="End-of-day email recipients">
-              <label class="email-contact-row">
-                <input type="checkbox" data-daily-recipient value="theresesaksgard@hotmail.com" />
-                <span>Therese</span>
-                <small>Daily</small>
-              </label>
               <label class="email-contact-row">
                 <input type="checkbox" data-daily-recipient value="diemetrix@gmail.com" />
                 <span>Thomas</span>
@@ -5988,7 +5978,7 @@
             </div>
             <div id="emailContactList" class="email-contact-list"></div>
 
-            <div id="reminderHelp" class="reminder-help">Choose Therese, Thomas, both, or leave both unchecked for none.</div>
+            <div id="reminderHelp" class="reminder-help">Tick Thomas to get the emails, or leave it unticked for none.</div>
           </div>
         </section>
 
@@ -6447,7 +6437,6 @@
     const DAUGHTER_ANCHOR_END_KEY = '2026-05-20';
     const DAUGHTER_PERIOD_INTERVAL_DAYS = 14;
     const HARD_CODED_REMINDER_CONTACTS = [
-      { key: 'therese', name: 'Therese', email: 'theresesaksgard@hotmail.com' },
       { key: 'thomas', name: 'Thomas', email: 'diemetrix@gmail.com' }
     ];
 
@@ -8004,7 +7993,7 @@
               </span>
             </label>
           `).join('')}</div>`
-        : '<div class="email-add-empty">Both Therese and Thomas are already on this task.</div>';
+        : '<div class="email-add-empty">Thomas is already on this task.</div>';
       const addTitle = enabled ? 'Add selected' : 'Add reminders';
       const addHelp = enabled
         ? 'Choose who else should get this task. Only newly added people get the task-created email now.'
@@ -8049,7 +8038,7 @@
       if (!source) throw new Error('Task not found.');
       const panel = trigger?.closest?.('[data-email-reminder-panel]') || document.querySelector(`[data-email-source-id="${CSS.escape(String(sourceId))}"]`);
       const recipients = recipientsFromDisplayEmailPanel(panel);
-      if (!recipients.length) throw new Error('Choose Therese, Thomas, or both.');
+      if (!recipients.length) throw new Error('Tick Thomas first.');
       const existingRecipients = Array.isArray(source.emailReminder?.recipients)
         ? source.emailReminder.recipients.map(normalizeReminderEmail).filter(isValidReminderEmail)
         : [];
