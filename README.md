@@ -803,7 +803,8 @@ moment, then the app.
   calendar slides over to the left, drawn exactly as always but smaller, and
   the phone slides in from the right. The calendar stays live and can still be
   tapped, so a task saved on the phone can be watched dropping into Upcoming
-  straight away. **Done** beside the phone puts everything back. (While docked,
+  straight away. The **×** at the top left of the phone, where its clock would
+  be, puts everything back. (While docked,
   the weather that spills out of its card and the ring a landing card sends out
   are left out: they are drawn in screen pixels, the calendar is scaled.)
 - **On a narrow or upright screen** the phone is laid over the middle of the
@@ -811,7 +812,8 @@ moment, then the app.
   into the Upcoming strip as the phone is put away.
 - **Space** on the wall (with a keyboard) puts the phone up, and presses it away
   again, without opening the Q panel. Typing in a field keeps its space.
-- **Putting it away**: **Done** / **×** beside the phone, the home bar at the
+- **Putting it away**: the **×** at the top left of the phone (where its clock
+  would be), the home bar at the
   bottom of it, a tap outside it (over the middle of the wall), or Esc (Esc
   inside the app first closes whatever is open in it, such as the editor). The
   idle reset puts it away after five minutes without a touch, touches inside

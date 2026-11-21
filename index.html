@@ -5496,7 +5496,27 @@
       pointer-events: none;
     }
 
-    .phone-status-time { justify-self: center; font-variant-numeric: tabular-nums; }
+    /* Where a phone shows its clock: the × that puts the phone away. */
+    .phone-status-close {
+      justify-self: center;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: 0;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: rgba(17, 17, 17, .1);
+      color: #111;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: background-color .15s ease, transform .15s ease;
+    }
+
+    .phone-status-close svg { width: 12px; height: 12px; display: block; }
+    .phone-status-close:hover,
+    .phone-status-close:focus-visible { background: rgba(17, 17, 17, .2); transform: scale(1.06); }
+    .phone-status-close:focus-visible { outline: 2px solid #111; outline-offset: 2px; }
     .phone-status-icons { justify-self: center; display: inline-flex; align-items: center; gap: 6px; }
     .phone-status-icons svg { display: block; height: 12px; width: auto; }
 
@@ -5602,24 +5622,6 @@
     .phone-home:focus-visible::before { background: #000; transform: scaleX(1.06); }
     .phone-home:focus-visible { outline: none; }
 
-    .phone-app-close {
-      position: absolute;
-      top: 6px;
-      right: -70px;
-      width: 48px;
-      height: 48px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,.8);
-      background: rgba(255, 252, 247, .92);
-      color: var(--ink);
-      font-size: 26px;
-      line-height: 1;
-      display: grid;
-      place-items: center;
-      cursor: pointer;
-      box-shadow: 0 12px 26px rgba(20, 14, 8, .22);
-    }
-
     /* The Q panel's button that opens it. */
     .wx-debug > #wxPhoneApp {
       width: 100%;
@@ -5647,8 +5649,8 @@
     /* On a wide screen (a PC, the wall) the phone docks instead: the calendar
        moves to the left, drawn exactly as always but smaller, and stays live,
        so whatever is added on the phone can be watched landing on it; the
-       phone slides in from the right. "Done" beside the phone, its home bar
-       or Esc put everything back. */
+       phone slides in from the right. The × where the phone's clock would be,
+       its home bar or Esc put everything back. */
     .phone-app-overlay.is-docked {
       background: none;
       backdrop-filter: none;
@@ -5677,38 +5679,6 @@
       from { transform: translateX(0) scale(var(--phone-scale)); }
       to { transform: translateX(calc(100% + 180px)) scale(var(--phone-scale)); }
     }
-
-    .phone-close-label { display: none; }
-
-    .phone-app-overlay.is-docked .phone-app-close {
-      right: auto;
-      left: -120px;
-      top: 4px;
-      width: auto;
-      height: 48px;
-      padding: 0 18px 0 12px;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 15px;
-      font-weight: 900;
-      letter-spacing: .01em;
-    }
-
-    .phone-app-overlay.is-docked .phone-close-x {
-      width: 26px;
-      height: 26px;
-      border-radius: 999px;
-      display: grid;
-      place-items: center;
-      background: #2f2b27;
-      color: #fff;
-      font-size: 18px;
-      line-height: 1;
-    }
-
-    body.work-mode .phone-app-overlay.is-docked .phone-close-x { background: var(--work); }
-    .phone-app-overlay.is-docked .phone-close-label { display: inline; }
 
     body.phone-docked .screen-controls { opacity: 0 !important; pointer-events: none !important; }
 
@@ -6253,10 +6223,10 @@
       <span class="phone-side-btn is-volume-down" aria-hidden="true"></span>
       <span class="phone-side-btn is-power" aria-hidden="true"></span>
       <div class="phone-screen">
-        <div class="phone-status" aria-hidden="true">
-          <span id="phoneStatusTime" class="phone-status-time">--:--</span>
-          <span></span>
-          <span class="phone-status-icons">
+        <div class="phone-status">
+          <button id="phoneStatusClose" class="phone-status-close" type="button" aria-label="Close the phone and go back to the normal view"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 1.5l9 9M10.5 1.5l-9 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+          <span aria-hidden="true"></span>
+          <span class="phone-status-icons" aria-hidden="true">
             <svg viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1" fill="#111"/><rect x="5" y="5.5" width="3" height="6.5" rx="1" fill="#111"/><rect x="10" y="3" width="3" height="9" rx="1" fill="#111"/><rect x="15" y="0" width="3" height="12" rx="1" fill="#111"/></svg>
             <svg viewBox="0 0 16 12"><path d="M8 11.2 5.7 8.9a3.3 3.3 0 0 1 4.6 0Z" fill="#111"/><path d="M3.6 6.8a6.3 6.3 0 0 1 8.8 0l-1.5 1.5a4.2 4.2 0 0 0-5.8 0Z" fill="#111"/><path d="M1.4 4.6a9.4 9.4 0 0 1 13.2 0L13.1 6a7.3 7.3 0 0 0-10.2 0Z" fill="#111"/></svg>
             <svg viewBox="0 0 27 12"><rect x=".5" y=".5" width="23" height="11" rx="3.2" fill="none" stroke="#111" stroke-opacity=".4"/><rect x="2" y="2" width="17" height="8" rx="2" fill="#111"/><path d="M25 4v4a2 2 0 0 0 0-4Z" fill="#111" fill-opacity=".45"/></svg>
@@ -6269,7 +6239,6 @@
         </div>
         <button id="phoneHomeBtn" class="phone-home" type="button" aria-label="Put the phone away"></button>
       </div>
-      <button id="phoneAppClose" class="phone-app-close" type="button" aria-label="Close the phone and go back to the normal view"><span class="phone-close-x" aria-hidden="true">×</span><span class="phone-close-label">Done</span></button>
     </div>
   </div>
 
@@ -21688,9 +21657,9 @@ Cancel = choose whether to delete the whole series.`);
     // page inside is unloaded on close, so it does not go on syncing in the
     // background.
 
-    const phoneApp = { open: false, docked: false, closeTimer: null, readyTimer: null, clockTimer: null };
-    // Room beside the docked phone for its "Done" button.
-    const PHONE_DOCK_GUTTER = 130;
+    const phoneApp = { open: false, docked: false, closeTimer: null, readyTimer: null };
+    // A little air between the scaled calendar and the docked phone.
+    const PHONE_DOCK_GUTTER = 24;
     const PHONE_DOCK_SHELL_EASE = 'transform .6s cubic-bezier(.2, .85, .25, 1)';
 
     // A screen wide enough to have the calendar and the phone side by side.
@@ -21720,8 +21689,8 @@ Cancel = choose whether to delete the whole series.`);
       shell.style.transform = `translateX(${shift.toFixed(1)}px) scale(${scale.toFixed(4)})`;
     }
     const PHONE_DEVICE_SIZE = { width: 418, height: 872 };
-    // The close button sits to the right of the phone.
-    const PHONE_SIDE_ROOM = 150;
+    // The phone's own × closes it, so nothing sits beside it.
+    const PHONE_SIDE_ROOM = 0;
 
     function sizePhoneApp() {
       const device = document.getElementById('phoneDevice');
@@ -21732,11 +21701,6 @@ Cancel = choose whether to delete the whole series.`);
         (window.innerWidth - 32) / (PHONE_DEVICE_SIZE.width + PHONE_SIDE_ROOM)
       );
       device.style.setProperty('--phone-scale', String(Math.max(0.45, Math.round(scale * 1000) / 1000)));
-    }
-
-    function updatePhoneStatusClock() {
-      const time = document.getElementById('phoneStatusTime');
-      if (time) time.textContent = formatTime(new Date(), false);
     }
 
     // Touches inside the phone happen in the frame's own window, which the
@@ -21789,9 +21753,6 @@ Cancel = choose whether to delete the whole series.`);
       overlay.style.animation = 'none';
       void overlay.offsetWidth;
       overlay.style.animation = '';
-      updatePhoneStatusClock();
-      clearInterval(phoneApp.clockTimer);
-      phoneApp.clockTimer = setInterval(updatePhoneStatusClock, 15 * 1000);
       frame.src = src;
       noteInteraction();
       weatherFxSync();
@@ -21805,8 +21766,6 @@ Cancel = choose whether to delete the whole series.`);
       phoneApp.open = false;
       const wasDocked = phoneApp.docked;
       clearTimeout(phoneApp.readyTimer);
-      clearInterval(phoneApp.clockTimer);
-      phoneApp.clockTimer = null;
       overlay.classList.add('is-closing');
       // The calendar slides back to the middle as the phone leaves.
       if (wasDocked && els.displayView) {
@@ -21851,7 +21810,7 @@ Cancel = choose whether to delete the whole series.`);
       const frame = document.getElementById('phoneAppFrame');
       if (adminMode || !overlay || !frame) return;
       document.getElementById('wxPhoneApp')?.addEventListener('click', () => openPhoneApp());
-      document.getElementById('phoneAppClose')?.addEventListener('click', closePhoneApp);
+      document.getElementById('phoneStatusClose')?.addEventListener('click', closePhoneApp);
       document.getElementById('phoneHomeBtn')?.addEventListener('click', closePhoneApp);
       overlay.addEventListener('click', event => {
         if (event.target === overlay) closePhoneApp();
