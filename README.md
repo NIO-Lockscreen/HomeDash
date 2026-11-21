@@ -224,6 +224,25 @@ out of the fysio/lege/MR borrowing (below): those three are now simply the first
 stock words, and the list is managed in the app instead of being written into
 the code.
 
+### Two libraries: family and work
+
+The family and work mode each have their own stock pictures. A word belongs
+to one library, and a task only ever takes pictures from its own calendar's:
+a work task *Møte* gets the work word's photo, a family task *Møte* the
+family word's, and a family task never gets a work photo. The two libraries
+may even hold the same word. The words that came from fysio/lege/MR, and any
+word made before there were two libraries, are family words.
+
+- **Stock pictures** on the phone shows the library of the phone's mode: the
+  family's normally, the work words (*Stock pictures · Work*) in work mode. A
+  new word goes into that library, and a word never moves to the other one.
+- In the task editor, the task's **Calendar** (Family / Work) decides: the stock
+  row, **Pick a stock picture** and the picture a save fills in all come from
+  that calendar's library, and switching it switches them.
+- A task moved to the other calendar lets go of a stock picture from its old
+  library on the next save (unless it was picked or framed by hand) and gets
+  the new library's photo, or the placeholder.
+
 ### Managing the words
 
 On the phone (or the desktop admin page), open **Stock pictures** under the
@@ -244,8 +263,8 @@ striped. Tap a tile to open it, or **+ New word**:
   that photo, except tasks framed by hand. **Remove photo** and **Delete word**
   ask first.
 
-Two words may not claim the same word or alias; the app says which word already
-has it.
+Two words of the same library may not claim the same word or alias; the app
+says which word already has it.
 
 ### Which photo a task gets
 

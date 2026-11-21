@@ -783,10 +783,10 @@ async function resolveImageUrl(inputUrl, existingUrl, options = {}) {
 // spreads from one card to the next. The lookups only happen on this path,
 // which is rare and short. `random` is seeded from the request, so a retry
 // picks the same photo.
-async function stockImageForTitle({ title, stock, events, excludeId, random }) {
+async function stockImageForTitle({ title, scope, stock, events, excludeId, random }) {
   const skipUrls = new Set();
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const candidate = pickStockForTitle({ title, stock, events, excludeId, skipUrls, random });
+    const candidate = pickStockForTitle({ title, scope, stock, events, excludeId, skipUrls, random });
     if (!candidate) return null;
     const url = String(candidate.image?.imageUrl || '');
     if (!isOrganizerBlobImage(url) || (await organizerImageMeta(url)).exists) return candidate;
@@ -882,14 +882,19 @@ export default async function handler(req, res) {
         const keepsStoredImage = Boolean(previousEvent) && resolvedImageUrl === String(previousEvent.imageUrl || '');
         const releasesWrongKind = keepsStoredImage
           && isMismatchedBorrowedImage({ ...previousEvent, title: payload.title }, byId);
+        // Which calendar the task is on after this save, and so which stock
+        // library it takes its pictures from: the family's or the work one.
+        const taskScope = cleanEventScope(payload.scope ?? previousEvent?.scope);
         // A stock picture of a word the title no longer names - "Tannlege"
-        // retitled "Middag" - goes the same way. Never one picked or framed by
-        // hand for this task.
+        // retitled "Middag" - goes the same way, and so does one from the other
+        // calendar's library when the task moves between family and work.
+        // Never one picked or framed by hand for this task.
         const releasesStaleStock = keepsStoredImage
           && !releasesWrongKind
           && isStaleStockImage({
             ...previousEvent,
             title: payload.title,
+            scope: taskScope,
             imageStockManual: payload.imageStockManual ?? previousEvent.imageStockManual
           }, stock);
         imageReleased = releasesWrongKind || releasesStaleStock;
@@ -914,6 +919,7 @@ export default async function handler(req, res) {
         if (!imageUrl && !autoImage) {
           autoImage = await stockImageForTitle({
             title: payload.title,
+            scope: taskScope,
             stock,
             events: currentEvents,
             excludeId: payload.id,

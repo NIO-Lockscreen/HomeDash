@@ -6,8 +6,14 @@
 // photos somebody once chose for such tasks, and the library is now managed in
 // the app instead of being hardcoded.
 //
+// There are two libraries, kept apart: the family's words and the work words.
+// Each word says which it belongs to (`scope`), and a task only ever takes
+// pictures from its own calendar's library - a work task "Møte" from the work
+// word, a family task "Møte" from the family one - so the two can even share a
+// word.
+//
 // Stored in events.json as `stock`:
-//   { seededAt, words: { '<id>': { word, aliases: [], compound, images: [ {
+//   { seededAt, words: { '<id>': { word, scope, aliases: [], compound, images: [ {
 //       id, imageUrl, imageFocusX, imageFocusY, imageFocusSource, imageZoom,
 //       imageFocusBox, imageNaturalWidth, imageNaturalHeight, addedAt } ],
 //     updatedAt } } }
@@ -44,6 +50,17 @@ export const STOCK_MAX_WORD_LENGTH = 40;
 export const STOCK_COMPOUND_MIN_LENGTH = 4;
 
 const STOCK_ID = /^[A-Za-z0-9_-]{1,60}$/;
+export const STOCK_SCOPES = Object.freeze(['family', 'work']);
+
+// 'work' or 'family'. A word stored before there were two libraries is family.
+export function cleanStockScope(value) {
+  return String(value || '').trim().toLowerCase() === 'work' ? 'work' : 'family';
+}
+
+// The library a task takes its pictures from: its own calendar's.
+export function taskStockScope(event) {
+  return cleanStockScope(event?.scope);
+}
 const ISO = /^\d{4}-\d{2}-\d{2}T/;
 const SEED_LABELS = Object.freeze({ fysio: 'Fysio', lege: 'Lege', mr: 'MR' });
 const DEFAULT_FRAMING = Object.freeze({
@@ -153,6 +170,7 @@ function cleanWord(value) {
   }
   return {
     word,
+    scope: cleanStockScope(value.scope),
     aliases: cleanAliases(value.aliases).filter(alias => normalizeStockTerm(alias) !== normalizeStockTerm(word)),
     compound: value.compound !== false,
     images,
@@ -220,6 +238,7 @@ export function seedStockLibrary(events, now = '') {
       }));
     words[kind.keyword] = {
       word: SEED_LABELS[kind.keyword] || kind.keyword,
+      scope: 'family',
       aliases: kind.words.filter(word => word !== kind.keyword),
       compound: kind.compound,
       images,
@@ -248,17 +267,18 @@ function entryTerms(entry) {
     .filter(term => term.length >= 2);
 }
 
-// Which stock word a title names, or null. Phrases ("bursdag mormor") are
-// tried first. Otherwise the title is read word by word from the left, and the
+// Which stock word of one library (`scope`: the task's own calendar) a title
+// names, or null. Phrases ("bursdag mormor") are tried first. Otherwise the title is read word by word from the left, and the
 // first title word that names any stock word decides. Within that word an
 // exact match beats a match inside a longer word, and a longer stock word
 // beats a shorter one, so "Tannlege" picks the word Tannlege over Lege.
-export function stockWordForTitle(title, stock) {
+export function stockWordForTitle(title, stock, scope = 'family') {
   const library = stock && stock.words ? stock : normalizeStockLibrary(stock);
   const words = normalizeTitleWords(title);
   if (!words.length) return null;
   const padded = ` ${words.join(' ')} `;
-  const entries = Object.entries(library.words || {});
+  const wanted = cleanStockScope(scope);
+  const entries = Object.entries(library.words || {}).filter(([, entry]) => cleanStockScope(entry.scope) === wanted);
 
   let best = null;
   for (const [id, entry] of entries) {
@@ -337,8 +357,8 @@ export function pickStockImage({ wordId, stock, events, excludeId = '', skipUrls
   return { wordId: String(wordId), word: entry.word, imageId: image.id, image: stockImageFields(image) };
 }
 
-export function pickStockForTitle({ title, stock, events, excludeId = '', skipUrls = [], random = Math.random } = {}) {
-  const match = stockWordForTitle(title, stock);
+export function pickStockForTitle({ title, scope = 'family', stock, events, excludeId = '', skipUrls = [], random = Math.random } = {}) {
+  const match = stockWordForTitle(title, stock, scope);
   if (!match) return null;
   return pickStockImage({ wordId: match.id, stock, events, excludeId, skipUrls, random });
 }
@@ -353,12 +373,13 @@ export function stockMarksValid(event, stock) {
 }
 
 // A stock picture the task no longer names: it was retitled from "Tannlege" to
-// "Middag". Let go, so the slot is filled with the right word's photo or left
-// to the placeholder. Never a photo picked or reframed by hand.
+// "Middag", or moved to the other calendar, whose library does not hold that
+// word. Let go, so the slot is filled with the right word's photo or left to
+// the placeholder. Never a photo picked or reframed by hand.
 export function isStaleStockImage(event, stock) {
   const wordId = String(event?.imageStockWord || '');
   if (!wordId || !String(event?.imageUrl || '').trim() || event?.imageStockManual === true) return false;
-  return stockWordForTitle(event?.title, stock)?.id !== wordId;
+  return stockWordForTitle(event?.title, stock, taskStockScope(event))?.id !== wordId;
 }
 
 function withStockPicture(event, pick) {
@@ -424,7 +445,7 @@ export function reconcileStockTasks(stock, events, { now = new Date(), random = 
       const manual = event.imageStockManual === true;
       if (!entry) event = withoutStockMarks(event);
       else if (!image) event = manual ? withoutStockMarks(event) : withoutPicture(event);
-      else if (!manual && stockWordForTitle(event.title, library)?.id !== wordId) event = withoutPicture(event);
+      else if (!manual && stockWordForTitle(event.title, library, taskStockScope(event))?.id !== wordId) event = withoutPicture(event);
       else if (!manual && image.imageUrl !== String(event.imageUrl).trim()) event = withoutPicture(event);
       else if (!manual && !sameFraming(event, image)) event = { ...event, ...cleanStockFraming(image) };
     } else if (wordId) {
@@ -432,7 +453,7 @@ export function reconcileStockTasks(stock, events, { now = new Date(), random = 
     }
 
     if (!String(event.imageUrl || '').trim() && isUpcomingTask(event, nowMs)) {
-      const pick = pickStockForTitle({ title: event.title, stock: library, events: working, excludeId: event.id, random });
+      const pick = pickStockForTitle({ title: event.title, scope: taskStockScope(event), stock: library, events: working, excludeId: event.id, random });
       if (pick) event = withStockPicture(event, pick);
     }
 
@@ -451,9 +472,11 @@ function requireWordId(value) {
   return id;
 }
 
-function clashingWord(library, id, terms) {
+// Two words of the same library may not claim the same word. The family's and
+// the work library may: each task only looks in its own.
+function clashingWord(library, id, terms, scope) {
   for (const [otherId, entry] of Object.entries(library.words)) {
-    if (otherId === id) continue;
+    if (otherId === id || cleanStockScope(entry.scope) !== scope) continue;
     const otherTerms = new Set(entryTerms(entry));
     const clash = terms.find(term => otherTerms.has(term));
     if (clash) return { entry, term: clash };
@@ -462,7 +485,8 @@ function clashingWord(library, id, terms) {
 }
 
 // Applies one change to the library, onto whatever the store holds:
-//   set-word     { id, word, aliases, compound }   add a word, or edit one
+//   set-word     { id, word, scope, aliases, compound }   add a word, or edit
+//                one (a word stays in its library; `scope` only places a new one)
 //   delete-word  { id }
 //   add-image    { wordId, image: { id, imageUrl, ...framing } }
 //   set-image    { wordId, imageId, ...framing }   reframe a photo
@@ -481,9 +505,10 @@ export function applyStockChange(current, change, now = new Date()) {
     const word = cleanDisplayWord(change.word);
     if (normalizeStockTerm(word).length < 2) throw stockError('Write the word, at least two letters.');
     const aliases = cleanAliases(change.aliases).filter(alias => normalizeStockTerm(alias) !== normalizeStockTerm(word));
-    const candidate = { word, aliases, compound: change.compound !== false, images: existing?.images || [], updatedAt: stamp };
-    const clash = clashingWord(next, id, entryTerms(candidate));
-    if (clash) throw stockError(`"${clash.term}" is already part of the stock word "${clash.entry.word}".`);
+    const scope = existing ? cleanStockScope(existing.scope) : cleanStockScope(change.scope);
+    const candidate = { word, scope, aliases, compound: change.compound !== false, images: existing?.images || [], updatedAt: stamp };
+    const clash = clashingWord(next, id, entryTerms(candidate), scope);
+    if (clash) throw stockError(`"${clash.term}" is already part of the ${scope === 'work' ? 'work' : 'family'} stock word "${clash.entry.word}".`);
     next.words[id] = candidate;
     return next;
   }
@@ -529,6 +554,7 @@ function wordShape(entry) {
   if (!entry) return 'none';
   return JSON.stringify([
     entry.word,
+    cleanStockScope(entry.scope),
     entry.aliases,
     entry.compound,
     entry.images.map(({ addedAt, ...image }) => image)

@@ -5836,8 +5836,8 @@
       <section id="adminStockFold" class="admin-fold is-collapsed hidden" aria-label="Stock pictures">
         <button id="adminStockToggle" class="reminder-menu-toggle" type="button" aria-expanded="false" aria-controls="adminStockBody">
           <span class="reminder-menu-toggle-text">
-            <span class="phone-reminder-menu-title">Stock pictures</span>
-            <span class="reminder-menu-toggle-subtitle">Default photos for words that come up again and again.</span>
+            <span id="adminStockTitle" class="phone-reminder-menu-title">Stock pictures</span>
+            <span id="adminStockSubtitle" class="reminder-menu-toggle-subtitle">Default photos for words that come up again and again.</span>
           </span>
           <span class="fold-head-right"><span id="adminStockCount" class="fold-count"></span><span class="reminder-menu-chevron" aria-hidden="true">⌄</span></span>
         </button>
@@ -16494,14 +16494,14 @@ Cancel = choose whether to delete the whole series.`);
               }
             : null;
           const releasesStaleStock = Boolean(stock) && keepsStoredImage && !releasesWrongKind && !stockPick
-            && isStaleStockImageClient({ ...editedEvent, title: els.titleInput.value, imageStockManual: keptStockMarks?.imageStockManual }, stock);
+            && isStaleStockImageClient({ ...editedEvent, title: els.titleInput.value, scope: editorStockScope(), imageStockManual: keptStockMarks?.imageStockManual }, stock);
           const imageUrl = releasesWrongKind || releasesStaleStock ? '' : uploadedUrl;
           // A task whose title names a stock word and that is saved without a
           // picture gets one of that word's photos. The server decides this too,
           // for whatever any device sends it; picking here as well means this
           // device never draws the card with a placeholder first. Until the
           // library has reached this device, the lege borrowing stands in.
-          const stockFill = imageUrl || !stock ? null : pickStockForTitleClient(els.titleInput.value, stock, els.eventId.value);
+          const stockFill = imageUrl || !stock ? null : pickStockForTitleClient(els.titleInput.value, stock, els.eventId.value, editorStockScope());
           const borrowed = imageUrl || stock ? null : pickAutoImage(els.titleInput.value, els.eventId.value);
           const stockMarks = stockFill
             ? { ...stockFill.image, imageInheritedFrom: '', imageInheritedKeyword: '', imageStockWord: stockFill.wordId, imageStockImageId: stockFill.imageId, imageStockManual: false }
@@ -20297,6 +20297,9 @@ Cancel = choose whether to delete the whole series.`);
       if (adminMode) {
         renderAdminEvents();
         renderAdminTodos();
+        // Each mode has its own stock pictures.
+        renderAdminStock();
+        if (state.stockSheetMode === 'word' && state.stockSheetIsNew) closeStockSheet();
       } else {
         clearSelectedDayPreview();
       }
@@ -20412,6 +20415,7 @@ Cancel = choose whether to delete the whole series.`);
         if (!entry || typeof entry !== 'object' || !String(entry.word || '').trim()) return;
         clean[id] = {
           word: String(entry.word),
+          scope: entry.scope === 'work' ? 'work' : 'family',
           aliases: Array.isArray(entry.aliases) ? entry.aliases.map(String) : [],
           compound: entry.compound !== false,
           images: Array.isArray(entry.images) ? entry.images.filter(image => image && image.id && image.imageUrl) : [],
@@ -20492,7 +20496,9 @@ Cancel = choose whether to delete the whole series.`);
       if (action === 'set-word') {
         const existing = stock.words[change.id];
         const aliases = Array.isArray(change.aliases) ? change.aliases : String(change.aliases || '').split(',').map(item => item.trim()).filter(Boolean);
-        stock.words[change.id] = { word: String(change.word || '').trim(), aliases, compound: change.compound !== false, images: existing?.images || [], updatedAt: '' };
+        // A word stays in its library; the scope only places a new one.
+        const scope = existing ? existing.scope : (change.scope === 'work' ? 'work' : 'family');
+        stock.words[change.id] = { word: String(change.word || '').trim(), scope, aliases, compound: change.compound !== false, images: existing?.images || [], updatedAt: '' };
         return;
       }
       if (action === 'delete-word') {
@@ -21070,12 +21076,19 @@ Cancel = choose whether to delete the whole series.`);
         .filter(term => term.length >= 2);
     }
 
-    function stockWordForTitle(title, stock) {
+    // The two libraries: a task takes pictures from its own calendar's words
+    // only, the family's or the work ones.
+    function stockScopeOf(value) {
+      return value === 'work' ? 'work' : 'family';
+    }
+
+    function stockWordForTitle(title, stock, scope = 'family') {
       if (!stock) return null;
       const words = normalizeStockWords(title);
       if (!words.length) return null;
       const padded = ` ${words.join(' ')} `;
-      const entries = Object.entries(stock.words || {});
+      const wanted = stockScopeOf(scope);
+      const entries = Object.entries(stock.words || {}).filter(([, entry]) => stockScopeOf(entry.scope) === wanted);
       let best = null;
       entries.forEach(([id, entry]) => {
         stockEntryTerms(entry).forEach(term => {
@@ -21133,15 +21146,26 @@ Cancel = choose whether to delete the whole series.`);
       return { wordId, word: entry.word, imageId: image.id, image: stockImageFieldsClient(image) };
     }
 
-    function pickStockForTitleClient(title, stock, excludeId = '') {
-      const match = stockWordForTitle(title, stock);
+    function pickStockForTitleClient(title, stock, excludeId = '', scope = 'family') {
+      const match = stockWordForTitle(title, stock, scope);
       return match ? pickStockImageClient(match.id, stock, excludeId) : null;
     }
 
     function isStaleStockImageClient(event, stock) {
       const wordId = String(event?.imageStockWord || '');
       if (!wordId || !String(event?.imageUrl || '').trim() || event?.imageStockManual === true) return false;
-      return stockWordForTitle(event?.title, stock)?.id !== wordId;
+      return stockWordForTitle(event?.title, stock, stockScopeOf(event?.scope))?.id !== wordId;
+    }
+
+    // The library the phone's Stock pictures section shows and adds to: this
+    // device's mode.
+    function stockLibraryScope() {
+      return workMode.on ? 'work' : 'family';
+    }
+
+    // The library the task in the editor takes its pictures from: its calendar.
+    function editorStockScope() {
+      return document.getElementById('scopeInput')?.value === 'work' ? 'work' : 'family';
     }
 
     // The stock photo a link belongs to, if any: { wordId, entry, image }.
@@ -21162,8 +21186,9 @@ Cancel = choose whether to delete the whole series.`);
         && ((event.repeat || 'none') !== 'none' || Date.parse(event.start || '') >= now)).length;
     }
 
-    function sortedStockEntries(stock) {
+    function sortedStockEntries(stock, scope = null) {
       return Object.entries(stock?.words || {})
+        .filter(([, entry]) => !scope || stockScopeOf(entry.scope) === scope)
         .sort(([, a], [, b]) => a.word.localeCompare(b.word, undefined, { sensitivity: 'base' }));
     }
 
@@ -21202,9 +21227,18 @@ Cancel = choose whether to delete the whole series.`);
       fold.classList.toggle('hidden', !stock);
       if (!stock) return;
       setFoldExpanded(fold, document.getElementById('adminStockToggle'), STOCK_MENU_EXPANDED_KEY, state.stockMenuExpanded);
-      const entries = sortedStockEntries(stock);
+      const library = stockLibraryScope();
+      const entries = sortedStockEntries(stock, library);
       const count = document.getElementById('adminStockCount');
       if (count) count.textContent = `${entries.length} word${entries.length === 1 ? '' : 's'}`;
+      const title = document.getElementById('adminStockTitle');
+      if (title) title.innerHTML = library === 'work' ? 'Stock pictures <span class="scope-suffix">· Work</span>' : 'Stock pictures';
+      const subtitle = document.getElementById('adminStockSubtitle');
+      if (subtitle) {
+        subtitle.textContent = library === 'work'
+          ? 'Default photos for work words. The family has its own.'
+          : 'Default photos for words that come up again and again.';
+      }
       const tiles = entries.map(([id, entry]) => {
         const first = entry.images[0];
         const kind = !entry.images.length ? ' is-empty' : entry.images.length === 1 ? ' is-single' : '';
@@ -21218,12 +21252,16 @@ Cancel = choose whether to delete the whole series.`);
           </button>`;
       }).join('');
       body.innerHTML = `
-        <div class="admin-fold-help">A task saved without a photo of its own gets one of its word's photos. A photo you pick for a task always wins.</div>
+        <div class="admin-fold-help">${library === 'work'
+          ? 'A work task saved without a photo of its own gets one of its word’s photos. Work and family words are kept apart: a work task only ever takes work photos.'
+          : 'A task saved without a photo of its own gets one of its word’s photos. A photo you pick for a task always wins.'}</div>
         <div class="stock-grid">
           ${tiles}
           <button class="stock-tile is-new" type="button" data-stock-new><span class="stock-tile-face"><span>+ New word</span></span></button>
         </div>
-        ${entries.length ? '' : '<div class="admin-fold-help">No stock words yet. Add a word like “Tannlege” and pick its picture.</div>'}`;
+        ${entries.length ? '' : `<div class="admin-fold-help">${library === 'work'
+          ? 'No work words yet. Add one like “Kundemøte” or “Sprint review” and pick its picture.'
+          : 'No stock words yet. Add a word like “Tannlege” and pick its picture.'}</div>`}`;
     }
 
     function bindAdminStock() {
@@ -21237,7 +21275,7 @@ Cancel = choose whether to delete the whole series.`);
       document.getElementById('adminStockBody')?.addEventListener('click', event => {
         const word = event.target.closest('[data-stock-word]')?.dataset.stockWord;
         if (word) return openStockSheet(word);
-        if (event.target.closest('[data-stock-new]')) openStockSheet(newStockId('sw'), { isNew: true });
+        if (event.target.closest('[data-stock-new]')) openStockSheet(newStockId('sw'), { isNew: true, scope: stockLibraryScope() });
       });
 
       const overlay = document.getElementById('stockSheetOverlay');
@@ -21272,14 +21310,21 @@ Cancel = choose whether to delete the whole series.`);
       els.titleInput?.addEventListener('input', renderStockImageRow);
       document.getElementById('scopeSeg')?.addEventListener('click', event => {
         const scope = event.target.closest('[data-scope]')?.dataset.scope;
-        if (scope) renderScopeField(scope);
+        if (!scope) return;
+        renderScopeField(scope);
+        // The other calendar has its own stock pictures.
+        renderStockImageRow();
+        if (!String(els.imageUrlInput?.value || '').trim() && !els.imageInput?.files?.length) {
+          els.imageStatus.textContent = noImageStatusText(els.titleInput?.value || '');
+        }
       });
     }
 
-    function openStockSheet(wordId, { isNew = false } = {}) {
+    function openStockSheet(wordId, { isNew = false, scope = 'family' } = {}) {
       state.stockSheetMode = 'word';
       state.stockSheetWordId = wordId;
       state.stockSheetIsNew = isNew;
+      state.stockSheetNewScope = stockScopeOf(scope);
       const entry = effectiveStock()?.words?.[wordId];
       state.stockSheetImageId = entry?.images?.[0]?.id || '';
       state.stockSheetStatus = '';
@@ -21293,6 +21338,7 @@ Cancel = choose whether to delete the whole series.`);
     function openStockPicker() {
       state.stockSheetMode = 'picker';
       state.stockSheetWordId = 'picker';
+      state.stockPickerScope = editorStockScope();
       const overlay = document.getElementById('stockSheetOverlay');
       overlay?.classList.remove('hidden');
       overlay?.setAttribute('aria-hidden', 'false');
@@ -21314,24 +21360,29 @@ Cancel = choose whether to delete the whole series.`);
       if (!content) return;
       const stock = effectiveStock() || { words: {} };
       if (state.stockSheetMode === 'picker') {
-        const groups = sortedStockEntries(stock).filter(([, entry]) => entry.images.length);
+        const pickerScope = stockScopeOf(state.stockPickerScope);
+        const groups = sortedStockEntries(stock, pickerScope).filter(([, entry]) => entry.images.length);
         content.innerHTML = `
           <div class="stock-sheet-head">
             <span class="stock-sheet-thumb-empty"></span>
-            <div><h3 class="stock-sheet-title">Pick a stock picture</h3><div class="stock-sheet-sub">For this task only. The task keeps it whatever its title says.</div></div>
+            <div><h3 class="stock-sheet-title">Pick a ${pickerScope === 'work' ? 'work ' : ''}stock picture</h3><div class="stock-sheet-sub">${pickerScope === 'work' ? 'From the work words, as this is a work task. ' : ''}For this task only. The task keeps it whatever its title says.</div></div>
             <button class="btn secondary" type="button" data-stock-close>Close</button>
           </div>
           ${groups.length ? groups.map(([wordId, entry]) => `
             <div class="stock-picker-group">
               <div class="stock-picker-label">${htmlEscape(entry.word)}</div>
               <div class="stock-picker-row">${entry.images.map(image => `<button class="stock-photo" type="button" data-stock-pick="${htmlEscape(wordId)}" data-stock-pick-image="${htmlEscape(image.id)}" aria-label="${htmlEscape(entry.word)} photo">${stockThumbHtml(image)}</button>`).join('')}</div>
-            </div>`).join('') : '<div class="admin-fold-help" style="margin-top:14px">No stock pictures yet. Add some under Stock pictures in the calendar.</div>'}`;
+            </div>`).join('') : `<div class="admin-fold-help" style="margin-top:14px">No ${pickerScope === 'work' ? 'work ' : ''}stock pictures yet. Add some under Stock pictures in the calendar${pickerScope === 'work' ? ', with the phone in work mode' : ''}.</div>`}`;
         return;
       }
 
       const wordId = state.stockSheetWordId;
       const entry = stock.words?.[wordId];
       const isNew = state.stockSheetIsNew && !entry;
+      // The library this word belongs to; a new one goes into the phone's mode.
+      const sheetScope = entry ? stockScopeOf(entry.scope) : stockScopeOf(state.stockSheetNewScope);
+      state.stockSheetScope = sheetScope;
+      const libraryTag = sheetScope === 'work' ? '<span class="work-chip" style="margin-left:0;margin-right:6px">Work</span>' : '';
       const typedWord = keepInputs ? document.getElementById('stockWordInput')?.value : null;
       const typedAlias = keepInputs ? document.getElementById('stockAliasInput')?.value : null;
       const typedCompound = keepInputs ? document.getElementById('stockCompoundInput')?.checked : null;
@@ -21343,14 +21394,14 @@ Cancel = choose whether to delete the whole series.`);
         <div class="stock-sheet-head">
           ${images[0] ? stockThumbHtml(images[0]) : '<span class="stock-sheet-thumb-empty"></span>'}
           <div>
-            <h3 class="stock-sheet-title">${htmlEscape(entry?.word || 'New stock word')}</h3>
-            <div class="stock-sheet-sub">${entry ? `Used by ${usage} upcoming task${usage === 1 ? '' : 's'} · ${images.length} photo${images.length === 1 ? '' : 's'}` : 'Name the word, save it, then add its photos.'}</div>
+            <h3 class="stock-sheet-title">${htmlEscape(entry?.word || (sheetScope === 'work' ? 'New work word' : 'New stock word'))}</h3>
+            <div class="stock-sheet-sub">${libraryTag}${entry ? `Used by ${usage} upcoming ${sheetScope === 'work' ? 'work ' : ''}task${usage === 1 ? '' : 's'} · ${images.length} photo${images.length === 1 ? '' : 's'}` : sheetScope === 'work' ? 'For work tasks only. Name the word, save it, then add its photos.' : 'Name the word, save it, then add its photos.'}</div>
           </div>
           <button class="btn secondary" type="button" data-stock-close>Close</button>
         </div>
         <div class="stock-sheet-form">
-          <label>Word<input id="stockWordInput" maxlength="40" placeholder="Tannlege" autocomplete="off" /></label>
-          <label>Also matches, optional<input id="stockAliasInput" maxlength="200" placeholder="tannlegetime, tannpuss" autocomplete="off" /></label>
+          <label>Word<input id="stockWordInput" maxlength="40" placeholder="${sheetScope === 'work' ? 'Kundemøte' : 'Tannlege'}" autocomplete="off" /></label>
+          <label>Also matches, optional<input id="stockAliasInput" maxlength="200" placeholder="${sheetScope === 'work' ? 'kundebesøk, demo' : 'tannlegetime, tannpuss'}" autocomplete="off" /></label>
           <label class="checkbox-row" style="display:flex;color:var(--ink)"><input id="stockCompoundInput" type="checkbox" /> Count inside longer words too (Tannlegetime, Legevakt …)</label>
           <div><div class="stock-picker-label">Matches now</div><div id="stockMatchChips" class="stock-match-chips"></div></div>
           ${entry ? `
@@ -21405,13 +21456,15 @@ Cancel = choose whether to delete the whole series.`);
         host.innerHTML = '<span class="admin-fold-help">Type the word to see which tasks it catches.</span>';
         return;
       }
-      const candidate = { words: { candidate: { word, aliases, compound, images: [] } } };
+      const sheetScope = stockScopeOf(state.stockSheetScope);
+      const candidate = { words: { candidate: { word, scope: sheetScope, aliases, compound, images: [] } } };
       const now = Date.now() - 24 * 60 * 60 * 1000;
       const seen = new Set();
       const hits = (state.events || [])
         .filter(event => (event.repeat || 'none') !== 'none' || Date.parse(event.start || '') >= now)
+        .filter(event => stockScopeOf(event.scope) === sheetScope)
         .sort((a, b) => new Date(a.start) - new Date(b.start))
-        .filter(event => stockWordForTitle(event.title, candidate))
+        .filter(event => stockWordForTitle(event.title, candidate, sheetScope))
         .filter(event => {
           const key = String(event.title || '').trim().toLowerCase();
           if (seen.has(key)) return false;
@@ -21421,7 +21474,7 @@ Cancel = choose whether to delete the whole series.`);
         .slice(0, 8);
       host.innerHTML = hits.length
         ? hits.map(event => `<span class="stock-match-chip">${htmlEscape(event.title)}</span>`).join('')
-        : '<span class="admin-fold-help">No upcoming task names it yet.</span>';
+        : `<span class="admin-fold-help">No upcoming ${sheetScope === 'work' ? 'work ' : ''}task names it yet.</span>`;
     }
 
     function updateStockFramingPreview() {
@@ -21472,13 +21525,14 @@ Cancel = choose whether to delete the whole series.`);
         // The same word may not belong to two entries; the server refuses that
         // too, but saying so here saves a round trip.
         const aliases = String(document.getElementById('stockAliasInput')?.value || '').split(',').map(item => item.trim()).filter(Boolean);
+        const sheetScope = stockScopeOf(state.stockSheetScope);
         const terms = stockEntryTerms({ word, aliases });
-        const clash = sortedStockEntries(effectiveStock()).find(([id, entry]) => id !== wordId && stockEntryTerms(entry).some(term => terms.includes(term)));
+        const clash = sortedStockEntries(effectiveStock(), sheetScope).find(([id, entry]) => id !== wordId && stockEntryTerms(entry).some(term => terms.includes(term)));
         if (clash) {
-          setStockSheetStatus(`That is already part of the stock word “${clash[1].word}”.`);
+          setStockSheetStatus(`That is already part of the ${sheetScope === 'work' ? 'work ' : ''}stock word “${clash[1].word}”.`);
           return;
         }
-        const ok = queueStockChange({ action: 'set-word', id: wordId, word, aliases, compound: Boolean(document.getElementById('stockCompoundInput')?.checked) });
+        const ok = queueStockChange({ action: 'set-word', id: wordId, word, scope: sheetScope, aliases, compound: Boolean(document.getElementById('stockCompoundInput')?.checked) });
         if (!ok) return;
         state.stockSheetIsNew = false;
         state.stockSheetStatus = 'Saved. Upcoming tasks that name it and have no photo get one of its photos.';
@@ -21566,7 +21620,7 @@ Cancel = choose whether to delete the whole series.`);
       const row = document.getElementById('stockImageRow');
       if (!row) return;
       const stock = effectiveStock();
-      const hasPhotos = stock && Object.values(stock.words).some(entry => entry.images.length);
+      const hasPhotos = stock && Object.values(stock.words).some(entry => entry.images.length && stockScopeOf(entry.scope) === editorStockScope());
       if (!stock || els.imageInput?.files?.length) {
         row.classList.add('hidden');
         return;
@@ -21574,7 +21628,7 @@ Cancel = choose whether to delete the whole series.`);
       const title = els.titleInput?.value || '';
       const currentUrl = String(els.imageUrlInput?.value || '').trim();
       const edited = els.eventId?.value ? getSourceEvent(els.eventId.value) : null;
-      const match = stockWordForTitle(title, stock);
+      const match = stockWordForTitle(title, stock, editorStockScope());
       const carried = currentUrl ? stockImageByUrl(currentUrl, stock) : null;
       let html = '';
       let plain = false;
@@ -21625,7 +21679,7 @@ Cancel = choose whether to delete the whole series.`);
     function stockNoImageStatusText(title) {
       const stock = effectiveStock();
       if (!stock) return '';
-      const match = stockWordForTitle(title, stock);
+      const match = stockWordForTitle(title, stock, editorStockScope());
       if (match?.entry.images.length) return `No image selected. The stock picture for “${match.entry.word}” will be used.`;
       return 'No image selected. A calm placeholder will be used.';
     }
