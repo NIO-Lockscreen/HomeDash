@@ -1300,6 +1300,15 @@
       text-transform: uppercase;
     }
 
+    .wx-cloud {
+      display: inline-block;
+      width: 1em;
+      height: 1em;
+      vertical-align: -0.12em;
+      color: #f4f7fb;
+      filter: drop-shadow(0 2px 3px rgba(72, 88, 110, .28));
+    }
+
     .forecast-day .small-icon { font-size: 22px; text-transform: none; }
     .forecast-day strong { color: var(--ink); font-size: 15px; }
     .forecast-day span:last-child { font-size: 12px; opacity: 0.82; }
@@ -5423,7 +5432,12 @@
 
     .phone-device {
       --phone-scale: 1;
-      position: relative;
+      /* Centred by its middle, not by a grid row: the scale below shrinks the
+         phone around its own centre, so a short window keeps it whole. */
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      margin: -436px 0 0 -209px;
       width: 418px;
       height: 872px;
       flex: 0 0 auto;
@@ -5663,6 +5677,9 @@
 
     .phone-app-overlay.is-docked .phone-device {
       pointer-events: auto;
+      left: auto;
+      right: var(--dock-margin, 14px);
+      margin-left: 0;
       transform-origin: right center;
       animation: phone-dock-in .6s cubic-bezier(.2, .85, .25, 1.03) both;
     }
@@ -8122,10 +8139,14 @@
       return hour >= 7 && hour < 20;
     }
 
+    // A plain cloud drawn as a rounded shape. The ☁️ emoji is a flat, boxy
+    // slab in most fonts, so it reads as a square on the forecast.
+    const WX_CLOUD_ICON = '<svg class="wx-cloud" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7.2 19.5h10.3a4.6 4.6 0 0 0 .5-9.17 6.3 6.3 0 0 0-12.1-1.3A4.9 4.9 0 0 0 7.2 19.5z"/></svg>';
+
     function weatherCodeToIcon(code, isDay = true) {
       if ([0].includes(code)) return isDay ? '☀️' : '🌙';
-      if ([1, 2].includes(code)) return isDay ? '🌤️' : '☁️';
-      if ([3].includes(code)) return '☁️';
+      if ([1, 2].includes(code)) return isDay ? '🌤️' : WX_CLOUD_ICON;
+      if ([3].includes(code)) return WX_CLOUD_ICON;
       if ([45, 48].includes(code)) return '🌫️';
       if ([51, 53, 55, 56, 57].includes(code)) return '🌦️';
       if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return '🌧️';
@@ -14974,7 +14995,7 @@
       const code = weather.current?.weather_code ?? 2;
       const temp = Math.round(weather.current?.temperature_2m ?? 20);
       const wind = Number(weather.current?.wind_speed_10m ?? 0);
-      els.weatherIcon.textContent = weatherCodeToIcon(code, isDaylightNow(weather));
+      els.weatherIcon.innerHTML = weatherCodeToIcon(code, isDaylightNow(weather));
       els.weatherTemp.textContent = `${temp}°`;
       els.weatherDesc.textContent = [
         weatherCodeToText(code),
