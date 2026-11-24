@@ -183,6 +183,25 @@ along without an extra Blob read, and the marker carries their changes too.
 - **Delete all tasks/events** clears tasks only; the periods are kept, and so
   are the to-do list and the stock pictures.
 
+### The schedule
+
+The periods start from a schedule set in `index.html` (`DAUGHTER_SCHEDULE`). A
+period runs from the day Sofia comes to the day she goes back, and both days
+are blue. The schedule has three parts, each covering the periods that start
+from its date:
+
+- **Until 18 November 2026**: every other Wednesday to Wednesday, counted from
+  13 May 2026.
+- **The agreed Christmas and New Year handovers**: 24 Nov – 2 Dec, 6–8 Dec,
+  11–17 Dec, 23–28 Dec, 31 Dec – 7 Jan and 13–21 Jan.
+- **From 27 January 2027**: the opposite weeks, every other Wednesday to
+  Wednesday.
+
+A change made by hand in the month view is stored against the start date the
+period has in the schedule, and wins over it; **Reset to the schedule** removes
+it again. A change stored against a start date the schedule no longer has is
+ignored.
+
 
 ## Resyncing a stuck image
 

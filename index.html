@@ -6055,7 +6055,7 @@
         <div class="button-row">
           <button id="daughterSaveBtn" class="btn" type="button">Save this period</button>
           <button id="daughterDeleteBtn" class="btn secondary" type="button">Delete period</button>
-          <button id="daughterResetBtn" class="btn secondary" type="button">Reset to every other Wednesday</button>
+          <button id="daughterResetBtn" class="btn secondary" type="button">Reset to the schedule</button>
         </div>
         <div id="daughterPeriodStatus" class="daughter-period-status"></div>
       </section>
@@ -6402,8 +6402,30 @@
     // A ticked-off to-do stays on the wall this long, struck through, unless
     // it is cleared sooner.
     const TODO_DONE_VISIBLE_MS = 12 * 60 * 60 * 1000;
-    const DAUGHTER_ANCHOR_START_KEY = '2026-05-13';
-    const DAUGHTER_ANCHOR_END_KEY = '2026-05-20';
+    // Sofia's base schedule: her periods before any change made by hand in the
+    // month view (those are stored on the server, keyed by the start date a
+    // period has here). Each part covers the periods that start from its
+    // `from` date until the next part takes over. A period runs from the day
+    // she comes to the day she goes back, and both are shown blue.
+    const DAUGHTER_SCHEDULE = [
+      // Every other Wednesday to Wednesday, counted from 13 May 2026.
+      { from: null, start: '2026-05-13', end: '2026-05-20', label: 'every other Wednesday to Wednesday' },
+      // The handovers agreed from late November 2026 into January 2027.
+      {
+        from: '2026-11-19',
+        label: 'the agreed Christmas and New Year handovers',
+        periods: [
+          ['2026-11-24', '2026-12-02'],
+          ['2026-12-06', '2026-12-08'],
+          ['2026-12-11', '2026-12-17'],
+          ['2026-12-23', '2026-12-28'],
+          ['2026-12-31', '2027-01-07'],
+          ['2027-01-13', '2027-01-21']
+        ]
+      },
+      // 2027: the opposite weeks, every other Wednesday to Wednesday.
+      { from: '2027-01-27', start: '2027-01-27', end: '2027-02-03', label: 'every other Wednesday to Wednesday (the 2027 weeks)' }
+    ];
     const DAUGHTER_PERIOD_INTERVAL_DAYS = 14;
     const HARD_CODED_REMINDER_CONTACTS = [
       { key: 'thomas', name: 'Thomas', email: 'diemetrix@gmail.com' }
@@ -7311,17 +7333,40 @@
       };
     }
 
-    function buildDaughterPeriod(index) {
-      const anchorStart = dateFromKey(DAUGHTER_ANCHOR_START_KEY);
-      const anchorEnd = dateFromKey(DAUGHTER_ANCHOR_END_KEY);
-      const defaultStart = addLocalDays(anchorStart, index * DAUGHTER_PERIOD_INTERVAL_DAYS);
-      const defaultEnd = addLocalDays(anchorEnd, index * DAUGHTER_PERIOD_INTERVAL_DAYS);
-      const periodKey = dateKey(defaultStart);
+    // The schedule's own periods (before changes made by hand) near a range:
+    // every listed period, and the pattern's periods with a few to spare on
+    // each side, so one moved by hand into the range is still found.
+    function baseDaughterPeriods(rangeStart, rangeEnd) {
+      const periods = [];
+      DAUGHTER_SCHEDULE.forEach((part, i) => {
+        const from = part.from ? dateFromKey(part.from) : null;
+        const nextFrom = DAUGHTER_SCHEDULE[i + 1]?.from ? dateFromKey(DAUGHTER_SCHEDULE[i + 1].from) : null;
+        const add = (defaultStart, defaultEnd) => {
+          if ((from && defaultStart < from) || (nextFrom && defaultStart >= nextFrom)) return;
+          periods.push({ periodKey: dateKey(defaultStart), defaultStart, defaultEnd, scheduleLabel: part.label });
+        };
+        if (part.periods) {
+          part.periods.forEach(([start, end]) => add(dateFromKey(start), dateFromKey(end)));
+          return;
+        }
+        const anchorStart = dateFromKey(part.start);
+        const anchorEnd = dateFromKey(part.end);
+        const startIndex = Math.floor(localDaysBetween(anchorEnd, rangeStart) / DAUGHTER_PERIOD_INTERVAL_DAYS) - 3;
+        const endIndex = Math.ceil(localDaysBetween(anchorStart, rangeEnd) / DAUGHTER_PERIOD_INTERVAL_DAYS) + 3;
+        for (let index = startIndex; index <= endIndex; index += 1) {
+          add(addLocalDays(anchorStart, index * DAUGHTER_PERIOD_INTERVAL_DAYS), addLocalDays(anchorEnd, index * DAUGHTER_PERIOD_INTERVAL_DAYS));
+        }
+      });
+      return periods;
+    }
+
+    function buildDaughterPeriod(base) {
+      const { periodKey, defaultStart, defaultEnd, scheduleLabel } = base;
       const override = state.daughterPeriodOverrides?.[periodKey] || null;
       if (override?.deleted) {
         return {
-          index,
           periodKey,
+          scheduleLabel,
           defaultStart,
           defaultEnd,
           start: startOfLocalDay(defaultStart),
@@ -7339,8 +7384,8 @@
         end = tmp;
       }
       return {
-        index,
         periodKey,
+        scheduleLabel,
         defaultStart,
         defaultEnd,
         start: startOfLocalDay(start),
@@ -7359,15 +7404,9 @@
     }
 
     function daughterPeriodsForRange(rangeStart, rangeEnd) {
-      const anchorStart = dateFromKey(DAUGHTER_ANCHOR_START_KEY);
-      const anchorEnd = dateFromKey(DAUGHTER_ANCHOR_END_KEY);
-      const startIndex = Math.floor(localDaysBetween(anchorEnd, rangeStart) / DAUGHTER_PERIOD_INTERVAL_DAYS) - 3;
-      const endIndex = Math.ceil(localDaysBetween(anchorStart, rangeEnd) / DAUGHTER_PERIOD_INTERVAL_DAYS) + 3;
-      const periods = [];
-      for (let index = startIndex; index <= endIndex; index += 1) {
-        const period = buildDaughterPeriod(index);
-        if (!period.deleted && period.end >= rangeStart && period.start <= rangeEnd) periods.push(period);
-      }
+      const periods = baseDaughterPeriods(rangeStart, rangeEnd)
+        .map(buildDaughterPeriod)
+        .filter(period => !period.deleted && period.end >= rangeStart && period.start <= rangeEnd);
       periods.push(...daughterExtraPeriodsForRange(rangeStart, rangeEnd));
       return periods.sort((a, b) => a.start - b.start || a.end - b.end);
     }
@@ -7385,11 +7424,11 @@
         const id = String(periodKey).slice('extra:'.length);
         return makeExtraDaughterPeriod(id, state.daughterPeriodOverrides.__extra?.[id]);
       }
-      const anchorStart = dateFromKey(DAUGHTER_ANCHOR_START_KEY);
       const periodStart = dateFromKey(periodKey);
-      if (!anchorStart || !periodStart) return null;
-      const index = Math.round(localDaysBetween(anchorStart, periodStart) / DAUGHTER_PERIOD_INTERVAL_DAYS);
-      const period = buildDaughterPeriod(index);
+      if (!periodStart) return null;
+      const base = baseDaughterPeriods(periodStart, periodStart).find(candidate => candidate.periodKey === periodKey);
+      if (!base) return null;
+      const period = buildDaughterPeriod(base);
       return period.deleted ? null : period;
     }
 
@@ -7442,9 +7481,9 @@
         } else if (period.extra) {
           els.daughterPeriodHelp.textContent = 'This is a manually added period. Save to change it, or delete it if it should not be shown.';
         } else if (period.customized) {
-          els.daughterPeriodHelp.textContent = 'This period has custom dates. Save again to change it, delete it, or reset to the every-other-week pattern.';
+          els.daughterPeriodHelp.textContent = 'This period has custom dates. Save again to change it, delete it, or reset it to the schedule.';
         } else {
-          els.daughterPeriodHelp.textContent = 'This is generated from the every-other-week Wednesday-to-Wednesday pattern. Change only this period if needed.';
+          els.daughterPeriodHelp.textContent = `This comes from the schedule (${period.scheduleLabel}). Change only this period if needed.`;
         }
       }
       if (els.daughterStartInput) els.daughterStartInput.value = dateKey(period.start);
@@ -7476,7 +7515,8 @@
       const monthTitle = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(firstOfMonth);
       if (els.monthTitle) els.monthTitle.textContent = monthTitle;
       if (els.monthSubtitle) {
-        els.monthSubtitle.textContent = `Blue tint = daughter days. Current base pattern starts ${formatPeriodDate(dateFromKey(DAUGHTER_ANCHOR_START_KEY))} and ends ${formatPeriodDate(dateFromKey(DAUGHTER_ANCHOR_END_KEY))}, then repeats every other week.`;
+        const labels = [...new Set(periods.map(period => period.scheduleLabel).filter(Boolean))];
+        els.monthSubtitle.textContent = `Blue tint = daughter days${labels.length ? `: ${labels.join(', then ')}` : ''}. Tap a blue period to adjust it.`;
       }
 
       const html = [];
@@ -7558,7 +7598,7 @@
       if (!ensureDisplayActionPin()) return;
       state.daughterEditorMode = 'edit';
       queueDaughterPeriodChange({ action: 'reset', key: periodKey }, stage => setDaughterPeriodStatus(
-        stage === 'saving' ? 'Saving…' : stage === 'queued' ? DAUGHTER_PERIOD_QUEUED_TEXT : 'Reset to the normal every-other-week pattern on every screen.'
+        stage === 'saving' ? 'Saving…' : stage === 'queued' ? DAUGHTER_PERIOD_QUEUED_TEXT : 'Reset to the schedule on every screen.'
       ));
     }
 
