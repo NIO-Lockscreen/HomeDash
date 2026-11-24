@@ -192,7 +192,7 @@ from its date:
 
 - **Until 18 November 2026**: every other Wednesday to Wednesday, counted from
   13 May 2026.
-- **The agreed Christmas and New Year handovers**: 24 Nov – 2 Dec, 6–8 Dec,
+- **The agreed Christmas and New Year handovers**: 24 Nov – 2 Dec, 6–7 Dec,
   11–17 Dec, 23–28 Dec, 31 Dec – 7 Jan and 13–21 Jan.
 - **From 27 January 2027**: the opposite weeks, every other Wednesday to
   Wednesday.
