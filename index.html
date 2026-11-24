@@ -5423,7 +5423,12 @@
 
     .phone-device {
       --phone-scale: 1;
-      position: relative;
+      /* Centred by its middle, not by a grid row: the scale below shrinks the
+         phone around its own centre, so a short window keeps it whole. */
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      margin: -436px 0 0 -209px;
       width: 418px;
       height: 872px;
       flex: 0 0 auto;
@@ -5663,6 +5668,9 @@
 
     .phone-app-overlay.is-docked .phone-device {
       pointer-events: auto;
+      left: auto;
+      right: var(--dock-margin, 14px);
+      margin-left: 0;
       transform-origin: right center;
       animation: phone-dock-in .6s cubic-bezier(.2, .85, .25, 1.03) both;
     }
