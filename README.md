@@ -203,6 +203,34 @@ it again. A change stored against a start date the schedule no longer has is
 ignored.
 
 
+## GIFs and other moving pictures
+
+A task's picture can move: a GIF, an animated WebP (what Chrome on Android
+often saves when you keep a GIF from Giphy or the keyboard) or an animated PNG.
+It plays on the wall wherever the task's photo shows, and in the editor's
+preview. Pick it in the image field like any photo; the editor says when a
+picked GIF will keep moving.
+
+- **Which pictures count.** The file's own bytes decide, not its name or the
+  type the phone gave it: every GIF, and a WebP or PNG that says it is
+  animated. A still WebP or PNG goes the usual way and is optimised into a JPEG.
+  A moving one never is, since that keeps only its first frame.
+- **Under 4 MB** (the upload limit) it is uploaded exactly as it is.
+- **Over 4 MB** it is shrunk in the browser into a smaller GIF instead of being
+  refused: first to 480px on its longest side, then 400px, then with every
+  second, third or fourth frame kept (each shown that much longer, so it keeps
+  its speed), down to 240px, until it fits. One palette is made for the whole
+  picture, so its colours do not flicker from frame to frame. An 8 MB GIF takes
+  a few seconds on a PC and somewhat longer on a phone; the editor shows the
+  progress. At most 240 frames are kept, however long it is.
+- **What shrinking needs.** The browser's `ImageDecoder` (Chrome, Edge, Chrome
+  on Android, recent Firefox; not Safari), and gifenc, a 9 KB GIF encoder
+  fetched from jsDelivr the first time a picture needs shrinking. A browser
+  without `ImageDecoder` says so and asks for a smaller GIF. A picture under
+  4 MB needs neither.
+- **What it does not take.** A video "GIF" (an MP4, as WhatsApp and Telegram
+  save them) is not a picture and cannot be picked.
+
 ## Resyncing a stuck image
 
 Sometimes one task keeps showing the calm placeholder while every other task

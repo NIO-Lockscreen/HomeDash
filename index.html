@@ -8486,9 +8486,10 @@
       }
       setManualImageControls(state.pendingImageFocus);
       setManualImagePreviewSource(state.imagePreviewObjectUrl, { scroll: true });
+      const moving = file.type === 'image/gif';
       const baseMessage = file.size > MAX_UPLOAD_BYTES
-        ? `${file.name} selected (${formatBytes(file.size)}). It will be compressed before upload.`
-        : `${file.name} selected (${formatBytes(file.size)}).`;
+        ? `${file.name} selected (${formatBytes(file.size)}). ${moving ? 'It will be shrunk to fit under 4 MB and keep moving.' : 'It will be compressed before upload.'}`
+        : `${file.name} selected (${formatBytes(file.size)}).${moving ? ' It keeps moving on the wall.' : ''}`;
       els.imageStatus.textContent = `${baseMessage} Adjust pan and zoom below before saving.`;
     }
 
@@ -15519,10 +15520,209 @@
       });
     }
 
+    // --- Moving pictures: GIF, animated WebP and PNG ---------------------------
+    //
+    // A picture that moves never goes through the canvas below, which would
+    // keep only its first frame, as a JPEG. Chrome on Android often saves a
+    // GIF from Giphy or the keyboard as an animated WebP, so that counts too.
+    // Under the 4 MB upload limit it goes up exactly as it is. Over it, it is
+    // shrunk here in the browser into a smaller GIF rather than refused:
+    // narrower first, then with fewer frames, each shown for as long as the
+    // ones dropped after it, so it keeps its pace. That takes the browser's
+    // ImageDecoder (Chrome, Edge, Android, recent Firefox) and gifenc, a 9 KB
+    // GIF encoder fetched from jsDelivr the first time one needs shrinking.
+    const GIF_ENCODER_URL = 'https://cdn.jsdelivr.net/npm/gifenc@1.0.3/dist/gifenc.esm.js';
+    const ANIMATED_TARGET_BYTES = Math.floor(3.8 * 1024 * 1024);
+    // Tried in turn until one fits: the longest side in px, and every how
+    // many frames one is kept. The wall's cards are 300-600px wide.
+    const ANIMATED_SHRINK_STEPS = [
+      { size: 480, every: 1 },
+      { size: 400, every: 1 },
+      { size: 400, every: 2 },
+      { size: 320, every: 2 },
+      { size: 280, every: 3 },
+      { size: 240, every: 4 }
+    ];
+    // However long the picture, no more frames than this are kept.
+    const ANIMATED_MAX_FRAMES = 240;
+    // The palette is made once, from this many frames spread across the
+    // picture, each this small: the colours are the same at any size, and
+    // fewer pixels make it seconds quicker.
+    const ANIMATED_PALETTE_SAMPLES = 12;
+    const ANIMATED_PALETTE_SIZE = 200;
+    let gifEncoderModule = null;
+
+    // The picture's type when it can move, read from its bytes rather than
+    // its name: every GIF, and a WebP or PNG only when it says it is
+    // animated. '' for anything else.
+    async function animatedImageType(file) {
+      const head = new Uint8Array(await file.slice(0, 64 * 1024).arrayBuffer());
+      const text = (start, length) => String.fromCharCode(...head.subarray(start, start + length));
+      if (text(0, 4) === 'GIF8') return 'image/gif';
+      if (text(0, 4) === 'RIFF' && text(8, 4) === 'WEBP') {
+        return text(12, 4) === 'VP8X' && (head[20] & 0x02) ? 'image/webp' : '';
+      }
+      if (head[0] === 0x89 && text(1, 3) === 'PNG') {
+        // An animated PNG says so in an acTL chunk ahead of its first IDAT.
+        const view = new DataView(head.buffer);
+        for (let offset = 8; offset + 8 <= head.length;) {
+          const type = text(offset + 4, 4);
+          if (type === 'acTL') return 'image/png';
+          if (type === 'IDAT') return '';
+          offset += 12 + view.getUint32(offset);
+        }
+      }
+      return '';
+    }
+
+    function loadGifEncoder() {
+      if (!gifEncoderModule) {
+        gifEncoderModule = import(GIF_ENCODER_URL).catch(() => {
+          gifEncoderModule = null;
+          throw new Error('The GIF shrinker could not be downloaded. Check the connection and save again.');
+        });
+      }
+      return gifEncoderModule;
+    }
+
+    // A smaller GIF of the same picture, or null when it turns out to have
+    // a single frame (then the ordinary still-image path takes it).
+    async function shrinkAnimatedImage(file, type) {
+      const label = type === 'image/gif' ? 'GIF' : 'moving picture';
+      if (typeof ImageDecoder === 'undefined') {
+        throw new Error(`This ${label} is ${formatBytes(file.size)}, over the 4 MB limit, and this browser cannot shrink moving pictures. Pick it in Chrome or Edge, or use a smaller one.`);
+      }
+      let decoder;
+      try {
+        decoder = new ImageDecoder({ data: await file.arrayBuffer(), type });
+        await decoder.tracks.ready;
+        await decoder.completed;
+      } catch {
+        decoder?.close();
+        throw new Error(`Could not read this ${label}. Try another one.`);
+      }
+
+      try {
+        const frameCount = decoder.tracks.selectedTrack?.frameCount || 0;
+        if (frameCount < 2) return null;
+        els.imageStatus.textContent = `Shrinking the ${formatBytes(file.size)} ${label} to fit under 4 MB…`;
+        const encoder = await loadGifEncoder();
+
+        // How long each frame shows. A delay under 20ms plays as 100ms in
+        // every browser, so it is counted as that.
+        const delays = [];
+        let width = 0;
+        let height = 0;
+        for (let index = 0; index < frameCount; index++) {
+          const { image } = await decoder.decode({ frameIndex: index });
+          if (!index) {
+            width = image.displayWidth;
+            height = image.displayHeight;
+          }
+          const ms = (image.duration || 0) / 1000;
+          delays.push(ms < 20 ? 100 : ms);
+          image.close();
+        }
+
+        const baseName = (file.name || 'event-image').replace(/\.[^.]+$/, '');
+        const minEvery = Math.ceil(frameCount / ANIMATED_MAX_FRAMES);
+        const palette = await animatedPalette(decoder, frameCount, width, height, encoder.quantize);
+        const tried = new Set();
+        let last = null;
+        for (const [stepIndex, step] of ANIMATED_SHRINK_STEPS.entries()) {
+          const scale = Math.min(1, step.size / Math.max(width, height));
+          const size = { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)), every: Math.max(step.every, minEvery) };
+          const key = `${size.width}x${size.height}/${size.every}`;
+          if (tried.has(key)) continue;
+          // A GIF grows with its pixels times its frames, if a little more
+          // slowly (smaller, it packs less well), so the last try tells which
+          // steps cannot fit either; they are skipped, all but the final one.
+          const work = size.width * size.height * Math.ceil(delays.length / size.every);
+          const finalStep = stepIndex === ANIMATED_SHRINK_STEPS.length - 1;
+          if (last && !finalStep && last.bytes * Math.pow(work / last.work, 0.85) > ANIMATED_TARGET_BYTES) continue;
+          tried.add(key);
+          const bytes = await encodeShrunkGif(decoder, delays, size, palette, encoder.GIFEncoder, label);
+          last = { bytes: bytes.length, work };
+          if (bytes.length <= ANIMATED_TARGET_BYTES) {
+            return new File([bytes], `${baseName}-small.gif`, { type: 'image/gif', lastModified: Date.now() });
+          }
+        }
+        throw new Error(`Could not shrink this ${label} under 4 MB. Try a shorter one.`);
+      } finally {
+        decoder.close();
+      }
+    }
+
+    // Draws frame `index` at the given size and returns its pixels. Each frame
+    // comes whole from the decoder; see-through parts are laid on the
+    // dashboard's own paper colour, as the still-image path does.
+    function animatedFrameReader(decoder, width, height, { smooth = true } = {}) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.imageSmoothingEnabled = smooth;
+      ctx.imageSmoothingQuality = 'high';
+      return async index => {
+        const { image } = await decoder.decode({ frameIndex: index });
+        ctx.fillStyle = '#f5f1eb';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(image, 0, 0, width, height);
+        image.close();
+        return ctx.getImageData(0, 0, width, height).data;
+      };
+    }
+
+    // One palette for the whole picture, made from frames spread across it:
+    // no colour table per frame, and no colours flickering between frames.
+    // The sample is scaled down without smoothing, so it holds the picture's
+    // own colours (a GIF has at most 256 a frame) rather than blends of them,
+    // and colours are sorted into 4096 bins rather than 65536: a lossy WebP
+    // has thousands of shades, and the finer bins took half a minute.
+    async function animatedPalette(decoder, frameCount, width, height, quantize) {
+      const scale = Math.min(1, ANIMATED_PALETTE_SIZE / Math.max(width, height));
+      const w = Math.max(1, Math.round(width * scale));
+      const h = Math.max(1, Math.round(height * scale));
+      const read = animatedFrameReader(decoder, w, h, { smooth: false });
+      const picks = Math.min(ANIMATED_PALETTE_SAMPLES, frameCount);
+      const frames = [...new Set(Array.from({ length: picks }, (_, i) => Math.floor((i * frameCount) / picks)))];
+      const frameBytes = w * h * 4;
+      const sample = new Uint8Array(frames.length * frameBytes);
+      for (let i = 0; i < frames.length; i++) sample.set(await read(frames[i]), i * frameBytes);
+      return quantize(sample, 256, { format: 'rgb444' });
+    }
+
+    async function encodeShrunkGif(decoder, delays, { width, height, every }, palette, GIFEncoder, label) {
+      const { applyPalette } = await loadGifEncoder();
+      const frameRgba = animatedFrameReader(decoder, width, height);
+      const kept = [];
+      for (let index = 0; index < delays.length; index += every) kept.push(index);
+
+      const gif = GIFEncoder();
+      for (let k = 0; k < kept.length; k++) {
+        const index = kept[k];
+        let delay = 0;
+        for (let j = index; j < Math.min(delays.length, index + every); j++) delay += delays[j];
+        const pixels = applyPalette(await frameRgba(index), palette);
+        gif.writeFrame(pixels, width, height, k ? { delay } : { palette, delay });
+        if (k % 6 === 5) {
+          els.imageStatus.textContent = `Shrinking the ${label} to fit under 4 MB… ${Math.round(((k + 1) / kept.length) * 100)}%`;
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
+      gif.finish();
+      return gif.bytes();
+    }
+
     async function compressImageForUpload(file) {
-      if (file.type === 'image/gif') {
-        if (file.size <= MAX_UPLOAD_BYTES) return file;
-        throw new Error('GIFs must be under 4 MB. Use a smaller GIF or a still image.');
+      const animatedType = await animatedImageType(file);
+      if (animatedType) {
+        // Sent under its real type, whatever the phone called it.
+        if (file.size <= MAX_UPLOAD_BYTES) {
+          return file.type === animatedType ? file : new File([file], file.name || 'event-image', { type: animatedType, lastModified: file.lastModified });
+        }
+        const shrunk = await shrinkAnimatedImage(file, animatedType);
+        if (shrunk) return shrunk;
       }
 
       if (file.size <= IMAGE_UPLOAD_PASSTHROUGH_BYTES && ['image/jpeg', 'image/webp'].includes(file.type)) {
@@ -15609,10 +15809,11 @@
         throw new Error('Image is still over 4 MB after compression. Try a different image.');
       }
 
-      const compressedNote = uploadFile !== file ? `Optimized to ${formatBytes(uploadFile.size)}. ` : '';
+      const shrunk = uploadFile.size !== file.size;
+      const compressedNote = shrunk ? `Optimized to ${formatBytes(uploadFile.size)}. ` : '';
       els.imageStatus.textContent = `${compressedNote}Uploading image…`;
       const url = await uploadImageFile(uploadFile);
-      els.imageStatus.textContent = uploadFile !== file
+      els.imageStatus.textContent = shrunk
         ? `Image optimized to ${formatBytes(uploadFile.size)} and uploaded.`
         : 'Image uploaded.';
       return url;
