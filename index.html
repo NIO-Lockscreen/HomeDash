@@ -3978,25 +3978,14 @@
     /* Pull-out panel by the clock (display only). A slim handle sits on the
        left screen edge level with the clock; pulling it right slides the
        panel out, like Android's edge panel. A plain tap only peeks, so a stray
-       touch on the edge opens nothing. */
+       touch on the edge opens nothing. Out, it is armed until the next full
+       hour; nothing dims or covers the dashboard meanwhile, so the wall stays
+       as bright and as usable as before. */
     .edge-panel {
       position: fixed;
       inset: 0;
       z-index: 40;
       pointer-events: none;
-    }
-
-    .edge-panel-scrim {
-      position: absolute;
-      inset: 0;
-      background: rgba(29, 25, 21, 0.12);
-      opacity: 0;
-      transition: opacity .28s ease;
-    }
-
-    .edge-panel.is-open .edge-panel-scrim {
-      opacity: 1;
-      pointer-events: auto;
     }
 
     .edge-panel-dock {
@@ -4119,9 +4108,19 @@
       pointer-events: none;
     }
 
-    /* Coming loose, the YouTube icon glows hot and pulses like a lit fuse. */
+    /* Armed, the YouTube icon smoulders: a slow, faint glow while it waits
+       for the hour. Coming loose, it glows hot and pulses like a lit fuse. */
+    .edge-panel.is-open .edge-app-icon {
+      animation: edge-panel-armed 1.8s ease-in-out infinite alternate;
+    }
+
     .edge-panel.is-falling .edge-app-icon {
       animation: edge-nuke-arm .22s ease-in-out infinite alternate;
+    }
+
+    @keyframes edge-panel-armed {
+      from { box-shadow: 0 10px 22px rgba(70, 58, 44, 0.12), 0 0 0 1px rgba(255, 90, 40, 0.12), 0 0 6px rgba(255, 90, 40, 0.1); }
+      to { box-shadow: 0 10px 22px rgba(70, 58, 44, 0.12), 0 0 0 1px rgba(255, 90, 40, 0.4), 0 0 16px rgba(255, 100, 40, 0.38); }
     }
 
     @keyframes edge-nuke-arm {
@@ -4404,8 +4403,11 @@
     .upcoming-card > canvas.upcoming-fx { border-radius: inherit; }
 
     @media (prefers-reduced-motion: reduce) {
-      .edge-panel-tray,
-      .edge-panel-scrim { transition: none; }
+      .edge-panel-tray { transition: none; }
+      .edge-panel.is-open .edge-app-icon {
+        animation: none;
+        box-shadow: 0 10px 22px rgba(70, 58, 44, 0.12), 0 0 0 1px rgba(255, 90, 40, 0.3), 0 0 12px rgba(255, 100, 40, 0.25);
+      }
     }
 
     /* QR code and player for a YouTube link sent from a phone. */
@@ -6251,7 +6253,6 @@
   </div>
 
   <div id="edgePanel" class="edge-panel hidden">
-    <div id="edgePanelScrim" class="edge-panel-scrim"></div>
     <div class="edge-panel-dock">
       <div id="edgePanelTray" class="edge-panel-tray">
         <button id="edgeYoutubeBtn" class="edge-app" type="button" tabindex="-1">
@@ -6664,7 +6665,6 @@
       wxDebugStatus: document.getElementById('wxDebugStatus'),
       wxDebugBadge: document.getElementById('wxDebugBadge'),
       edgePanel: document.getElementById('edgePanel'),
-      edgePanelScrim: document.getElementById('edgePanelScrim'),
       edgePanelTray: document.getElementById('edgePanelTray'),
       edgePanelHandle: document.getElementById('edgePanelHandle'),
       edgeYoutubeBtn: document.getElementById('edgeYoutubeBtn'),
@@ -9791,6 +9791,8 @@
     function maybeReloadForNewDeployment() {
       if (adminMode || !state.newDeploymentSeen) return;
       if (isFullscreenActive() || !isHomeView()) return;
+      // A reload would quietly take away a panel armed for the hour.
+      if (edgePanel.armTimer || edgePanel.falling) return;
       if (Date.now() - state.lastInteractionAt < 60 * 1000) return;
       if (state.pendingWriteActive || state.eventFetchActive) return;
       try {
@@ -17034,7 +17036,7 @@ Cancel = choose whether to delete the whole series.`);
     const YOUTUBE_IFRAME_API_URL = 'https://www.youtube.com/iframe_api';
     const YOUTUBE_API_TIMEOUT_MS = 15 * 1000;
     const VIDEO_PLAYING_HEARTBEAT_MS = 15 * 1000;
-    const EDGE_PANEL_AUTO_CLOSE_MS = 10 * 1000;
+    const EDGE_PANEL_ARM_CHECK_MS = 1000;
     const EDGE_PANEL_PEEK_MS = 650;
     const EDGE_PANEL_OPEN_X = 14;
     const EDGE_PANEL_DRAG_SLOP_PX = 6;
@@ -17051,7 +17053,7 @@ Cancel = choose whether to delete the whole series.`);
     const EDGE_PANEL_GRAVITY = 2600;
     const EDGE_PANEL_FALL_MAX_MS = 4000;
 
-    const edgePanel = { autoCloseTimer: null, peekTimer: null, drag: null, falling: false };
+    const edgePanel = { armTimer: null, armedUntil: 0, peekTimer: null, drag: null, falling: false };
     const videoShare = { session: null, stream: null, retryTimer: null, qrLibrary: null };
     const videoPlayer = { player: null, token: 0, playing: false, heartbeat: null, api: null };
 
@@ -17106,18 +17108,65 @@ Cancel = choose whether to delete the whole series.`);
       els.edgePanel.classList.toggle('is-open', open);
       els.edgePanelHandle?.setAttribute('aria-expanded', String(open));
       els.edgeYoutubeBtn?.setAttribute('tabindex', open ? '0' : '-1');
-      // Out, it primes the picture cards for the nuke; away again (and not
-      // going off), they are let go a moment later.
-      if (open) primeCards();
-      else scheduleUnprimeCards();
-      clearTimeout(edgePanel.autoCloseTimer);
-      edgePanel.autoCloseTimer = open ? setTimeout(() => dropEdgePanel(), EDGE_PANEL_AUTO_CLOSE_MS) : null;
+      // The picture cards lifted while it was pulled settle back while it
+      // waits (an hour of primed cards would cost layers for nothing); they
+      // are primed again as it goes off.
+      scheduleUnprimeCards();
+      if (open) armEdgePanel();
+      else disarmEdgePanel();
+    }
+
+    // Out, the panel is armed: it stays put until the next full hour (pulled
+    // out at 14:20, it goes at 15:00), then wiggles loose and is thrown off
+    // at random into a mini nuke. Pushed back in, or used for YouTube, it is
+    // disarmed. A one-second wall-clock check rather than one long timeout,
+    // which a kiosk browser can fire late or never.
+    function armEdgePanel() {
+      clearInterval(edgePanel.armTimer);
+      const hour = new Date();
+      hour.setHours(hour.getHours() + 1, 0, 0, 0);
+      edgePanel.armedUntil = hour.getTime();
+      noteUserPresence();
+      edgePanel.armTimer = setInterval(checkEdgePanelArm, EDGE_PANEL_ARM_CHECK_MS);
+    }
+
+    function disarmEdgePanel() {
+      clearInterval(edgePanel.armTimer);
+      edgePanel.armTimer = null;
+      edgePanel.armedUntil = 0;
+    }
+
+    function checkEdgePanelArm() {
+      if (!els.edgePanel?.classList.contains('is-open')) {
+        disarmEdgePanel();
+        return;
+      }
+      // Armed is a wall waiting for its show, not an idle one: the camera
+      // dimmer stays away, as it does while a video plays.
+      noteUserPresence();
+      // Held by a finger, it is the finger's.
+      if (edgePanel.drag?.moved || edgePanel.falling) return;
+      if (Date.now() >= edgePanel.armedUntil) dropEdgePanel();
+    }
+
+    // Where the hourly launch goes: anything from a hop to a lob that peaks
+    // just under the top of the screen, coming down anywhere along the bottom.
+    function randomEdgePanelThrow(tray) {
+      const rect = tray.getBoundingClientRect();
+      const highest = Math.sqrt(2 * EDGE_PANEL_GRAVITY * Math.max(0, rect.top - 30));
+      const vy = -(650 + Math.random() * Math.max(0, highest - 650));
+      // In the air until its top passes the bottom edge.
+      const drop = Math.max(0, window.innerHeight - rect.top);
+      const airborne = (-vy + Math.sqrt(vy * vy + 2 * EDGE_PANEL_GRAVITY * drop)) / EDGE_PANEL_GRAVITY;
+      const landing = window.innerWidth * (0.12 + Math.random() * 0.8);
+      const vx = Math.max(120, (landing - (rect.left + rect.width / 2)) / airborne);
+      return { vx, vy };
     }
 
     // The panel comes off its dock, hops and tumbles off the bottom of the
-    // screen, and goes up in a mini nuke there. Without a launch it was left
-    // open, so it wiggles loose and jumps on its own; pulled off, it leaves
-    // where the finger let go of it, at the finger's speed.
+    // screen, and goes up in a mini nuke there. Without a launch the hour
+    // came, so it wiggles loose and is thrown off at random; pulled off, it
+    // leaves where the finger let go of it, at the finger's speed.
     function dropEdgePanel(launch = null) {
       if (!els.edgePanel || edgePanel.falling) return;
       edgePanel.drag = null;
@@ -17131,15 +17180,18 @@ Cancel = choose whether to delete the whole series.`);
       const iconEl = tray.querySelector('.edge-app-icon');
       if (tray.contains(document.activeElement)) document.activeElement.blur();
       const height = tray.offsetHeight;
+      const thrown = launch ? null : randomEdgePanelThrow(tray);
       const wiggleMs = launch ? 0 : EDGE_PANEL_WIGGLE_MS;
       let x = launch ? launch.x : EDGE_PANEL_OPEN_X;
       let y = 0;
       let angle = launch ? launch.angle : 0;
-      const vx = launch ? Math.max(250, Math.min(window.innerWidth * 0.8, launch.vx)) : 260;
-      let vy = launch ? -650 : -950;
+      const vx = launch ? Math.max(250, Math.min(window.innerWidth * 0.8, launch.vx)) : thrown.vx;
+      let vy = launch ? -650 : thrown.vy;
       const spin = 120 + vx * 0.3;
       edgePanel.falling = true;
       els.edgePanel.classList.add('is-falling');
+      // Lifted, ready for the shock ring, while it works loose.
+      primeCards();
       setEdgePanelOpen(false);
 
       let last = null;
@@ -18140,8 +18192,9 @@ Cancel = choose whether to delete the whole series.`);
       add('card3d-back-shade');
     }
 
-    // Unprimed after a moment, unless the panel is out again, falling, or the
-    // cards are still rattling: whatever ends last asks again.
+    // Unprimed after a moment, unless the panel is being pulled, falling, or
+    // the cards are still rattling: whatever ends last asks again. An armed
+    // panel only waiting for its hour does not keep them primed.
     function scheduleUnprimeCards(delay = 900) {
       clearTimeout(cardRattle.unprimeTimer);
       if (!cardRattle.primed) return;
@@ -18157,8 +18210,7 @@ Cancel = choose whether to delete the whole series.`);
     }
 
     function cardRattleBusy() {
-      return Boolean(cardRattle.raf || cardDropBusy() || edgePanel.falling || edgePanel.drag?.moved
-        || els.edgePanel?.classList.contains('is-open'));
+      return Boolean(cardRattle.raf || cardDropBusy() || edgePanel.falling || edgePanel.drag?.moved);
     }
 
     function unprimeCards() {
@@ -19150,7 +19202,6 @@ Cancel = choose whether to delete the whole series.`);
         }
         els.edgePanel.classList.remove('is-peeking');
         els.edgePanel.classList.add('is-dragging');
-        clearTimeout(edgePanel.autoCloseTimer);
         primeCards();
       }
       const closedX = edgePanelClosedX();
@@ -19251,9 +19302,6 @@ Cancel = choose whether to delete the whole series.`);
         setEdgePanelOpen(true);
         els.edgeYoutubeBtn.focus({ preventScroll: true });
       });
-      // Closed on click rather than pointerdown, so the tap that closes the
-      // panel cannot fall through to the clock or a task underneath.
-      els.edgePanelScrim.addEventListener('click', () => setEdgePanelOpen(false));
       els.edgeYoutubeBtn.addEventListener('click', openVideoQr);
     }
 

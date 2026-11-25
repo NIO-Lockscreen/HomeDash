@@ -522,9 +522,19 @@ The wall display has a hidden panel by the clock. A slim handle sits on the left
 edge of the screen, level with the clock: pull it to the right and the panel
 slides out, like Android's edge panel. A tap on the handle only nudges the panel
 out and back to show that it wants pulling, so a stray touch on the edge opens
-nothing. Tap beside the panel or push it back left and it slides away again. Leave
-it for ten seconds, or pull it on to the right until it comes off, and it goes up
-in a mini nuke (see *The mini nuke* below).
+nothing.
+
+Pulled out, the panel is **armed** until the next full hour: pulled out at 14:20,
+it goes at 15:00. Meanwhile nothing dims or covers the dashboard, so the wall
+stays bright and every card can still be tapped (a tap beside the panel no longer
+closes it); its YouTube icon just smoulders with a slow, faint glow. While it is
+armed the camera dimmer stays away, as it does while a video plays, and a new
+deployment waits to reload. On the hour it wiggles loose and is thrown off at
+random, anything from a hop to a lob just under the top of the screen, coming
+down anywhere along the bottom, where it goes up in a mini nuke (see *The mini
+nuke* below). Push it back left (or press Escape) to disarm it; tapping
+**YouTube** disarms it too. Pulled on to the right until it comes off, it goes up
+straight away.
 
 The pull does not have to start on the very edge. The grab area is 112px wide
 and about a third of the screen tall, so the finger can start well inside the
@@ -568,9 +578,9 @@ the × closes the player.
 
 ### The mini nuke
 
-A panel left open wiggles loose, its YouTube icon glowing and spitting sparks like
-a lit fuse, hops off its dock and tumbles off the bottom of the screen trailing
-smoke. Pulled on to the right past open, it comes off the same way at the finger's
+When the hour comes, an armed panel wiggles loose, its YouTube icon glowing and
+spitting sparks like a lit fuse, is thrown off its dock at random and tumbles off
+the bottom of the screen trailing smoke. Pulled on to the right past open, it comes off the same way at the finger's
 speed. Where it leaves the screen it goes off:
 
 - A white flash lights the whole screen and fades to a warm orange glow.
@@ -587,7 +597,9 @@ speed. Where it leaves the screen it goes off:
 - The dashboard shakes hard and rumbles out over about a second and a half; the
   weather's pop-out layer shakes with it so it stays on the card.
 
-**The picture cards rattle.** Pulling the panel out *primes* the photo cards:
+**The picture cards rattle.** Pulling the panel, and the panel working loose,
+*prime* the photo cards (an armed panel only waiting for its hour lets them settle
+back):
 each card in the Upcoming strip becomes a small 3D object (the card is its front;
 plates behind it give it a card-stock edge about 7px thick and a back like the
 back of a mounted photo; a light and a shade in front of it follow its tilt), and
@@ -600,8 +612,8 @@ thrown up and tumbles over, showing its back, before it lands with a bounce and
 rattles. The big task photo (when one is up) only rocks. The strip stops
 clipping its cards while they are primed, so a thrown card can fly out over it.
 
-Priming is what keeps this free in everyday use: until the panel is pulled out
-the cards are plain flat elements, with no extra elements, layers or animation
+Priming is what keeps this free in everyday use: until the panel is pulled or
+goes off the cards are plain flat elements, with no extra elements, layers or animation
 loop. A moment after the panel goes away without going off, or once the cards
 have settled after a nuke, they are lowered and taken apart again. The rattle
 itself only moves and fades composited layers. The Q panel's nuke buttons
