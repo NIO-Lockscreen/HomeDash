@@ -5702,7 +5702,7 @@
     <canvas id="weatherSpill" class="weather-spill" aria-hidden="true"></canvas>
     <section class="left-stack">
       <article id="clockCard" class="clock-card">
-        <div>
+        <div id="clockFace" class="clock-face">
           <div class="time-line"><span id="timeDisplay">10:42</span><span id="ampmDisplay" class="ampm" aria-hidden="true"></span></div>
           <div id="dateDisplay" class="date-line">Monday, May 12</div>
           <div id="clockChips" class="clock-chips" aria-label="To-do list and mode"></div>
@@ -6538,6 +6538,7 @@
       displayView: document.getElementById('displayView'),
       adminView: document.getElementById('adminView'),
       clockCard: document.getElementById('clockCard'),
+      clockFace: document.getElementById('clockFace'),
       timeDisplay: document.getElementById('timeDisplay'),
       ampmDisplay: document.getElementById('ampmDisplay'),
       dateDisplay: document.getElementById('dateDisplay'),
@@ -6719,6 +6720,30 @@
 
       els.displayView.style.width = `${Math.floor(width)}px`;
       els.displayView.style.height = `${Math.floor(height)}px`;
+    }
+
+    // The clock, the date, the chips and the two week rows take their sizes
+    // from the window, while the dashboard itself is held to the Surface's
+    // 3:2. On a screen of another shape (4:3, 5:4, a window not in full
+    // screen) they can add up to more than the clock card, and the second
+    // week row ran out under its bottom edge. So the face is measured at full
+    // size and, only when it does not fit inside the card's padding, zoomed
+    // down as one piece until it does. On the Surface it fits as it is and
+    // keeps its full size.
+    function fitClockFace() {
+      const card = els.clockCard;
+      const face = els.clockFace;
+      if (!card || !face) return;
+      face.style.zoom = '';
+      if (adminMode || !card.clientHeight) return;
+      const style = getComputedStyle(card);
+      const roomW = card.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const roomH = card.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      const needW = face.scrollWidth;
+      const needH = Math.max(face.scrollHeight, face.offsetHeight);
+      if (roomW <= 0 || roomH <= 0 || !needW || !needH) return;
+      const scale = Math.min(1, roomW / needW, roomH / needH);
+      if (scale < 0.999) face.style.zoom = String(Math.floor(scale * 1000) / 1000);
     }
 
     function pad(number) {
@@ -8869,6 +8894,7 @@
       }
       els.adminClock.textContent = formatTime(now, false);
       if (!adminMode && els.displayView.classList.contains('no-daily')) renderWeekView();
+      fitClockFace();
 
       // When the calendar date rolls over (midnight), force a fresh fetch so that
       // events deleted or added on another device are reflected immediately rather
@@ -9939,6 +9965,7 @@
         hideSelectedEventPanel();
       }
       fitKioskToScreen();
+      fitClockFace();
       scheduleHiddenRepeatingTasksHide();
       renderUpcomingPager(allUpcomingCount, upcomingPage, maxUpcomingPage, upcomingLimit, hiddenRepeatsCount, hiddenRepeatsVisible);
 
@@ -20645,6 +20672,7 @@ Cancel = choose whether to delete the whole series.`);
       if (host.dataset.html !== html) {
         host.dataset.html = html;
         host.innerHTML = html;
+        fitClockFace();
       }
     }
 
@@ -21906,6 +21934,10 @@ Cancel = choose whether to delete the whole series.`);
       setMode();
       window.addEventListener('resize', () => { fitKioskToScreen(); if (!adminMode) renderDisplay(); });
       window.addEventListener('orientationchange', () => setTimeout(fitKioskToScreen, 250));
+      // The card also changes size without a window resize: the phone app
+      // docking beside it, the daily task coming or going.
+      if (window.ResizeObserver && els.clockCard) new ResizeObserver(() => fitClockFace()).observe(els.clockCard);
+      document.fonts?.ready?.then(fitClockFace);
       bindMonthView();
       bindConfigMenu();
       bindWeatherOverlay();
