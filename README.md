@@ -1199,3 +1199,189 @@ Q or Esc closes the panel and the test stays on; a dark pill at the top of the
 screen says so. Live ends it. A test left on also ends with the five-minute idle
 reset, or with a reload, so a forgotten one cannot keep the wall on the wrong
 weather. Q is ignored while typing in a field.
+
+## The TV screensaver (TCL / Google TV)
+
+HomeDash keeps a Google Photos album, **HomeDash TV**, in step with the
+calendar. The TCL plays it in ambient mode, so the calendar is on the TV
+whenever nobody is watching anything. No PC, no open browser: Vercel draws the
+pictures and uploads them itself.
+
+### What is in the album
+
+In slideshow order:
+
+1. **Today's overview**: the date, this week and next with a dot on every busy
+   day, the big task (a featured task today, else today's first, else the next
+   one) and the next four. It is the wall display reflowed to 16:9.
+2. **A full-screen picture for every task left this week**: its photo edge to
+   edge (framed with the task's own focus point and zoom), a calendar leaf with
+   the day, the date and time, the place and the note.
+3. **For each later week** (next week by default): an overview of that week,
+   then a picture for each of its tasks.
+
+Family tasks only, like the wall outside work mode; done tasks are left out,
+and repeating tasks are cut off at the end of next month as on the wall.
+
+Every picture is **3840 × 2160, 16:9**: the TCL's 4K panel, scaled down
+cleanly on a 1080p set. It leaves out the time and the weather on purpose:
+Google TV draws its own live clock and weather over ambient mode, and the
+bottom-right corner of every picture is kept clear for that overlay (and for
+TVs that overscan). Each overview has a small *Updated* line at the bottom left,
+which shows how far behind the TV is.
+
+### When pictures change
+
+- A task **added, edited or moved**: its picture is drawn again. The new one
+  is uploaded first, checked to be in the album, and only then is the old one
+  taken out, so a failed upload leaves the last good picture up. The overviews
+  that show the task are redrawn too, nothing else.
+- A task **deleted, marked done, or over**: its picture leaves the album on the
+  next hourly check. "Over" is the task's end, or an hour after its start when
+  it has no end.
+- **A new day**: today's overview is redrawn (once a day). A task's own picture
+  says "Thursday 3 December", never "tomorrow", so it is not redrawn every
+  night.
+- A picture **deleted by hand** in Google Photos is noticed and uploaded again.
+- The album itself deleted: a new one is made on the next run; pick it again on
+  the TV (`/tv.html` says so).
+
+### Old pictures stay in the Google Photos library
+
+**Taking a picture out of the album does not delete it.** Google's Library API
+has no way to delete or trash anything, so every replaced or finished picture
+stays in the account's library and counts against its storage (about 0.4–1 MB
+each, JPEG). Uploads only happen when a picture changes, which keeps this to a
+few a day.
+
+To clean up, search Google Photos for **HomeDash TV**: every upload has that in
+its description. Anything uploaded more than **15 days** ago (with the default
+two weeks ahead; `TV_WEEKS` × 7 + 1 days in general) is no longer in the album
+and can be deleted. Deleting one that is still in the album takes it off the TV
+until the next change puts it back.
+
+### Keeping Vercel use down
+
+The album is checked **once an hour**. Vercel Hobby only allows cron jobs that
+run once a day (a deploy with an hourly schedule fails), so the hourly tick
+comes from GitHub Actions (`.github/workflows/tv-hourly.yml`, free on a public
+repository). `vercel.json` keeps a daily Vercel cron as a fallback, so the date
+still rolls over if GitHub ever pauses the schedule, which it does after 60
+days without a commit.
+
+What an hour costs:
+
+| The hour | Blob operations | Uploads |
+| --- | --- | --- |
+| Nothing changed (most hours) | **none** | none |
+| A task is over | about 2 simple, 1 advanced (no task-list read) | none |
+| Tasks changed, or a new day | about 5 simple, 1 advanced | only the pictures that changed |
+| A change no picture shows (a to-do, a task next year) | about 5 simple, 1 advanced | none |
+
+The free hour works like the version marker: the check reads two small files
+straight off the Blob CDN at their known addresses, the TV state and
+`events-version.json`, both stored with a 30-day cache life. Unchanged, they
+are CDN cache hits, which Blob does not bill as operations. Overwriting one
+purges its CDN copy, so the next hourly check sees the change. The addresses
+come from `BLOB_READ_WRITE_TOKEN` the way `@vercel/blob` builds them; `/tv.html`
+says *Hourly checks: Free* when that worked.
+
+A failure that repeats is written once, not every hour. After three in a row
+the job tries only every six hours, and a revoked Google sign-in waits for you
+to connect again. The GitHub run goes red when a run really fails, not while the
+job is backing off, so a broken connection does not email you every hour.
+
+All of it is one function (`api/tv/[action].js`): Hobby allows twelve per
+deployment and HomeDash now uses seven. Drawing a picture takes 1–4 seconds; a
+run stops starting new pictures after 38 seconds (the function's limit is 60),
+saves what it did, and answers `"more": true`. The GitHub job and the
+**Update the TV now** button then simply call it again.
+
+### Setting it up
+
+1. **Google Cloud** ([console.cloud.google.com](https://console.cloud.google.com/)):
+   make a project and enable the **Photos Library API**.
+2. **Google Auth platform → Audience**: choose *External* and press **Publish
+   app** so it says *In production*. An app left in *Testing* gets a sign-in
+   that Google ends after 7 days, and the TV would stop updating. Publishing
+   needs no review for your own account; Google only shows an "unverified app"
+   warning when you connect.
+3. **Clients → Create client → Web application**, with the redirect URI
+   `https://your-project.vercel.app/api/tv/callback` (`/tv.html` shows the exact
+   one for your domain).
+4. **Vercel → Settings → Environment Variables**: add `GOOGLE_CLIENT_ID` and
+   `GOOGLE_CLIENT_SECRET`. `CRON_SECRET` (from the email reminders) is used too.
+   Redeploy.
+5. **GitHub → Settings → Secrets and variables → Actions**: add `HOMEDASH_URL`
+   (`https://your-project.vercel.app`) and `CRON_SECRET` (the same value as in
+   Vercel). Until both are there the hourly workflow does nothing and stays
+   green.
+6. Open **`/tv.html`** (it uses the admin PIN this device already has) and press
+   **Connect Google Photos**. At Google's warning choose **Advanced → Go to …**
+   and leave all three permissions ticked: upload, see its own album, take its
+   own pictures out of that album. HomeDash makes the album and uploads the
+   first pictures straight away.
+7. **On the TCL**: *Settings → System → Ambient mode → Google Photos* (or the
+   ambient mode settings in the Google Home app) and pick **HomeDash TV**. Only
+   once.
+
+`/tv.html` previews every slide exactly as it will be uploaded (nothing is
+uploaded by a preview), says which are already on the TV, and has **Update the
+TV now** and **Disconnect**.
+
+### Settings
+
+Optional environment variables:
+
+```txt
+TV_LANGUAGE=nb          # Norwegian labels (I dag, I morgen, Uke ...); default en, like the wall
+TV_WEEKS=2              # weeks ahead to show, 1-4; default 2 (this week and next)
+TV_ALBUM_TITLE=HomeDash TV
+```
+
+At most 40 pictures are kept in the album. Changing `TV_LANGUAGE` or
+`TV_WEEKS` redraws everything on the next run, so expect one burst of uploads.
+
+### What is not known yet
+
+- **How quickly the TV notices a new picture.** The album is kept current
+  within the hour; how soon the TCL's ambient mode picks a replacement up needs
+  a test on the TV.
+- **Whether ambient mode keeps the album's order.** HomeDash places every
+  picture in slideshow order (overview, the week's tasks, next week's
+  overview …). If the TV shuffles, the order is lost; the overviews still come
+  round, one per week.
+
+### Limits
+
+- Task photos stored as **WebP** are shown with the calm placeholder: the
+  renderer draws JPEG, PNG and GIF. Photos the app re-encoded on upload are
+  JPEG; only a small WebP uploaded as it was stays WebP.
+- Emoji in titles are drawn from Twemoji, fetched at drawing time. If that
+  fetch fails, the title is drawn without them.
+- The refresh token is stored in `home-organizer/tv/state.json`, sealed with
+  AES-256-GCM under a key made from `GOOGLE_CLIENT_SECRET`. Changing that secret
+  means connecting again.
+
+### Files
+
+- `api/_tv-render.js`: the slide plan (`buildTvPlan`) and the drawing
+  (`renderTvSlide`, satori + resvg, JPEG via jpeg-js). Bump
+  `TV_LAYOUT_VERSION` after changing the look, so every picture is redrawn.
+- `api/_tv-job.js`: the hourly sync (`runTvSync`).
+- `api/_tv-google.js`: Google sign-in and the Photos Library calls.
+- `api/_tv-state.js`: the state file, the free CDN reads, token sealing.
+- `api/_tv-fonts.js`: Inter and Gelasio (a free face drawn to Georgia's
+  metrics), embedded; licences in `api/_tv-fonts-LICENSE.txt`.
+- `api/tv/[action].js`: the endpoints. `tv.html`: the settings page.
+- `scripts/test-tv.mjs`: an end-to-end test with Blob and Google faked, which
+  also counts the Blob operations of each kind of hour:
+
+```txt
+npm install
+node --experimental-test-module-mocks scripts/test-tv.mjs
+```
+
+The repeat expansion is shared with the email reminders
+(`expandEventOccurrences` in `api/_reminders.js`), so the TV and the emails agree
+on when a repeating task falls.

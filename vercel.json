@@ -3,6 +3,9 @@
     "api/*.js": {
       "memory": 256,
       "maxDuration": 10
+    },
+    "api/tv/*.js": {
+      "maxDuration": 60
     }
   },
   "headers": [
@@ -46,6 +49,10 @@
     {
       "path": "/api/reminders-cron",
       "schedule": "30 19 * * *"
+    },
+    {
+      "path": "/api/tv/refresh",
+      "schedule": "5 23 * * *"
     }
   ]
 }

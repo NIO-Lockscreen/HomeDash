@@ -4,8 +4,11 @@
     "start": "vercel dev"
   },
   "dependencies": {
+    "@resvg/resvg-js": "2.6.2",
     "@vercel/blob": "latest",
-    "formidable": "latest"
+    "formidable": "latest",
+    "jpeg-js": "0.4.4",
+    "satori": "0.63.2"
   },
   "devDependencies": {
     "@vercel/node": "latest"

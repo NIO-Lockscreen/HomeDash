@@ -59,7 +59,7 @@ function formatDateTime(dateLike) {
   }).format(new Date(dateLike));
 }
 
-function dateKeyInTimeZone(dateLike) {
+export function dateKeyInTimeZone(dateLike) {
   const timeZone = process.env.ORGANIZER_TIME_ZONE || DEFAULT_TIME_ZONE;
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone,
@@ -71,7 +71,7 @@ function dateKeyInTimeZone(dateLike) {
   return `${byType.year}-${byType.month}-${byType.day}`;
 }
 
-function zonedParts(dateLike) {
+export function zonedParts(dateLike) {
   const timeZone = process.env.ORGANIZER_TIME_ZONE || DEFAULT_TIME_ZONE;
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone,
@@ -92,7 +92,7 @@ function zonedParts(dateLike) {
   };
 }
 
-function zonedDateTimeToUtc(year, month, day, hour = 0, minute = 0) {
+export function zonedDateTimeToUtc(year, month, day, hour = 0, minute = 0) {
   const targetUtc = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
   let guess = targetUtc;
 
@@ -183,7 +183,7 @@ function makeOccurrence(event, occurrenceStart, index) {
   };
 }
 
-function expandEventOccurrences(event, rangeStart, rangeEnd) {
+export function expandEventOccurrences(event, rangeStart, rangeEnd) {
   const start = parseDate(event.start);
   if (!event?.id || !start) return [];
 
