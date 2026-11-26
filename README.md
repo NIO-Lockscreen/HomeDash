@@ -1395,6 +1395,11 @@ npm install
 node --experimental-test-module-mocks scripts/test-tv.mjs
 ```
 
+`package.json` says `"type": "module"`, so Vercel runs the API files as the
+ES modules they are written as. Without it, Vercel converts them to CommonJS
+while packing only the ES module files of `satori`, and the TV function
+crashed on load with a bare 500. Every other function loads either way.
+
 The repeat expansion is shared with the email reminders
 (`expandEventOccurrences` in `api/_reminders.js`), so the TV and the emails agree
 on when a repeating task falls.

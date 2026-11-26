@@ -14865,9 +14865,12 @@
           body: body ? JSON.stringify(body) : undefined,
           signal: controller.signal
         });
-        const data = await response.json().catch(() => ({}));
+        const text = await response.text();
+        let data = {};
+        try { data = JSON.parse(text); } catch {}
         if (response.status === 401) throw new Error('Wrong admin PIN.');
-        if (!response.ok) throw new Error(data.error || `The TV answered ${response.status}.`);
+        // A function that crashed answers with Vercel's own text, not JSON.
+        if (!response.ok) throw new Error(data.error || `The TV answered ${response.status}${text ? `: ${text.replace(/\s+/g, ' ').trim().slice(0, 120)}` : ''}. See Vercel → Logs.`);
         return data;
       } catch (error) {
         throw error?.name === 'AbortError' ? new Error('The TV update took too long; it carries on by itself within the hour.') : error;
