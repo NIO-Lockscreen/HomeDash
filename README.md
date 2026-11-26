@@ -721,6 +721,18 @@ It is all CSS: only opacity and transform animate, so it runs on the compositor
 and costs next to nothing. It pauses while the camera dimmer has dimmed the
 screen, and with reduced motion the glow is steady and the hearts stand still.
 
+### Event borders
+
+The **Event borders** switch, in the month view's footer (for touch screens
+with no Q key) and in the Q panel, draws a thin ring with a soft glow, like
+Sofia's pink one, around every task card on the wall: the Upcoming cards, the
+big task photo and the picked-task panel. It is **blue** when the task starts
+on one of Sofia's days (the blue days in the month view, hand edits included)
+and **black** on the others. Sofia's own pink ring, and the work ring among
+family tasks, win where they apply. It is a still ring, with nothing animated,
+and it belongs to that one screen (the phone's list is left as it is). A period
+moved on another screen shows within a minute, as the wall redraws.
+
 ## Work mode
 
 A screen can be put in **work mode**. It then shows only the tasks made in work
@@ -1182,6 +1194,9 @@ The tests follow:
 - **Card shadows** turns the cards' shadows on the strip on or off (see *Card
   shadows* under *The mini nuke*), to compare. The choice is remembered on this
   screen.
+- **Event borders** puts a thin ring around every task card, blue on Sofia's
+  days and black on the others (see *Event borders*). Off until it is turned
+  on; the choice is remembered on this screen.
 - **Turn the cards over** closes the panel and turns every card on the strip
   over, one after another, to show its postcard back (see *The back of a card*),
   holds them face down for a couple of seconds and turns them back. Every other
