@@ -245,7 +245,9 @@ async function syncAlbum(state, accessToken, { events, now, rebuild, startedAt, 
 
 // One run. `force` skips the free "anything to do?" check; `rebuild` draws
 // and uploads every slide again (after a design change).
-export async function runTvSync({ force = false, rebuild = false, now = new Date(), budgetMs = UPLOAD_BUDGET_MS, trigger = 'schedule' } = {}) {
+// `state`, when given, is the state the caller has just written (connect), so
+// the run does not read back what the CDN may not hand out yet.
+export async function runTvSync({ force = false, rebuild = false, now = new Date(), budgetMs = UPLOAD_BUDGET_MS, trigger = 'schedule', state: given = null } = {}) {
   const startedAt = Date.now();
   const todayKey = dateKeyInTimeZone(now);
 
@@ -259,12 +261,21 @@ export async function runTvSync({ force = false, rebuild = false, now = new Date
     if (!reason) return { ok: true, skipped: 'nothing changed', slides: Object.keys(cheap.slides || {}).length };
     return work({ reason, now, todayKey, rebuild, startedAt, budgetMs, trigger, expiredOnly: reason === 'task over' });
   }
-  return work({ reason: rebuild ? 'rebuild' : 'by hand', now, todayKey, rebuild, startedAt, budgetMs, trigger, expiredOnly: false });
+  return work({ reason: rebuild ? 'rebuild' : 'by hand', now, todayKey, rebuild, startedAt, budgetMs, trigger, expiredOnly: false, given });
 }
 
-async function work({ reason, now, todayKey, rebuild, startedAt, budgetMs, trigger, expiredOnly }) {
+async function work({ reason, now, todayKey, rebuild, startedAt, budgetMs, trigger, expiredOnly, given = null }) {
   // Confirmed against the store, so a connect or a run a minute ago is seen.
-  const state = await readTvStateFresh();
+  let state = given;
+  if (!state) {
+    try {
+      state = await readTvStateFresh();
+    } catch (error) {
+      // Nothing was changed; the next run, or the next press, tries again.
+      if (error?.stale) return { ok: false, retry: true, error: error.message };
+      throw error;
+    }
+  }
   if (!state.google?.refreshToken) return { ok: true, skipped: 'not connected' };
 
   try {

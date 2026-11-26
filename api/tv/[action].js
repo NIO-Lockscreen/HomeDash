@@ -115,7 +115,7 @@ async function status(req, res) {
   // The Q panel's quick look reads the state off the CDN (free, at most a
   // minute behind) and leaves the slide plan out.
   const light = new URL(req.url, 'https://localhost').searchParams.get('light') === '1';
-  const state = light ? await readTvStateCheap() : await readTvStateFresh();
+  const state = light ? await readTvStateCheap() : await readTvStateFresh({ allowStale: true });
   const settings = tvSettings(state);
   let plan = [];
   let planError = '';
@@ -219,7 +219,7 @@ async function callback(req, res) {
   } else {
     album = { ...state.album, ...album };
   }
-  await writeTvState({
+  const written = await writeTvState({
     ...state,
     google: { refreshToken: sealSecret(tokens.refreshToken), connectedAt: new Date().toISOString() },
     album,
@@ -230,9 +230,11 @@ async function callback(req, res) {
   });
 
   // The first slides go up straight away; the rest follow on the next runs.
+  // The run is handed the state just written: read back at once, the CDN
+  // could still answer with the copy from before (or with "not there").
   let first;
   try {
-    first = await runTvSync({ force: true, trigger: 'connect', budgetMs: 30 * 1000 });
+    first = await runTvSync({ force: true, trigger: 'connect', budgetMs: 30 * 1000, state: written });
   } catch (error) {
     first = { ok: false, error: error.message };
   }
@@ -330,6 +332,6 @@ export default async function handler(req, res) {
       sendPage(res, 500, 'Google Photos was not connected', `<p>${escapeHtml(error.message || 'Something went wrong.')}</p>`);
       return;
     }
-    send(res, 500, { ok: false, error: error.message || 'Something went wrong.' });
+    send(res, Number(error?.statusCode) === 503 ? 503 : 500, { ok: false, error: error.message || 'Something went wrong.' });
   }
 }

@@ -21,7 +21,19 @@ export const EVENTS_PATH = 'home-organizer/events.json';
 export const VERSION_PATH = 'home-organizer/events-version.json';
 const STATE_CACHE_MAX_AGE_S = 30 * 24 * 60 * 60;
 const READ_TIMEOUT_MS = 8000;
-const MAX_FRESH_READS = 3;
+const MAX_FRESH_READS = 4;
+
+// The store holds a newer copy than the CDN will hand out yet. Writing on top
+// of what was read would undo the newer copy, so nothing is written.
+export class StaleReadError extends Error {
+  constructor(pathname) {
+    super('The store has not caught up with the last change yet. Try again in a minute.');
+    this.name = 'StaleReadError';
+    this.stale = true;
+    this.statusCode = 503;
+    this.pathname = pathname;
+  }
+}
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -69,9 +81,15 @@ function normalizeEtag(value) {
 // events.js does: the CDN can hand back the copy from before the last
 // overwrite for up to a minute, so the bytes are checked against head(),
 // which answers from the Blob API. Costs one head() and, usually, one CDN
-// miss. Returns { value, fresh } - value null when the blob does not exist.
+// miss. Returns { value, fresh } - value null when the blob does not exist,
+// or when the CDN still answers 404 for a blob that head() says is there.
+//
+// That 404 is the CDN replaying "not there" from before the blob was first
+// written: the TV state is asked for every night while nothing is connected,
+// and right after connecting the CDN can still answer with that for a while.
+// It is waited out like an older copy, never taken as an error or as "gone".
 export async function readJsonFresh(pathname, { attempts = MAX_FRESH_READS } = {}) {
-  let text = '';
+  let text = null;
   let fresh = false;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     let meta;
@@ -82,15 +100,19 @@ export async function readJsonFresh(pathname, { attempts = MAX_FRESH_READS } = {
       throw error;
     }
     const response = await fetchWithTimeout(`${meta.url}?v=${Date.now()}-${crypto.randomBytes(4).toString('hex')}`, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`Could not read ${pathname} from Blob (${response.status}).`);
-    text = await response.text();
-    const stored = normalizeEtag(meta.etag);
-    const sameLength = Buffer.byteLength(text, 'utf8') === Number(meta.size);
-    const md5 = crypto.createHash('md5').update(text, 'utf8').digest('hex');
-    fresh = sameLength && (!/^[0-9a-f]{32}$/.test(stored) || stored === md5 || normalizeEtag(response.headers.get('etag')) === stored);
-    if (fresh) break;
-    if (attempt < attempts) await sleep(400 * attempt);
+    if (response.ok) {
+      text = await response.text();
+      const stored = normalizeEtag(meta.etag);
+      const sameLength = Buffer.byteLength(text, 'utf8') === Number(meta.size);
+      const md5 = crypto.createHash('md5').update(text, 'utf8').digest('hex');
+      fresh = sameLength && (!/^[0-9a-f]{32}$/.test(stored) || stored === md5 || normalizeEtag(response.headers.get('etag')) === stored);
+      if (fresh) break;
+    } else if (response.status !== 404) {
+      throw new Error(`Could not read ${pathname} from Blob (${response.status}).`);
+    }
+    if (attempt < attempts) await sleep(700 * attempt);
   }
+  if (text === null) return { value: null, fresh: false };
   try {
     return { value: JSON.parse(text), fresh };
   } catch {
@@ -139,10 +161,14 @@ export async function readTvStateCheap() {
   return normalizeState(await readJsonFromCdn(TV_STATE_PATH));
 }
 
-// Connect, disconnect, status and manual runs: confirmed against the store,
-// so a change made a few seconds ago is never read as missing.
-export async function readTvStateFresh() {
-  const { value } = await readJsonFresh(TV_STATE_PATH);
+// Connect, disconnect, settings and runs: confirmed against the store, so a
+// change made a few seconds ago is never read as missing. Throws
+// StaleReadError when that cannot be confirmed yet, since every caller but
+// the status page goes on to write the state back. The status page passes
+// allowStale and shows what it got.
+export async function readTvStateFresh({ allowStale = false } = {}) {
+  const { value, fresh } = await readJsonFresh(TV_STATE_PATH);
+  if (!fresh && !allowStale) throw new StaleReadError(TV_STATE_PATH);
   return normalizeState(value);
 }
 

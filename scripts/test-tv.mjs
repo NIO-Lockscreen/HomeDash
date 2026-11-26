@@ -23,6 +23,9 @@ process.env.ORGANIZER_TIME_ZONE = 'Europe/Oslo';
 const HOST = 'https://storetest1.public.blob.vercel-storage.com';
 const blobs = new Map();
 const cdn = new Map();
+// The CDN remembers "not there" for a while after a blob is first written:
+// it answers 404 for this many more reads.
+const cdnNotFound = new Map();
 const ops = { simple: 0, advanced: 0, cdnHits: 0 };
 const md5 = text => crypto.createHash('md5').update(text).digest('hex');
 
@@ -84,6 +87,12 @@ async function fakeFetch(input, init = {}) {
     const pathname = url.pathname.slice(1);
     const blob = blobs.get(pathname);
     if (!blob) {
+      ops.simple += 1;
+      cdnNotFound.set(pathname, 2);
+      return new Response('Not found', { status: 404 });
+    }
+    if (cdnNotFound.get(pathname) > 0) {
+      cdnNotFound.set(pathname, cdnNotFound.get(pathname) - 1);
       ops.simple += 1;
       return new Response('Not found', { status: 404 });
     }
@@ -249,6 +258,10 @@ test('connect: the sign-in link, the callback, the first upload', async () => {
   const page = await call('GET', `/api/tv/callback?code=good&state=${encodeURIComponent(state)}`);
   assert.equal(page.status, 200, page.body);
   assert.match(page.body, /Google Photos is connected/);
+  // The CDN still says the state is not there (it was asked for while
+  // nothing was connected); the first upload must not trip over that.
+  assert.doesNotMatch(page.body, /first upload failed/);
+  assert.match(page.body, /pictures are already in the album/);
   assert.equal(albums.size, 1);
   assert.equal(album().title, 'HomeDash TV');
   const stored = JSON.parse(blobs.get('home-organizer/tv/state.json').text);
@@ -256,6 +269,8 @@ test('connect: the sign-in link, the callback, the first upload', async () => {
 });
 
 test('the album holds every slide, in slideshow order', async () => {
+  // Pressed at once: the CDN's remembered 404 is waited out, not an error.
+  cdnNotFound.set('home-organizer/tv/state.json', 2);
   // The callback's first run may stop at its time budget; finish it.
   let result = await runTvSync({ ...at(oslo(26, 9)), force: true });
   while (result.more) result = await runTvSync({ ...at(oslo(26, 9)), force: true });
