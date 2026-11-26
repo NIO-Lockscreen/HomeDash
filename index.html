@@ -14962,17 +14962,22 @@
     // run; the server says `more` until it is done.
     async function updateTvNow() {
       let total = 0;
+      let last = null;
       for (let run = 1; run <= 8; run += 1) {
         tvPanel.message = run === 1 ? 'Updating the TV…' : `Still uploading (${total} so far)…`;
         renderTvPanel();
         const result = await tvRequest('/api/tv/refresh', { method: 'POST' });
         if (!result.ok) throw new Error(result.error || 'The TV update failed.');
         total += result.uploaded || 0;
+        last = result;
         if (!result.more) break;
       }
       tvPanel.message = '';
       await loadTvPanel();
-      tvPanel.message = `Done: ${total} picture${total === 1 ? '' : 's'} uploaded. ${tvPanel.status?.slides?.length ?? 0} in the album.`;
+      // The count the run itself just saved and checked against the album. A
+      // state read straight after it can still be the copy from before.
+      const inAlbum = Number.isFinite(last?.slides) ? last.slides : null;
+      tvPanel.message = `Done: ${total} picture${total === 1 ? '' : 's'} uploaded${inAlbum === null ? '' : `, ${inAlbum} in the album`}.`;
     }
 
     function bindTvPanel() {

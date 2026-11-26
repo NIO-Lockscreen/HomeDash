@@ -1178,8 +1178,11 @@ app on the wall*), then the **TV screensaver** (see *The TV screensaver* below):
   at once.
 - *Previews, set-up and disconnect* opens `/tv.html`.
 
-Opening the panel reads the TV state off the Blob CDN, so it costs no Blob
-operation. The PIN is the admin PIN the screen already has; without one, the
+Opening the panel reads the TV state confirmed against the store (two small
+Blob reads), so the number of pictures it shows is never the one from before
+the last update. After **Update the TV now** it says how many pictures were
+uploaded and how many are in the album, as the update itself counted them. The
+PIN is the admin PIN the screen already has; without one, the
 first TV button asks for it.
 
 The tests follow:

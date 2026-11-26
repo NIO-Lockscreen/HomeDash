@@ -274,6 +274,7 @@ test('the album holds every slide, in slideshow order', async () => {
   // The callback's first run may stop at its time budget; finish it.
   let result = await runTvSync({ ...at(oslo(26, 9)), force: true });
   while (result.more) result = await runTvSync({ ...at(oslo(26, 9)), force: true });
+  assert.equal(result.slides, album().items.length, 'an update reports the album\'s own count');
   assert.deepEqual(albumDescriptions(), [
     'calendar overview, Thursday 26 November 2026',
     'Tannlege, Thursday 26 November · 14:30–15:15',
@@ -363,12 +364,13 @@ test('a picture deleted by hand in Google Photos is put back', async () => {
   assert.ok(albumDescriptions().some(text => text.startsWith('Fotballtrening, Friday 27 November')));
 });
 
-test('the Q panel: a free status read, and language and weeks stored for the album', async () => {
-  await call('GET', '/api/tv/status?light=1', { 'x-admin-pin': '1234' });
+test('the Q panel: a current status read, and language and weeks stored for the album', async () => {
   const before = { ...ops };
   const light = JSON.parse((await call('GET', '/api/tv/status?light=1', { 'x-admin-pin': '1234' })).body);
-  assert.equal(ops.simple - before.simple + ops.advanced - before.advanced, 0, 'the light status is a CDN hit');
+  assert.ok(ops.simple - before.simple <= 2, 'the quick status is a head() and at most one CDN miss');
+  assert.equal(ops.advanced - before.advanced, 0);
   assert.equal(light.connected, true);
+  assert.equal(light.slides.length, album().items.length, 'the count is the album\'s, not an older copy\'s');
   assert.deepEqual(light.settings, { language: 'en', weeks: 2 });
 
   const bad = await call('POST', '/api/tv/settings', { 'x-admin-pin': '1234' }, { weeks: 9 });

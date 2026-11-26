@@ -3,7 +3,7 @@
 //
 //   GET|POST /api/tv/refresh     daily Vercel cron (Bearer CRON_SECRET) or by hand (PIN)
 //   GET      /api/tv/status      what the album holds and what it should (PIN);
-//                                ?light=1 reads the state off the CDN only (free)
+//                                ?light=1 leaves the slide plan out (Q panel)
 //   POST     /api/tv/settings    language and weeks ahead, from the Q panel (PIN)
 //   GET      /api/tv/preview     one slide as a JPEG, nothing uploaded (PIN)
 //   POST     /api/tv/connect     the Google sign-in address (PIN)
@@ -112,10 +112,12 @@ async function readJson(req) {
 }
 
 async function status(req, res) {
-  // The Q panel's quick look reads the state off the CDN (free, at most a
-  // minute behind) and leaves the slide plan out.
+  // The Q panel's quick look leaves the slide plan out. The state is read
+  // confirmed against the store, not straight off the CDN, which can hand out
+  // the copy from before the last update for up to a minute and showed the
+  // wrong number of pictures (two small Blob reads per look).
   const light = new URL(req.url, 'https://localhost').searchParams.get('light') === '1';
-  const state = light ? await readTvStateCheap() : await readTvStateFresh({ allowStale: true });
+  const state = await readTvStateFresh({ allowStale: true });
   const settings = tvSettings(state);
   let plan = [];
   let planError = '';
