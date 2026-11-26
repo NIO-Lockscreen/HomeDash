@@ -724,7 +724,8 @@ screen, and with reduced motion the glow is steady and the hearts stand still.
 
 ### Event borders
 
-The Q panel's **Event borders** switch draws a thin ring with a soft glow, like
+The **Event borders** switch, in the month view's footer (for touch screens
+with no Q key) and in the Q panel, draws a thin ring with a soft glow, like
 Sofia's pink one, around every task card on the wall: the Upcoming cards, the
 big task photo and the picked-task panel. It is **blue** when the task starts
 on one of Sofia's days (the blue days in the month view, hand edits included)
