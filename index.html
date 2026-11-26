@@ -960,6 +960,7 @@
 
     .wx-debug > #wxDebugPop,
     .wx-debug > #wxDebugShadows,
+    .wx-debug > #wxDebugDayRings,
     .wx-debug > #wxDebugTurn { width: 100%; }
 
     /* Weather test panel (press Q on the wall display). */
@@ -4226,6 +4227,40 @@
       .sofia-heart { animation: none; opacity: .85; }
     }
 
+    /* Event borders (the Q panel's switch, see dayRings): a thin ring with a
+       soft glow, drawn like Sofia's, around every task card: blue when the
+       task falls on one of Sofia's days, black on the others. The cards
+       always carry the day's class; only .show-day-rings on the display
+       draws it. Sofia's pink ring and the work ring win where they apply.
+       Each card keeps its own drop shadow under the ring. */
+    .day-ring {
+      --day-ring: rgba(22, 20, 18, 0.78);
+      --day-glow: rgba(22, 20, 18, 0.16);
+    }
+
+    .day-ring.is-sofia-day {
+      --day-ring: rgba(46, 138, 212, 0.72);
+      --day-glow: rgba(46, 138, 212, 0.28);
+    }
+
+    .show-day-rings .mini-event.day-ring:not(.is-sofia):not(.is-work) {
+      box-shadow: 0 0 0 2px var(--day-ring), 0 0 20px 4px var(--day-glow), 0 8px 18px rgba(70, 58, 44, 0.08);
+    }
+
+    .show-day-rings .event-hero.day-ring:not(.is-sofia):not(.is-work) {
+      box-shadow: 0 0 0 2px var(--day-ring), 0 0 26px 4px var(--day-glow), var(--shadow);
+    }
+
+    .show-day-rings .selected-event-media.day-ring:not(.is-sofia) {
+      box-shadow: 0 0 0 2px var(--day-ring), 0 0 20px 4px var(--day-glow), 0 12px 26px rgba(70, 58, 44, 0.1);
+    }
+
+    /* While a card is in the air its cast shadow takes over from the drop
+       shadow; the ring stays. */
+    .show-day-rings .card3d.has-shadow > .mini-event.day-ring:not(.is-sofia):not(.is-work) {
+      box-shadow: 0 0 0 2px var(--day-ring), 0 0 20px 4px var(--day-glow);
+    }
+
     /* Picture cards primed for the mini nuke. Pulling the YouTube panel out
        wraps each Upcoming photo card in a small 3D object (.card3d): the card
        is its front, a few plates behind it make its edge and its back, and a
@@ -6213,6 +6248,7 @@
       <button type="button" data-card-drop="last">Last</button>
     </div>
     <button type="button" id="wxDebugShadows">Card shadows</button>
+    <button type="button" id="wxDebugDayRings" title="Blue on Sofia's days, black on the others">Event borders</button>
     <button type="button" id="wxDebugTurn">Turn the cards over</button>
     <div class="wx-debug-label">Speed of fill and leak</div>
     <div class="wx-debug-grid four" id="wxDebugSpeed">
@@ -6662,6 +6698,7 @@
       wxDebugSpill: document.getElementById('wxDebugSpill'),
       wxDebugPop: document.getElementById('wxDebugPop'),
       wxDebugShadows: document.getElementById('wxDebugShadows'),
+      wxDebugDayRings: document.getElementById('wxDebugDayRings'),
       wxDebugStatus: document.getElementById('wxDebugStatus'),
       wxDebugBadge: document.getElementById('wxDebugBadge'),
       edgePanel: document.getElementById('edgePanel'),
@@ -8539,6 +8576,48 @@
       return `<span class="sofia-aura is-${kind}" aria-hidden="true"${style ? ` style="${style}"` : ''}><span class="sofia-glow"></span>${hearts}</span>`;
     }
 
+    // --- Event borders ---------------------------------------------------------
+    //
+    // The Q panel's Event borders switch, remembered on this screen (off until
+    // it is turned on): every task card gets a thin ring like Sofia's, blue
+    // when the task starts on one of Sofia's days (the blue days of the month
+    // view, see daughterPeriodForDate) and black on the others. The cards
+    // always carry the day's class and the switch only shows it, so it takes
+    // effect at once; the wall redraws every minute, so a period moved on
+    // another screen shows here within a minute.
+    const DAY_RINGS_KEY = 'homedash.dayRings';
+    const dayRings = { on: false };
+    try {
+      dayRings.on = localStorage.getItem(DAY_RINGS_KEY) === '1';
+    } catch {
+      // No storage: off.
+    }
+
+    function applyDayRings() {
+      els.displayView?.classList.toggle('show-day-rings', dayRings.on);
+    }
+
+    function setDayRings(on) {
+      dayRings.on = on;
+      try {
+        localStorage.setItem(DAY_RINGS_KEY, on ? '1' : '0');
+      } catch {
+        // Kept for this visit only.
+      }
+      applyDayRings();
+    }
+
+    applyDayRings();
+
+    function isOnSofiaDay(event) {
+      const start = event?.start ? new Date(event.start) : null;
+      return Boolean(start && !Number.isNaN(start.getTime()) && daughterPeriodForDate(start));
+    }
+
+    function dayRingClass(event) {
+      return isOnSofiaDay(event) ? ' day-ring is-sofia-day' : ' day-ring';
+    }
+
     function renderHeroEvent(event) {
       if (!event || event._completed) return;
       const date = new Date(event.start);
@@ -8569,6 +8648,8 @@
       const aura = els.heroEvent.querySelector(':scope > .sofia-aura');
       if (sofia && !aura) els.heroEvent.insertAdjacentHTML('beforeend', sofiaAuraHtml('inside'));
       else if (!sofia && aura) aura.remove();
+      els.heroEvent.classList.add('day-ring');
+      els.heroEvent.classList.toggle('is-sofia-day', isOnSofiaDay(event));
       if (els.heroBack) {
         els.heroBack.innerHTML = `
           <div class="selected-event-kicker">Task details</div>
@@ -8608,7 +8689,7 @@
         <div class="selected-event-flip${state.selectedEventFlipped ? ' is-flipped' : ''}" data-selected-flip>
           <div class="selected-event-inner">
             <div class="selected-event-face selected-event-front">
-              <span class="selected-event-media${isSofiaEvent(first) ? ' is-sofia' : ''}"><img class="selected-event-image" alt="" src="${htmlEscape(first.imageUrl || placeholderFor(first.id, first.title))}" style="${imageFocusStyle(first)}" data-fallback-seed="${htmlEscape(first.id)}" data-fallback-label="${htmlEscape(first.title)}">${isSofiaEvent(first) ? sofiaAuraHtml('inside') : ''}</span>
+              <span class="selected-event-media${isSofiaEvent(first) ? ' is-sofia' : ''}${dayRingClass(first)}"><img class="selected-event-image" alt="" src="${htmlEscape(first.imageUrl || placeholderFor(first.id, first.title))}" style="${imageFocusStyle(first)}" data-fallback-seed="${htmlEscape(first.id)}" data-fallback-label="${htmlEscape(first.title)}">${isSofiaEvent(first) ? sofiaAuraHtml('inside') : ''}</span>
               <div class="selected-event-copy">
                 <div class="selected-event-kicker">${htmlEscape(dayLabel)} · ${htmlEscape(timeLabel)}${repeat ? ` · ${htmlEscape(repeat)}` : ''}</div>
                 <h2 class="selected-event-title">${htmlEscape(first.title)}</h2>
@@ -10000,7 +10081,7 @@
         const aura = sofia ? sofiaAuraHtml('around', `grid-column:${(index % columns) + 1} / span 1;grid-row:${Math.floor(index / columns) + 1} / span 1`) : '';
         const work = showsWorkMark(event);
         return `
-          <button class="mini-event${sofia ? ' is-sofia' : ''}${work ? ' is-work' : ''}" type="button" data-upcoming-pick="${htmlEscape(event._instanceId)}" aria-label="Open ${htmlEscape(event.title)} on ${htmlEscape(exactDate)}${work ? ' (work)' : ''}">${work ? workBadgeHtml() : ''}
+          <button class="mini-event${sofia ? ' is-sofia' : ''}${work ? ' is-work' : ''}${dayRingClass(event)}" type="button" data-upcoming-pick="${htmlEscape(event._instanceId)}" aria-label="Open ${htmlEscape(event.title)} on ${htmlEscape(exactDate)}${work ? ' (work)' : ''}">${work ? workBadgeHtml() : ''}
             <img alt="" src="${htmlEscape(event.imageUrl || placeholderFor(event.id, event.title))}" style="${upcomingImageFocusStyle(event)}" data-fallback-seed="${htmlEscape(event.id)}" data-fallback-label="${htmlEscape(event.title)}">
             <span class="mini-copy">
               <span class="mini-time">${htmlEscape(exactDate)} · ${formatTime(date, false)}</span>
@@ -14807,6 +14888,10 @@
         els.wxDebugShadows.classList.toggle('is-on', cardShadows.on);
         els.wxDebugShadows.textContent = `Card shadows: ${cardShadows.on ? 'on' : 'off'}`;
       }
+      if (els.wxDebugDayRings) {
+        els.wxDebugDayRings.classList.toggle('is-on', dayRings.on);
+        els.wxDebugDayRings.textContent = `Event borders: ${dayRings.on ? 'on' : 'off'}`;
+      }
       els.wxDebug.querySelectorAll('[data-wx-speed]').forEach(button => {
         button.classList.toggle('is-on', Number(button.dataset.wxSpeed) === weatherFx.speed);
       });
@@ -14893,6 +14978,10 @@
       });
       els.wxDebugShadows?.addEventListener('click', () => {
         setCardShadows(!cardShadows.on);
+        renderWeatherDebug();
+      });
+      els.wxDebugDayRings?.addEventListener('click', () => {
+        setDayRings(!dayRings.on);
         renderWeatherDebug();
       });
       document.getElementById('wxDebugTurn')?.addEventListener('click', testCardTurn);
