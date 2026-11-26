@@ -160,7 +160,7 @@ const { default: handler } = await import('../api/tv/[action].js');
 const { buildTvPlan } = await import('../api/_tv-render.js');
 
 // ------------------------------------------------------------------ helpers
-function call(method, path, headers = {}) {
+function call(method, path, headers = {}, body = undefined) {
   return new Promise(resolve => {
     const res = {
       statusCode: 200,
@@ -168,7 +168,7 @@ function call(method, path, headers = {}) {
       setHeader(name, value) { this.headers[name.toLowerCase()] = value; },
       end(body) { resolve({ status: this.statusCode, headers: this.headers, body: Buffer.isBuffer(body) ? body : String(body || '') }); }
     };
-    handler({ method, url: path, headers: { host: 'homedash.test', ...headers } }, res);
+    handler({ method, url: path, headers: { host: 'homedash.test', ...headers }, body }, res);
   });
 }
 
@@ -346,6 +346,32 @@ test('a picture deleted by hand in Google Photos is put back', async () => {
   await runTvSync(at(oslo(27, 9)));
   assert.equal(new Set(album().items).size, album().items.length);
   assert.ok(albumDescriptions().some(text => text.startsWith('Fotballtrening, Friday 27 November')));
+});
+
+test('the Q panel: a free status read, and language and weeks stored for the album', async () => {
+  await call('GET', '/api/tv/status?light=1', { 'x-admin-pin': '1234' });
+  const before = { ...ops };
+  const light = JSON.parse((await call('GET', '/api/tv/status?light=1', { 'x-admin-pin': '1234' })).body);
+  assert.equal(ops.simple - before.simple + ops.advanced - before.advanced, 0, 'the light status is a CDN hit');
+  assert.equal(light.connected, true);
+  assert.deepEqual(light.settings, { language: 'en', weeks: 2 });
+
+  const bad = await call('POST', '/api/tv/settings', { 'x-admin-pin': '1234' }, { weeks: 9 });
+  assert.equal(bad.status, 400);
+  const saved = JSON.parse((await call('POST', '/api/tv/settings', { 'x-admin-pin': '1234' }, { language: 'nb' })).body);
+  assert.deepEqual(saved.settings, { language: 'nb', weeks: 2 });
+  let result = await runTvSync(at(oslo(27, 9, 30)));
+  assert.equal(result.reason, 'settings changed');
+  while (result.more) result = await runTvSync({ ...at(oslo(27, 9, 30)), force: true });
+  assert.ok(albumDescriptions()[0].startsWith('calendar overview, Fredag 27'), albumDescriptions()[0]);
+  assert.ok(albumDescriptions().some(text => text.includes('Neste uke')));
+
+  // One week ahead: next week's overview and tasks leave, nothing is redrawn.
+  const uploads = google.uploads;
+  await call('POST', '/api/tv/settings', { 'x-admin-pin': '1234' }, { weeks: 1 });
+  await runTvSync(at(oslo(27, 9, 40)));
+  assert.equal(google.uploads, uploads);
+  assert.ok(!albumDescriptions().some(text => text.includes('Neste uke')));
 });
 
 test('a revoked Google connection is reported once, then costs nothing per hour', async () => {

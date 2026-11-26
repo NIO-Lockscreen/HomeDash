@@ -958,11 +958,10 @@
     .kiosk-shell.daily-calendar-mode canvas.weather-fx,
     .kiosk-shell.daily-calendar-mode canvas.weather-spill { display: none; }
 
-    .wx-debug > #wxDebugPop,
     .wx-debug > #wxDebugShadows,
     .wx-debug > #wxDebugTurn { width: 100%; }
 
-    /* Weather test panel (press Q on the wall display). */
+    /* The Q panel (press Q on the wall display). */
     .wx-debug {
       position: fixed;
       right: 18px;
@@ -1037,29 +1036,10 @@
 
     .wx-debug button:disabled { opacity: .4; cursor: default; }
 
-    .wx-debug-status {
-      color: var(--muted);
-      font-weight: 700;
-      font-size: 12px;
-      font-variant-numeric: tabular-nums;
-      min-height: 1.3em;
-    }
-
-    .wx-debug-badge {
-      position: fixed;
-      left: 50%;
-      top: 10px;
-      z-index: 59;
-      transform: translateX(-50%);
-      padding: 5px 12px;
-      border-radius: 999px;
-      background: rgba(47, 43, 39, 0.78);
-      color: #fff;
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: .02em;
-      pointer-events: none;
-    }
+    .wx-tv-section { display: grid; gap: 8px; }
+    .wx-tv-section .wx-mode-note.is-problem { color: #a6522e; }
+    .wx-tv-link { color: var(--muted); font-size: 12px; font-weight: 800; text-decoration: none; }
+    .wx-tv-link:hover, .wx-tv-link:focus-visible { color: var(--ink); text-decoration: underline; }
 
     .weather-content {
       display: grid;
@@ -6159,11 +6139,11 @@
     </section>
   </div>
 
-  <section id="wxDebug" class="wx-debug hidden" role="dialog" aria-label="Weather test">
+  <section id="wxDebug" class="wx-debug hidden" role="dialog" aria-label="Q panel">
     <div class="wx-debug-head">
       <div>
         <div class="wx-debug-title">Q panel</div>
-        <div id="wxDebugHint" class="wx-debug-hint">Q or Esc closes · the test stays on</div>
+        <div id="wxDebugHint" class="wx-debug-hint">Q or Esc closes</div>
       </div>
       <button id="wxDebugClose" type="button" aria-label="Close the Q panel">×</button>
     </div>
@@ -6178,34 +6158,28 @@
     </section>
     <button type="button" id="wxPhoneApp"><svg viewBox="0 0 24 30" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="1.5" width="18" height="27" rx="4.5"/><path d="M9.5 5h5" stroke-linecap="round"/><path d="M9 25h6" stroke-linecap="round" stroke-width="1.6"/></svg><span>Open the phone app<small>Add and change tasks here, as on a phone</small></span></button>
     <div class="wx-debug-sep"></div>
-    <div class="wx-debug-label">Weather test · sky</div>
-    <div class="wx-debug-grid" id="wxDebugSky">
-      <button type="button" data-wx-sky="live">Live</button>
-      <button type="button" data-wx-sky="clear">Clear</button>
-      <button type="button" data-wx-sky="partly">Partly</button>
-      <button type="button" data-wx-sky="clouds">Clouds</button>
-      <button type="button" data-wx-sky="fog">Fog</button>
-      <button type="button" data-wx-sky="drizzle">Drizzle</button>
-      <button type="button" data-wx-sky="rain">Rain</button>
-      <button type="button" data-wx-sky="snow">Snow</button>
-      <button type="button" data-wx-sky="thunder">Thunder</button>
-    </div>
-    <div class="wx-debug-grid two">
-      <button type="button" id="wxDebugNight">Night</button>
-      <button type="button" id="wxDebugWind">Windy</button>
-    </div>
-    <div class="wx-debug-label">Effects</div>
-    <div class="wx-debug-grid two">
-      <button type="button" id="wxDebugFill">Fill up now</button>
-      <button type="button" id="wxDebugSpill">Leak / spill now</button>
-    </div>
-    <button type="button" id="wxDebugPop">Pop-out now</button>
-    <div class="wx-debug-label">Mini nuke goes off at</div>
-    <div class="wx-debug-grid three" id="wxDebugNuke">
-      <button type="button" data-wx-nuke="left">Left edge</button>
-      <button type="button" data-wx-nuke="middle">Middle</button>
-      <button type="button" data-wx-nuke="under">Under card</button>
-    </div>
+    <section id="tvSection" class="wx-tv-section" aria-label="TV screensaver">
+      <div class="wx-debug-label">TV screensaver · Google Photos</div>
+      <div id="tvStatus" class="wx-mode-note" aria-live="polite">Opens with the panel.</div>
+      <div class="wx-debug-grid two">
+        <button type="button" id="tvConnect">Connect</button>
+        <button type="button" id="tvUpdate">Update the TV now</button>
+      </div>
+      <div class="wx-debug-label">Language on the TV</div>
+      <div class="wx-debug-grid two" id="tvLanguage">
+        <button type="button" data-tv-language="en">English</button>
+        <button type="button" data-tv-language="nb">Norsk</button>
+      </div>
+      <div class="wx-debug-label">Weeks ahead on the TV</div>
+      <div class="wx-debug-grid four" id="tvWeeks">
+        <button type="button" data-tv-weeks="1">1</button>
+        <button type="button" data-tv-weeks="2">2</button>
+        <button type="button" data-tv-weeks="3">3</button>
+        <button type="button" data-tv-weeks="4">4</button>
+      </div>
+      <a class="wx-tv-link" href="/tv.html" target="_blank" rel="noopener">Previews, set-up and disconnect →</a>
+    </section>
+    <div class="wx-debug-sep"></div>
     <div class="wx-debug-label">New task drops into Upcoming at</div>
     <div class="wx-debug-grid three" id="wxDebugDrop">
       <button type="button" data-card-drop="first">First</button>
@@ -6214,16 +6188,7 @@
     </div>
     <button type="button" id="wxDebugShadows">Card shadows</button>
     <button type="button" id="wxDebugTurn">Turn the cards over</button>
-    <div class="wx-debug-label">Speed of fill and leak</div>
-    <div class="wx-debug-grid four" id="wxDebugSpeed">
-      <button type="button" data-wx-speed="1">1×</button>
-      <button type="button" data-wx-speed="4">4×</button>
-      <button type="button" data-wx-speed="12">12×</button>
-      <button type="button" data-wx-speed="40">40×</button>
-    </div>
-    <div id="wxDebugStatus" class="wx-debug-status"></div>
   </section>
-  <div id="wxDebugBadge" class="wx-debug-badge hidden"></div>
   <canvas id="weatherPop" class="weather-pop" aria-hidden="true"></canvas>
 
   <div id="phoneAppOverlay" class="phone-app-overlay hidden" role="dialog" aria-modal="true" aria-label="HomeDash on a phone">
@@ -6656,14 +6621,10 @@
       dangerStatus: document.getElementById('dangerStatus'),
       wxDebug: document.getElementById('wxDebug'),
       wxDebugClose: document.getElementById('wxDebugClose'),
-      wxDebugNight: document.getElementById('wxDebugNight'),
-      wxDebugWind: document.getElementById('wxDebugWind'),
-      wxDebugFill: document.getElementById('wxDebugFill'),
-      wxDebugSpill: document.getElementById('wxDebugSpill'),
-      wxDebugPop: document.getElementById('wxDebugPop'),
       wxDebugShadows: document.getElementById('wxDebugShadows'),
-      wxDebugStatus: document.getElementById('wxDebugStatus'),
-      wxDebugBadge: document.getElementById('wxDebugBadge'),
+      tvStatus: document.getElementById('tvStatus'),
+      tvConnect: document.getElementById('tvConnect'),
+      tvUpdate: document.getElementById('tvUpdate'),
       edgePanel: document.getElementById('edgePanel'),
       edgePanelTray: document.getElementById('edgePanelTray'),
       edgePanelHandle: document.getElementById('edgePanelHandle'),
@@ -14582,41 +14543,7 @@
       drawBlastBits(ctx);
     }
 
-    // The debug panel's "Pop-out now".
-    function popWeatherFxNow() {
-      const fx = weatherFx;
-      const pop = fx.pop;
-      if (!pop || !fx.geo) return;
-      const kind = pop.kind;
-      if (kind === 'sun' || kind === 'sun-cloud') startSunFlare();
-      else if (kind === 'moon' || kind === 'moon-cloud') spawnShootingStar();
-      else if (kind === 'clouds') spawnCloudWisp();
-      else if (kind === 'fog') {
-        if (fx.fog) fx.fog.burst = 4;
-      } else if (kind === 'rain') spawnRunner();
-      else if (kind === 'thunder') strikeLightningNow();
-      else if (kind === 'snow') {
-        pop.nextBokeh = 0;
-        if (fx.snow) fx.snow.nextGust = 0;
-      }
-      if (fx.windy) for (let index = 0; index < 3; index++) spawnWindStreak();
-      renderWeatherDebug();
-    }
 
-    function weatherPopLabel() {
-      const kind = weatherFx.pop?.kind;
-      return {
-        sun: 'Sun flare now',
-        'sun-cloud': 'Sun flare now',
-        moon: 'Shooting star now',
-        'moon-cloud': 'Shooting star now',
-        clouds: 'Cloud drifts off',
-        fog: 'Mist rolls in',
-        rain: 'Drop runs down',
-        thunder: 'Lightning now',
-        snow: 'Snow flurry now'
-      }[kind] || 'Pop-out now';
-    }
 
     // --- Drawing -------------------------------------------------------
 
@@ -14685,7 +14612,7 @@
     // --- Weather test panel (Q) ------------------------------------------
 
     const WX_DEBUG_CODES = { clear: 0, partly: 2, clouds: 3, fog: 45, drizzle: 53, rain: 63, snow: 73, thunder: 95 };
-    const weatherDebug = { open: false, sky: null, night: false, windy: false, statusTimer: null, live: { effect: 'partly', night: false, windy: false } };
+    const weatherDebug = { open: false, sky: null, night: false, windy: false, live: { effect: 'partly', night: false, windy: false } };
 
     function weatherDebugActive() {
       return Boolean(weatherDebug.sky);
@@ -14703,120 +14630,18 @@
       };
     }
 
-    function setWeatherDebugSky(sky) {
-      if (sky === 'live') {
-        weatherDebug.sky = null;
-      } else {
-        if (!weatherDebug.sky) {
-          weatherDebug.night = weatherDebug.live.night;
-          weatherDebug.windy = weatherDebug.live.windy;
-        }
-        weatherDebug.sky = sky;
-      }
-      renderWeather();
-      renderWeatherDebug();
-    }
 
-    function toggleWeatherDebugFlag(flag) {
-      // A toggle on the live sky starts a test of that same sky.
-      if (!weatherDebug.sky) {
-        weatherDebug.sky = weatherDebug.live.effect;
-        weatherDebug.night = weatherDebug.live.night;
-        weatherDebug.windy = weatherDebug.live.windy;
-      }
-      weatherDebug[flag] = !weatherDebug[flag];
-      renderWeather();
-      renderWeatherDebug();
-    }
 
-    function fillWeatherFxNow() {
-      const fx = weatherFx;
-      if (fx.water) {
-        fx.water.level = 1;
-        fx.water.phase = 'brim';
-        fx.water.phaseT = 0;
-        fx.water.slosh = 0.6;
-      } else if (fx.snow) {
-        fx.snow.cols = fx.snow.profile.map(value => value);
-        fx.snow.phase = 'full';
-        fx.snow.phaseT = 0;
-        fx.snow.wait = 2.5;
-        if (fx.pop) fx.pop.cap = 1;
-      }
-      renderWeatherDebug();
-    }
 
-    function spillWeatherFxNow() {
-      const fx = weatherFx;
-      if (fx.water) {
-        if (fx.water.phase === 'leak') return;
-        fx.water.level = Math.max(fx.water.level, 0.85);
-        startWaterLeak();
-      } else if (fx.snow) {
-        if (fx.snow.phase === 'sift') return;
-        fx.snow.cols = fx.snow.cols.map((value, index) => Math.max(value, fx.snow.profile[index] * 0.85));
-        startSnowSift();
-      } else if (fx.fog && fx.geo) {
-        fx.fog.burst = 3;
-      }
-      // And a handful of the card's own drops or flakes leak out with it.
-      if (fx.leak?.params.length && fx.geo) for (let index = 0; index < 5; index++) spawnLeak(fx.leak, fx.geo);
-      renderWeatherDebug();
-    }
 
-    function weatherDebugStatusText() {
-      const fx = weatherFx;
-      const sky = weatherDebug.sky || weatherDebug.live.effect;
-      const parts = [`${weatherDebug.sky ? 'Test' : 'Live'}: ${sky}${(weatherDebug.sky ? weatherDebug.night : weatherDebug.live.night) ? ', night' : ''}${(weatherDebug.sky ? weatherDebug.windy : weatherDebug.live.windy) ? ', windy' : ''}`];
-      if (wxReducedMotion.matches) parts.push('reduced motion is on, nothing moves');
-      else if (fx.water) {
-        const phase = { fill: 'filling', brim: 'full', leak: 'leaking' }[fx.water.phase] || fx.water.phase;
-        parts.push(`water ${Math.round(fx.water.level * 100)}% · ${phase}`);
-      } else if (fx.snow) {
-        const total = fx.snow.cols.reduce((sum, value, index) => sum + value / fx.snow.profile[index], 0);
-        const phase = { fill: 'piling up', full: 'full', sift: 'spilling' }[fx.snow.phase] || fx.snow.phase;
-        parts.push(`snow ${Math.round((total / WX_SNOW_COLS) * 100)}% · ${phase}`);
-      } else if (fx.fog) parts.push('mist pours over the edge');
-      if (fx.ledgeState?.face?.any) parts.push('water running down the Upcoming strip');
-      else if (fx.ledgeState?.wet > 0.08) parts.push('water on the Upcoming strip');
-      if (fx.leak?.params.length) parts.push(`${fx.leak.kind === 'snow' ? 'flakes' : 'drops'} leaking ${(fx.leak.rate * 60).toFixed(0)}/min`);
-      if (fx.pop?.flare) parts.push('flare');
-      if (fx.blast) parts.push('shock wave');
-      if (fx.pop?.kind === 'snow') parts.push(`snow cap ${Math.round(fx.pop.cap * 100)}%`);
-      if (!fx.running && (fx.family || fx.pop) && !wxReducedMotion.matches) parts.push('paused while the card is hidden');
-      return parts.join(' · ');
-    }
 
     function renderWeatherDebug() {
       if (!els.wxDebug) return;
-      const sky = weatherDebug.sky || 'live';
-      els.wxDebug.querySelectorAll('[data-wx-sky]').forEach(button => {
-        button.classList.toggle('is-on', button.dataset.wxSky === sky);
-      });
-      const night = weatherDebug.sky ? weatherDebug.night : weatherDebug.live.night;
-      const windy = weatherDebug.sky ? weatherDebug.windy : weatherDebug.live.windy;
-      els.wxDebugNight.classList.toggle('is-on', night);
-      els.wxDebugWind.classList.toggle('is-on', windy);
-      const fills = Boolean(weatherFx.water || weatherFx.snow);
-      els.wxDebugFill.disabled = !fills;
-      els.wxDebugSpill.disabled = !weatherFx.family;
-      els.wxDebugSpill.textContent = weatherFx.snow ? 'Spill snow now' : weatherFx.fog ? 'Pour mist now' : 'Leak now';
-      els.wxDebugPop.disabled = !weatherFx.pop;
-      els.wxDebugPop.textContent = weatherPopLabel();
       if (els.wxDebugShadows) {
         els.wxDebugShadows.classList.toggle('is-on', cardShadows.on);
         els.wxDebugShadows.textContent = `Card shadows: ${cardShadows.on ? 'on' : 'off'}`;
       }
-      els.wxDebug.querySelectorAll('[data-wx-speed]').forEach(button => {
-        button.classList.toggle('is-on', Number(button.dataset.wxSpeed) === weatherFx.speed);
-      });
-      els.wxDebugStatus.textContent = weatherDebugStatusText();
-      if (weatherDebug.sky) {
-        els.wxDebugBadge.textContent = `Weather test: ${weatherDebug.sky}${weatherDebug.night ? ' · night' : ''}${weatherDebug.windy ? ' · windy' : ''}${weatherFx.speed !== 1 ? ` · ${weatherFx.speed}×` : ''} — Q`;
-        els.wxDebugBadge.classList.remove('hidden');
-      } else {
-        els.wxDebugBadge.classList.add('hidden');
-      }
+      renderTvPanel();
     }
 
     function openWeatherDebug() {
@@ -14827,18 +14652,13 @@
       // On the phone the Q panel is only the mode switch.
       if (adminMode) return;
       renderWeatherDebug();
-      clearInterval(weatherDebug.statusTimer);
-      weatherDebug.statusTimer = setInterval(() => {
-        els.wxDebugStatus.textContent = weatherDebugStatusText();
-      }, 250);
+      loadTvPanel();
     }
 
     function closeWeatherDebug({ backToLive = false } = {}) {
       if (!els.wxDebug) return;
       weatherDebug.open = false;
       els.wxDebug.classList.add('hidden');
-      clearInterval(weatherDebug.statusTimer);
-      weatherDebug.statusTimer = null;
       if (backToLive && (weatherDebug.sky || weatherFx.speed !== 1)) {
         weatherDebug.sky = null;
         weatherFx.speed = 1;
@@ -14869,24 +14689,7 @@
       });
       els.wxDebugClose.addEventListener('click', () => closeWeatherDebug());
       if (adminMode) return;
-      els.wxDebug.addEventListener('click', event => {
-        const sky = event.target.closest('[data-wx-sky]');
-        if (sky) setWeatherDebugSky(sky.dataset.wxSky);
-        const speed = event.target.closest('[data-wx-speed]');
-        if (speed) {
-          weatherFx.speed = Number(speed.dataset.wxSpeed) || 1;
-          renderWeatherDebug();
-        }
-      });
-      els.wxDebugNight.addEventListener('click', () => toggleWeatherDebugFlag('night'));
-      els.wxDebugWind.addEventListener('click', () => toggleWeatherDebugFlag('windy'));
-      els.wxDebugFill.addEventListener('click', fillWeatherFxNow);
-      els.wxDebugSpill.addEventListener('click', spillWeatherFxNow);
-      els.wxDebugPop.addEventListener('click', popWeatherFxNow);
-      document.getElementById('wxDebugNuke')?.addEventListener('click', event => {
-        const button = event.target.closest('[data-wx-nuke]');
-        if (button) testNukeAt(button.dataset.wxNuke);
-      });
+      bindTvPanel();
       document.getElementById('wxDebugDrop')?.addEventListener('click', event => {
         const button = event.target.closest('[data-card-drop]');
         if (button) testCardDrop(button.dataset.cardDrop);
@@ -14898,17 +14701,165 @@
       document.getElementById('wxDebugTurn')?.addEventListener('click', testCardTurn);
     }
 
-    // The Q panel's nuke buttons: the panel steps aside and the nuke goes off
-    // at the left edge of the screen, in the middle, or right under the
-    // weather card, to see how the shock wave hits the card from there.
-    function testNukeAt(where) {
-      if (edgePanel.falling || nuke.boom || wxReducedMotion.matches) return;
-      closeWeatherDebug();
-      const card = els.weatherCard?.getBoundingClientRect();
-      const x = where === 'under' && card?.width
-        ? card.left + card.width / 2
-        : where === 'middle' ? window.innerWidth / 2 : window.innerWidth * 0.04;
-      setTimeout(() => launchNuke(x), 250);
+
+    // The TV screensaver section of the Q panel: the Google Photos album the
+    // TCL plays in ambient mode (see api/tv/[action].js). Opening the panel
+    // reads the TV state off the Blob CDN, which costs no Blob operation.
+    const tvPanel = { status: null, loading: false, busy: false, message: '', problem: false };
+
+    function tvPin() {
+      let pin = getPin().trim();
+      if (pin) return pin;
+      pin = (prompt('Enter the admin PIN for the TV settings:') || '').trim();
+      if (pin) localStorage.setItem('homeOrganizerAdminPin', pin);
+      return pin;
+    }
+
+    async function tvRequest(path, { method = 'GET', body, ask = true } = {}) {
+      const pin = ask ? tvPin() : getPin().trim();
+      if (!pin) throw new Error('The TV settings need the admin PIN.');
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 75000);
+      try {
+        const response = await fetch(path, {
+          method,
+          headers: { 'x-admin-pin': pin, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+          body: body ? JSON.stringify(body) : undefined,
+          signal: controller.signal
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) throw new Error('Wrong admin PIN.');
+        if (!response.ok) throw new Error(data.error || `The TV answered ${response.status}.`);
+        return data;
+      } catch (error) {
+        throw error?.name === 'AbortError' ? new Error('The TV update took too long; it carries on by itself within the hour.') : error;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function tvWhen(value) {
+      const date = value ? new Date(value) : null;
+      if (!date || Number.isNaN(date.getTime())) return '';
+      return date.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderTvPanel() {
+      if (!els.tvStatus) return;
+      const status = tvPanel.status;
+      const connected = Boolean(status?.connected);
+      let text = tvPanel.message;
+      let problem = tvPanel.problem;
+      if (!text) {
+        if (tvPanel.loading) text = 'Checking…';
+        else if (!status) text = getPin().trim() ? 'Could not read the TV state.' : 'Needs the admin PIN — press Connect or Update.';
+        else if (!connected) text = status.setup?.missing?.length
+          ? `Add ${status.setup.missing.join(', ')} in Vercel first (see /tv.html).`
+          : 'Not connected. Connect, then pick the album “HomeDash TV” on the TV under Ambient mode.';
+        else if (status.lastError) {
+          text = status.lastError.reconnect ? 'Google Photos needs to be connected again.' : `Problem: ${status.lastError.message}`;
+          problem = true;
+        } else {
+          const run = status.lastRun ? ` · checked ${tvWhen(status.lastRun.at)}` : '';
+          text = `${status.slides.length} pictures in the album${status.pending ? ', more on the way' : ''}${run}. Checked every hour.`;
+        }
+      }
+      els.tvStatus.textContent = text;
+      els.tvStatus.classList.toggle('is-problem', problem);
+      els.tvConnect.textContent = connected ? 'Connect again' : 'Connect';
+      els.tvConnect.disabled = tvPanel.busy;
+      els.tvUpdate.disabled = tvPanel.busy || (Boolean(status) && !connected);
+      const settings = status?.settings;
+      els.wxDebug?.querySelectorAll('[data-tv-language]').forEach(button => {
+        button.classList.toggle('is-on', settings?.language === button.dataset.tvLanguage);
+        button.disabled = tvPanel.busy || !status;
+      });
+      els.wxDebug?.querySelectorAll('[data-tv-weeks]').forEach(button => {
+        button.classList.toggle('is-on', Number(settings?.weeks) === Number(button.dataset.tvWeeks));
+        button.disabled = tvPanel.busy || !status;
+      });
+    }
+
+    async function loadTvPanel({ ask = false } = {}) {
+      if (!els.tvStatus || tvPanel.loading) return;
+      if (!ask && !getPin().trim()) {
+        renderTvPanel();
+        return;
+      }
+      tvPanel.loading = true;
+      renderTvPanel();
+      try {
+        tvPanel.status = await tvRequest('/api/tv/status?light=1', { ask });
+        tvPanel.message = '';
+        tvPanel.problem = false;
+      } catch (error) {
+        tvPanel.message = error.message;
+        tvPanel.problem = true;
+      } finally {
+        tvPanel.loading = false;
+        renderTvPanel();
+      }
+    }
+
+    async function tvBusy(work) {
+      if (tvPanel.busy) return;
+      tvPanel.busy = true;
+      tvPanel.problem = false;
+      renderTvPanel();
+      try {
+        await work();
+      } catch (error) {
+        tvPanel.message = error.message;
+        tvPanel.problem = true;
+      } finally {
+        tvPanel.busy = false;
+        renderTvPanel();
+      }
+    }
+
+    // A big change (the first upload, a new language) can take more than one
+    // run; the server says `more` until it is done.
+    async function updateTvNow() {
+      let total = 0;
+      for (let run = 1; run <= 8; run += 1) {
+        tvPanel.message = run === 1 ? 'Updating the TV…' : `Still uploading (${total} so far)…`;
+        renderTvPanel();
+        const result = await tvRequest('/api/tv/refresh', { method: 'POST' });
+        if (!result.ok) throw new Error(result.error || 'The TV update failed.');
+        total += result.uploaded || 0;
+        if (!result.more) break;
+      }
+      tvPanel.message = '';
+      await loadTvPanel();
+      tvPanel.message = `Done: ${total} picture${total === 1 ? '' : 's'} uploaded. ${tvPanel.status?.slides?.length ?? 0} in the album.`;
+    }
+
+    function bindTvPanel() {
+      if (!els.tvStatus) return;
+      els.tvConnect.addEventListener('click', () => tvBusy(async () => {
+        const { url } = await tvRequest('/api/tv/connect', { method: 'POST' });
+        // A new tab keeps the wall where it is; without one, go there.
+        const tab = window.open(url, '_blank', 'noopener');
+        if (!tab) location.href = url;
+        tvPanel.message = 'Finish the Google sign-in in the new tab, then reopen this panel.';
+      }));
+      els.tvUpdate.addEventListener('click', () => tvBusy(async () => {
+        if (!tvPanel.status) await loadTvPanel({ ask: true });
+        if (!tvPanel.status?.connected) return;
+        await updateTvNow();
+      }));
+      els.wxDebug.addEventListener('click', event => {
+        const language = event.target.closest('[data-tv-language]');
+        const weeks = event.target.closest('[data-tv-weeks]');
+        if (!language && !weeks) return;
+        const change = language ? { language: language.dataset.tvLanguage } : { weeks: Number(weeks.dataset.tvWeeks) };
+        tvBusy(async () => {
+          const { settings } = await tvRequest('/api/tv/settings', { method: 'POST', body: change });
+          tvPanel.status = { ...(tvPanel.status || {}), settings };
+          if (tvPanel.status.connected) await updateTvNow();
+          else tvPanel.message = 'Saved. Used once Google Photos is connected.';
+        });
+      });
     }
 
     function weatherEffectRank(code) {

@@ -2,14 +2,17 @@
 // deployment):
 //
 //   GET|POST /api/tv/refresh     hourly job (Bearer CRON_SECRET) or by hand (PIN)
-//   GET      /api/tv/status      what the album holds and what it should (PIN)
+//   GET      /api/tv/status      what the album holds and what it should (PIN);
+//                                ?light=1 reads the state off the CDN only (free)
+//   POST     /api/tv/settings    language and weeks ahead, from the Q panel (PIN)
 //   GET      /api/tv/preview     one slide as a JPEG, nothing uploaded (PIN)
 //   POST     /api/tv/connect     the Google sign-in address (PIN)
 //   GET      /api/tv/callback    where Google sends the browser back
 //   POST     /api/tv/disconnect  forget the Google connection (PIN)
-import { buildTvPlan, renderTvSlide, tvLanguage, tvWeeks, TV_WIDTH, TV_HEIGHT, TV_LAYOUT_VERSION } from '../_tv-render.js';
-import { runTvSync, albumTitle } from '../_tv-job.js';
+import { buildTvPlan, renderTvSlide, TV_WIDTH, TV_HEIGHT, TV_LAYOUT_VERSION } from '../_tv-render.js';
+import { runTvSync, albumTitle, tvSettings } from '../_tv-job.js';
 import {
+  readTvStateCheap,
   readTvStateFresh,
   writeTvState,
   readEventsForTv,
@@ -53,7 +56,7 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--
 main{max-width:560px;background:var(--card);border-radius:24px;padding:28px;box-shadow:0 18px 45px rgba(78,68,56,.12)}
 h1{font-family:Georgia,serif;font-weight:500;letter-spacing:-.03em;margin:0 0 12px;font-size:32px;line-height:1.1}
 p,li{color:var(--muted)} strong{color:var(--ink)} a{color:inherit}
-</style></head><body><main><h1>${escapeHtml(title)}</h1>${bodyHtml}<p><a href="/tv.html">Back to the TV settings</a></p></main></body></html>`);
+</style></head><body><main><h1>${escapeHtml(title)}</h1>${bodyHtml}<p><a href="/">Back to HomeDash</a> · <a href="/tv.html">TV details</a></p></main></body></html>`);
 }
 
 function actionOf(req) {
@@ -100,16 +103,31 @@ function publicSlides(state) {
   }));
 }
 
+async function readJson(req) {
+  if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) return req.body;
+  if (typeof req.body === 'string') return JSON.parse(req.body || '{}');
+  const chunks = [];
+  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  const text = Buffer.concat(chunks).toString('utf8');
+  return text ? JSON.parse(text) : {};
+}
+
 async function status(req, res) {
-  const state = await readTvStateFresh();
+  // The Q panel's quick look reads the state off the CDN (free, at most a
+  // minute behind) and leaves the slide plan out.
+  const light = new URL(req.url, 'https://localhost').searchParams.get('light') === '1';
+  const state = light ? await readTvStateCheap() : await readTvStateFresh();
+  const settings = tvSettings(state);
   let plan = [];
   let planError = '';
-  try {
-    const doc = await readEventsForTv();
-    if (doc) plan = buildTvPlan({ events: doc.events, now: new Date() });
-    else planError = 'The task list could not be confirmed as current; try again in a minute.';
-  } catch (error) {
-    planError = error.message;
+  if (!light) {
+    try {
+      const doc = await readEventsForTv();
+      if (doc) plan = buildTvPlan({ events: doc.events, now: new Date(), ...settings });
+      else planError = 'The task list could not be confirmed as current; try again in a minute.';
+    } catch (error) {
+      planError = error.message;
+    }
   }
   send(res, 200, {
     connected: Boolean(state.google?.refreshToken),
@@ -128,13 +146,14 @@ async function status(req, res) {
     pending: Boolean(state.pending),
     lastRun: state.lastRun || null,
     lastError: state.lastError || null,
+    settings,
     setup: {
       missing: missingSetup(),
       redirectUri: redirectUri(req),
       cheapChecks: Boolean(publicBlobUrl(TV_STATE_PATH)),
       size: `${TV_WIDTH}x${TV_HEIGHT}`,
-      language: tvLanguage(),
-      weeks: tvWeeks(),
+      language: settings.language,
+      weeks: settings.weeks,
       layout: TV_LAYOUT_VERSION,
       albumTitle: albumTitle()
     }
@@ -148,7 +167,7 @@ async function preview(req, res) {
     send(res, 503, { error: 'The task list could not be confirmed as current; try again in a minute.' });
     return;
   }
-  const plan = buildTvPlan({ events: doc.events, now: new Date() });
+  const plan = buildTvPlan({ events: doc.events, now: new Date(), ...tvSettings(await readTvStateCheap()) });
   const wanted = url.searchParams.get('slide') || '0';
   const slide = plan.find(item => item.key === wanted) || plan[Number(wanted)] || plan[0];
   const image = await renderTvSlide(slide.model);
@@ -228,6 +247,39 @@ ${progress}
 <p>On the TCL: <strong>Settings → System → Ambient mode → Google Photos</strong>, and pick <strong>${escapeHtml(album.title)}</strong>. It only has to be picked once.</p>`);
 }
 
+// Language and weeks ahead. Saved in the TV state; the next run redraws what
+// they change (a new language redraws every slide, more weeks only adds).
+async function saveSettings(req, res) {
+  let body;
+  try {
+    body = await readJson(req);
+  } catch {
+    send(res, 400, { error: 'Send JSON.' });
+    return;
+  }
+  const state = await readTvStateFresh();
+  const config = { ...(state.config || {}) };
+  if (body.language !== undefined) {
+    if (body.language !== 'en' && body.language !== 'nb') {
+      send(res, 400, { error: 'Language is en or nb.' });
+      return;
+    }
+    config.language = body.language;
+  }
+  if (body.weeks !== undefined) {
+    const weeks = Number(body.weeks);
+    if (!Number.isInteger(weeks) || weeks < 1 || weeks > 4) {
+      send(res, 400, { error: 'Weeks ahead is 1 to 4.' });
+      return;
+    }
+    config.weeks = weeks;
+  }
+  const before = JSON.stringify(tvSettings(state));
+  const next = { ...state, config };
+  if (JSON.stringify(tvSettings(next)) !== before) await writeTvState(next);
+  send(res, 200, { ok: true, settings: tvSettings(next) });
+}
+
 async function disconnect(req, res) {
   const state = await readTvStateFresh();
   if (state.google?.refreshToken) {
@@ -270,6 +322,7 @@ export default async function handler(req, res) {
     if (action === 'status' && req.method === 'GET') return await status(req, res);
     if (action === 'preview' && req.method === 'GET') return await preview(req, res);
     if (action === 'connect' && req.method === 'POST') return await connect(req, res);
+    if (action === 'settings' && req.method === 'POST') return await saveSettings(req, res);
     if (action === 'disconnect' && req.method === 'POST') return await disconnect(req, res);
     send(res, 404, { error: `Unknown TV action "${action}".` });
   } catch (error) {

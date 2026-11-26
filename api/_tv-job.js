@@ -50,8 +50,19 @@ export function albumTitle() {
   return String(process.env.TV_ALBUM_TITLE || 'HomeDash TV').trim().slice(0, 500) || 'HomeDash TV';
 }
 
-function settingsKey() {
-  return `${TV_LAYOUT_VERSION}|${tvLanguage()}|${tvWeeks()}`;
+// Language and weeks ahead, as picked in the wall's Q panel (stored in the
+// TV state), else from TV_LANGUAGE / TV_WEEKS, else English and two weeks.
+export function tvSettings(state) {
+  const config = state?.config || {};
+  return {
+    language: config.language === 'nb' || config.language === 'en' ? config.language : tvLanguage(),
+    weeks: Number.isInteger(config.weeks) && config.weeks >= 1 && config.weeks <= 4 ? config.weeks : tvWeeks()
+  };
+}
+
+function settingsKey(state) {
+  const { language, weeks } = tvSettings(state);
+  return `${TV_LAYOUT_VERSION}|${language}|${weeks}`;
 }
 
 // Why the album needs work, or '' when it does not. Decided from the cheap
@@ -61,7 +72,7 @@ function reasonToWork(state, { stamp, todayKey, now }) {
   if (state.pending) return 'unfinished upload';
   if (!stamp || state.seen.sourceVersion !== stamp) return 'tasks changed';
   if (state.seen.dateKey !== todayKey) return 'new day';
-  if (state.seen.settings !== settingsKey()) return 'settings changed';
+  if (state.seen.settings !== settingsKey(state)) return 'settings changed';
   if (Object.values(state.slides || {}).some(slide => slide.until && Date.parse(slide.until) <= now.getTime())) return 'task over';
   return '';
 }
@@ -119,7 +130,7 @@ async function removeExpired(state, accessToken, now) {
 // The full pass: plan, reconcile with the album, upload what changed, take
 // out what is gone.
 async function syncAlbum(state, accessToken, { events, now, rebuild, startedAt, budgetMs }) {
-  const plan = buildTvPlan({ events, now });
+  const plan = buildTvPlan({ events, now, ...tvSettings(state) });
   let album = state.album;
   let albumRecreated = false;
   let inAlbum = null;
@@ -281,7 +292,7 @@ async function work({ reason, now, todayKey, rebuild, startedAt, budgetMs, trigg
       albumRecreatedAt: result.albumRecreated ? now.toISOString() : state.albumRecreatedAt || null,
       slides: result.slides,
       pending: result.pending || result.notConfirmed > 0,
-      seen: { sourceVersion: doc.updatedAt, dateKey: todayKey, settings: settingsKey() },
+      seen: { sourceVersion: doc.updatedAt, dateKey: todayKey, settings: settingsKey(state) },
       lastError,
       lastRun: { at: now.toISOString(), trigger, reason, uploaded: result.uploaded, removed: result.removed, ms: Date.now() - startedAt }
     });

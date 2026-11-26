@@ -616,8 +616,7 @@ Priming is what keeps this free in everyday use: until the panel is pulled or
 goes off the cards are plain flat elements, with no extra elements, layers or animation
 loop. A moment after the panel goes away without going off, or once the cards
 have settled after a nuke, they are lowered and taken apart again. The rattle
-itself only moves and fades composited layers. The Q panel's nuke buttons
-rattle the cards too (they prime them on the spot).
+itself only moves and fades composited layers.
 
 It is all drawn on one canvas in the edge panel's layer, in front of the
 dashboard, and takes about four seconds. The handle comes back after about three,
@@ -1047,7 +1046,6 @@ rather than appear at it.
   at night, or they would not show.
 - Flakes drift out of the bottom onto the Upcoming strip's heap, or sway out
   over a side and slide under the next card.
-- In the Q panel, *Leak now* / *Spill snow now* also sends five of them at once.
 
 ### The Upcoming strip as a ledge
 
@@ -1151,31 +1149,29 @@ grown visibly; the sun, moon, clouds and fog banks are drawn once per size and
 then only moved. Calm skies (sun, moon, clouds, fog) run at 30 frames a second
 unless a flare, a shooting star or a gust is on.
 
-### Weather test panel (press Q)
+### The Q panel (press Q)
 
 On the wall display, press **Q** (or hold the date under the clock) to open a
 small panel in the top right corner, the **Q panel**. Its first section is the
 screen's **Mode** (see *Work mode*), then **Open the phone app** (see *The phone
-app on the wall*); the weather test follows:
+app on the wall*), then the **TV screensaver** (see *The TV screensaver* below):
 
-- **Sky**: Live, or one of clear, partly, clouds, fog, drizzle, rain, snow,
-  thunder. Only the card's sky changes; the temperature and description stay
-  live.
-- **Night** and **Windy** switch on the dark sky and the wind gusts. Used on the
-  live sky, they start a test of that same sky.
-- In fog, *Pour mist now* and *Mist rolls in* both send a burst of mist over
-  the edge for a few seconds.
-- **Fill up now** fills the water or the snow pile (and the snow cap and
-  icicles) to full, so the leak or the spill follows a few seconds later.
-  **Leak now** (or *Spill snow now* / *Pour mist now*) starts it straight away.
-- The wide button below plays the sky's out-of-the-card effect at once: *Sun
-  flare now*, *Shooting star now*, *Cloud drifts off*, *Mist rolls in*, *Drop
-  runs down*, *Lightning now* (the card's flash jumps to its next strike) or
-  *Snow flurry now*. With wind on, it also sends a few gusts.
-- **Mini nuke goes off at**: *Left edge*, *Middle* or *Under card* closes the
-  panel and sets the nuke off at that place at the bottom of the screen (without
-  the panel falling), to see how the shock wave hits the card from there.
-  *Fill up now* first gives it the most to blow away.
+- A status line: how many pictures are in the TV album, when the album was last
+  checked, or what is wrong.
+- **Connect** (or *Connect again*) opens the Google sign-in in a new tab, so the
+  wall stays where it is. **Update the TV now** runs the hourly check straight
+  away and keeps going until every picture is up.
+- **Language on the TV** (*English* / *Norsk*) and **Weeks ahead on the TV**
+  (1–4) are stored for the TV album, not for this screen, and the TV is updated
+  at once.
+- *Previews, set-up and disconnect* opens `/tv.html`.
+
+Opening the panel reads the TV state off the Blob CDN, so it costs no Blob
+operation. The PIN is the admin PIN the screen already has; without one, the
+first TV button asks for it.
+
+The tests follow:
+
 - **New task drops into Upcoming at**: *First*, *Middle* or *Last* closes the
   panel and drops a made-up task ("New task (test)") into that place on the
   page on show, through the same path a real new task takes, so the cards in
@@ -1191,14 +1187,10 @@ app on the wall*); the weather test follows:
   holds them face down for a couple of seconds and turns them back. Every other
   card turns over end to end and the rest sideways, so the back can be seen both
   ways round.
-- **Speed** (1×, 4×, 12×, 40×) only speeds up the filling. The leak and the
-  spill always run at their real speed, so they can be judged as they will look.
-- A status line shows the sky, how full the card is and what it is doing.
 
-Q or Esc closes the panel and the test stays on; a dark pill at the top of the
-screen says so. Live ends it. A test left on also ends with the five-minute idle
-reset, or with a reload, so a forgotten one cannot keep the wall on the wrong
-weather. Q is ignored while typing in a field.
+The weather test (sky, night, wind, fill, leak and pop-out), the mini nuke test
+and the fill speed are no longer in the panel. The weather card always shows the
+live weather. Q or Esc closes the panel; Q is ignored while typing in a field.
 
 ## The TV screensaver (TCL / Google TV)
 
@@ -1316,8 +1308,8 @@ saves what it did, and answers `"more": true`. The GitHub job and the
    (`https://your-project.vercel.app`) and `CRON_SECRET` (the same value as in
    Vercel). Until both are there the hourly workflow does nothing and stays
    green.
-6. Open **`/tv.html`** (it uses the admin PIN this device already has) and press
-   **Connect Google Photos**. At Google's warning choose **Advanced → Go to …**
+6. On the wall, press **Q** and, under *TV screensaver*, press **Connect** (or
+   open **`/tv.html`** on any device and press **Connect Google Photos**). At Google's warning choose **Advanced → Go to …**
    and leave all three permissions ticked: upload, see its own album, take its
    own pictures out of that album. HomeDash makes the album and uploads the
    first pictures straight away.
@@ -1325,22 +1317,28 @@ saves what it did, and answers `"more": true`. The GitHub job and the
    ambient mode settings in the Google Home app) and pick **HomeDash TV**. Only
    once.
 
+Day to day it is run from the wall's **Q panel** (see *The Q panel* above).
 `/tv.html` previews every slide exactly as it will be uploaded (nothing is
-uploaded by a preview), says which are already on the TV, and has **Update the
-TV now** and **Disconnect**.
+uploaded by a preview), says which are already on the TV, lists the set-up
+steps with your exact redirect URI, and has **Disconnect**.
 
 ### Settings
 
-Optional environment variables:
+**Language on the TV** (English or Norsk) and **Weeks ahead** (1–4, default 2:
+this week and next) are picked in the wall's Q panel and stored in the TV state
+(`config`). A new language redraws every picture, so expect one burst of
+uploads. More weeks only adds pictures, and fewer only takes them out.
+
+Environment variables, all optional, used until something is picked in the Q
+panel:
 
 ```txt
-TV_LANGUAGE=nb          # Norwegian labels (I dag, I morgen, Uke ...); default en, like the wall
-TV_WEEKS=2              # weeks ahead to show, 1-4; default 2 (this week and next)
+TV_LANGUAGE=nb          # en (default, like the wall) or nb
+TV_WEEKS=2              # 1-4
 TV_ALBUM_TITLE=HomeDash TV
 ```
 
-At most 40 pictures are kept in the album. Changing `TV_LANGUAGE` or
-`TV_WEEKS` redraws everything on the next run, so expect one burst of uploads.
+At most 40 pictures are kept in the album.
 
 ### What is not known yet
 
@@ -1373,7 +1371,8 @@ At most 40 pictures are kept in the album. Changing `TV_LANGUAGE` or
 - `api/_tv-state.js`: the state file, the free CDN reads, token sealing.
 - `api/_tv-fonts.js`: Inter and Gelasio (a free face drawn to Georgia's
   metrics), embedded; licences in `api/_tv-fonts-LICENSE.txt`.
-- `api/tv/[action].js`: the endpoints. `tv.html`: the settings page.
+- `api/tv/[action].js`: the endpoints. `tv.html`: the settings page. The Q
+  panel's TV section is in `index.html` (`renderTvPanel`, `bindTvPanel`).
 - `scripts/test-tv.mjs`: an end-to-end test with Blob and Google faked, which
   also counts the Blob operations of each kind of hour:
 
