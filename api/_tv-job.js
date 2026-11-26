@@ -1,9 +1,10 @@
-// Keeps the HomeDash TV album in step with the calendar. Run once an hour
-// (GitHub Actions), once a day as a fallback (Vercel cron), and by hand from
-// /tv.html.
+// Keeps the HomeDash TV album in step with the calendar. Runs once a day,
+// just after midnight (Vercel cron), with a catch-up run a couple of hours
+// later that only does anything when the first left work over or never ran;
+// and by hand from the Q panel or /tv.html.
 //
-// What an hour costs:
-//   nothing changed   - two reads off the Blob CDN (cache hits, not billed as
+// What a run costs:
+//   nothing to do     - two reads off the Blob CDN (cache hits, not billed as
 //                       Blob operations) and a few milliseconds of function.
 //   a task is over    - its picture is taken out of the album: one confirmed
 //                       state read and one state write. The task list is not
@@ -39,8 +40,8 @@ import {
 // The function is cut off at 60 seconds (vercel.json). No new slide is
 // started after this much, leaving time to confirm, tidy up and save.
 const UPLOAD_BUDGET_MS = 38 * 1000;
-// After three failures in a row with the same error, try only every six
-// hours, so a broken connection cannot spend Blob operations every hour.
+// After three failures in a row with the same error, try at most every six
+// hours, so a broken connection cannot keep spending Blob operations.
 const BACKOFF_AFTER_FAILURES = 3;
 const BACKOFF_MS = 6 * 60 * 60 * 1000;
 // Pictures somebody else's run may have just uploaded are left alone.
@@ -105,7 +106,7 @@ async function failed(state, error, now) {
   const count = previous && previous.message === message ? Number(previous.count || 1) + 1 : 1;
   const lastError = { at: now.toISOString(), message, reconnect: Boolean(error?.reconnect), count };
   // A repeat of the same failure is only written while it is still counting
-  // up to the back-off, so a failure that sticks does not write every hour.
+  // up to the back-off, so a failure that sticks does not write every run.
   if (!previous || previous.message !== message || count <= BACKOFF_AFTER_FAILURES || error?.reconnect !== previous.reconnect || count % 4 === 0) {
     try {
       await writeTvState({ ...state, lastError });

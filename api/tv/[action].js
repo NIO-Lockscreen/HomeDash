@@ -1,7 +1,7 @@
 // The TV screensaver's endpoints, all in one function (Hobby allows twelve per
 // deployment):
 //
-//   GET|POST /api/tv/refresh     hourly job (Bearer CRON_SECRET) or by hand (PIN)
+//   GET|POST /api/tv/refresh     daily Vercel cron (Bearer CRON_SECRET) or by hand (PIN)
 //   GET      /api/tv/status      what the album holds and what it should (PIN);
 //                                ?light=1 reads the state off the CDN only (free)
 //   POST     /api/tv/settings    language and weeks ahead, from the Q panel (PIN)
@@ -68,8 +68,7 @@ function isAdmin(req) {
   return Boolean(process.env.ADMIN_PIN) && req.headers['x-admin-pin'] === process.env.ADMIN_PIN;
 }
 
-// Vercel's cron sends `Authorization: Bearer <CRON_SECRET>`; the GitHub
-// workflow sends the same.
+// Vercel's cron sends `Authorization: Bearer <CRON_SECRET>`.
 function isCron(req) {
   const secret = process.env.CRON_SECRET;
   return Boolean(secret) && req.headers.authorization === `Bearer ${secret}`;
@@ -239,8 +238,8 @@ async function callback(req, res) {
   }
   const albumLink = album.url ? `<a href="${escapeHtml(album.url)}" target="_blank" rel="noopener">${escapeHtml(album.title)}</a>` : `<strong>${escapeHtml(album.title)}</strong>`;
   const progress = first.ok
-    ? `<p><strong>${first.uploaded || 0}</strong> of ${first.planned || 0} pictures are already in the album${first.more ? '; the rest follow within the hour, or press <strong>Update the TV now</strong> on the settings page' : ''}.</p>`
-    : `<p>The first upload failed: <strong>${escapeHtml(first.error || 'unknown error')}</strong>. The hourly job tries again.</p>`;
+    ? `<p><strong>${first.uploaded || 0}</strong> of ${first.planned || 0} pictures are already in the album${first.more ? '; press <strong>Update the TV now</strong> in the Q panel for the rest, or they follow with the nightly update' : ''}.</p>`
+    : `<p>The first upload failed: <strong>${escapeHtml(first.error || 'unknown error')}</strong>. The nightly update tries again, or press <strong>Update the TV now</strong> in the Q panel.</p>`;
   sendPage(res, 200, 'Google Photos is connected', `
 <p>HomeDash keeps the album ${albumLink} in step with the calendar.</p>
 ${progress}
@@ -306,7 +305,7 @@ export default async function handler(req, res) {
       }
       const url = new URL(req.url, 'https://localhost');
       const result = await runTvSync({
-        // By hand it always looks; the hourly job only when something changed.
+        // By hand it always looks; the cron only when something changed.
         force: admin || url.searchParams.get('force') === '1',
         rebuild: admin && url.searchParams.get('rebuild') === '1',
         trigger: admin ? 'by hand' : String(req.headers['user-agent'] || '').includes('vercel-cron') ? 'vercel cron' : 'schedule'

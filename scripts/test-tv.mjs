@@ -1,6 +1,6 @@
 // End-to-end test of the TV screensaver sync, with Vercel Blob and Google
 // Photos replaced by fakes in memory. Counts the Blob operations each run
-// costs, so "an idle hour is free" is checked rather than assumed.
+// costs, so "a run with nothing to do is free" is checked rather than assumed.
 //
 //   npm install
 //   node --experimental-test-module-mocks scripts/test-tv.mjs
@@ -226,7 +226,7 @@ test('the plan: overview, this week, next week overview, next week, family only'
   assert.notEqual(tomorrow[0].hash, plan[0].hash, 'the overview does');
 });
 
-test('not connected: the hourly check does nothing and costs no Blob operation', async () => {
+test('not connected: the daily run does nothing and costs no Blob operation', async () => {
   saveEvents();
   const { result, simple, advanced } = await costOf(() => runTvSync(at(oslo(26, 8))))();
   assert.equal(result.skipped, 'not connected');
@@ -273,8 +273,8 @@ test('the album holds every slide, in slideshow order', async () => {
   }
 });
 
-test('an hour in which nothing changed costs no Blob operation and uploads nothing', async () => {
-  // Warm the CDN copies the way the first hourly check after a write would.
+test('a run with nothing to do (the catch-up) costs no Blob operation and uploads nothing', async () => {
+  // Warm the CDN copies the way the first run after a write would.
   await runTvSync(at(oslo(26, 10)));
   const uploads = google.uploads;
   const { result, simple, advanced } = await costOf(() => runTvSync(at(oslo(26, 11))))();
@@ -374,7 +374,7 @@ test('the Q panel: a free status read, and language and weeks stored for the alb
   assert.ok(!albumDescriptions().some(text => text.includes('Neste uke')));
 });
 
-test('a revoked Google connection is reported once, then costs nothing per hour', async () => {
+test('a revoked Google connection is reported once, then costs nothing per run', async () => {
   google.refreshFails = true;
   events = [...events, { id: 'new', title: 'Ny avtale', start: oslo(29, 15), repeat: 'none' }];
   saveEvents();
@@ -400,7 +400,7 @@ test('status and preview need the PIN; preview answers with a 16:9 JPEG', async 
   assert.equal(decoded.width / decoded.height, 16 / 9);
 });
 
-test('the hourly job needs the cron secret', async () => {
+test('the cron run needs the cron secret', async () => {
   assert.equal((await call('GET', '/api/tv/refresh')).status, 401);
   const ok = await call('GET', '/api/tv/refresh', { authorization: 'Bearer cron-secret' });
   assert.equal(ok.status, 200);

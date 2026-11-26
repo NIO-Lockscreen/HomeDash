@@ -14761,7 +14761,7 @@
           problem = true;
         } else {
           const run = status.lastRun ? ` · checked ${tvWhen(status.lastRun.at)}` : '';
-          text = `${status.slides.length} pictures in the album${status.pending ? ', more on the way' : ''}${run}. Checked every hour.`;
+          text = `${status.slides.length} pictures in the album${status.pending ? ', more on the way' : ''}${run}. Updated once a day, after midnight.`;
         }
       }
       els.tvStatus.textContent = text;

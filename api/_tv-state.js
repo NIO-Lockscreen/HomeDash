@@ -1,12 +1,12 @@
-// Blob I/O for the TV screensaver, tuned so an hour in which nothing changed
-// costs no Blob operation at all.
+// Blob I/O for the TV screensaver, tuned so a run with nothing to do costs no
+// Blob operation at all.
 //
-// The hourly check reads two small files straight off the Blob CDN at their
+// Every run first reads two small files straight off the Blob CDN at their
 // known public addresses - the TV state below and the version marker every
 // save already rewrites - without asking head() first. Both are stored with a
 // 30-day cache life, so while they are unchanged the CDN answers from cache,
 // and a cache HIT is not billed as a Blob operation. Overwriting a file purges
-// its CDN copy, so a change still shows on the next hourly check.
+// its CDN copy, so a change still shows on the next run.
 //
 // The state is public like everything else in this store (the store's address
 // reaches every screen through `versionUrl`), so the Google refresh token in
@@ -101,7 +101,7 @@ export async function readJsonFresh(pathname, { attempts = MAX_FRESH_READS } = {
 // The task list as the store holds it right now, or null when it cannot be
 // confirmed (the CDN is still replaying an older copy). A picture drawn from
 // an older copy would sit on the TV until the next change, so the caller
-// tries again next hour instead.
+// tries again on the next run instead.
 export async function readEventsForTv() {
   const { value, fresh } = await readJsonFresh(EVENTS_PATH);
   if (!fresh) return null;
@@ -132,7 +132,7 @@ function normalizeState(value) {
   return { ...base, ...value };
 }
 
-// The hourly path: one CDN read, free on a cache hit.
+// The scheduled path: one CDN read, free on a cache hit.
 export async function readTvStateCheap() {
   const url = publicBlobUrl(TV_STATE_PATH);
   if (!url) return readTvStateFresh();

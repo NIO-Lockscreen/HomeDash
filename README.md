@@ -1159,7 +1159,7 @@ app on the wall*), then the **TV screensaver** (see *The TV screensaver* below):
 - A status line: how many pictures are in the TV album, when the album was last
   checked, or what is wrong.
 - **Connect** (or *Connect again*) opens the Google sign-in in a new tab, so the
-  wall stays where it is. **Update the TV now** runs the hourly check straight
+  wall stays where it is. **Update the TV now** runs the daily update straight
   away and keeps going until every picture is up.
 - **Language on the TV** (*English* / *Norsk*) and **Weeks ahead on the TV**
   (1–4) are stored for the TV album, not for this screen, and the TV is updated
@@ -1228,9 +1228,9 @@ which shows how far behind the TV is.
   is uploaded first, checked to be in the album, and only then is the old one
   taken out, so a failed upload leaves the last good picture up. The overviews
   that show the task are redrawn too, nothing else.
-- A task **deleted, marked done, or over**: its picture leaves the album on the
-  next hourly check. "Over" is the task's end, or an hour after its start when
-  it has no end.
+- A task **deleted, marked done, or over**: its picture leaves the album at the
+  next daily update. "Over" is the task's end, or an hour after its start when
+  it has no end, so a task that was on today stays up until the night.
 - **A new day**: today's overview is redrawn (once a day). A task's own picture
   says "Thursday 3 December", never "tomorrow", so it is not redrawn every
   night.
@@ -1254,39 +1254,42 @@ until the next change puts it back.
 
 ### Keeping Vercel use down
 
-The album is checked **once an hour**. Vercel Hobby only allows cron jobs that
-run once a day (a deploy with an hourly schedule fails), so the hourly tick
-comes from GitHub Actions (`.github/workflows/tv-hourly.yml`, free on a public
-repository). `vercel.json` keeps a daily Vercel cron as a fallback, so the date
-still rolls over if GitHub ever pauses the schedule, which it does after 60
-days without a commit.
+The album is updated **once a day**, by a Vercel cron just after midnight
+(`/api/tv/refresh` at 23:05 UTC, which Hobby fires some time within that hour:
+00:05–01:05 in Oslo in winter, an hour later in summer). Hobby allows cron jobs
+that run once a day, so nothing else is needed. A second daily cron at 01:35
+UTC is a catch-up: it only does anything when the first run left pictures over
+(a run stops after about 40 seconds) or never ran, and otherwise costs no Blob
+operation. A change made during the day shows on the TV the next night, or at
+once with **Update the TV now** in the Q panel.
 
-What an hour costs:
+What a run costs:
 
-| The hour | Blob operations | Uploads |
+| The run | Blob operations | Uploads |
 | --- | --- | --- |
-| Nothing changed (most hours) | **none** | none |
-| A task is over | about 2 simple, 1 advanced (no task-list read) | none |
-| Tasks changed, or a new day | about 5 simple, 1 advanced | only the pictures that changed |
+| Nothing to do (the catch-up, most nights) | **none** | none |
+| Tasks changed, or a new day (every night) | about 5 simple, 1 advanced | only the pictures that changed |
 | A change no picture shows (a to-do, a task next year) | about 5 simple, 1 advanced | none |
 
-The free hour works like the version marker: the check reads two small files
-straight off the Blob CDN at their known addresses, the TV state and
+That is about 150 simple and 30 advanced operations a month, out of Hobby's
+10,000 and 2,000, and about 60 short function runs.
+
+A run with nothing to do works like the version marker: it reads two small
+files straight off the Blob CDN at their known addresses, the TV state and
 `events-version.json`, both stored with a 30-day cache life. Unchanged, they
 are CDN cache hits, which Blob does not bill as operations. Overwriting one
-purges its CDN copy, so the next hourly check sees the change. The addresses
-come from `BLOB_READ_WRITE_TOKEN` the way `@vercel/blob` builds them; `/tv.html`
-says *Hourly checks: Free* when that worked.
+purges its CDN copy, so the next run sees the change. The addresses come from
+`BLOB_READ_WRITE_TOKEN` the way `@vercel/blob` builds them; `/tv.html` says
+*Daily check: Free when nothing changed* when that worked.
 
-A failure that repeats is written once, not every hour. After three in a row
-the job tries only every six hours, and a revoked Google sign-in waits for you
-to connect again. The GitHub run goes red when a run really fails, not while the
-job is backing off, so a broken connection does not email you every hour.
+A failure that repeats is written once, not on every run. After three in a row
+the job waits at least six hours between tries, and a revoked Google sign-in
+waits for you to connect again.
 
 All of it is one function (`api/tv/[action].js`): Hobby allows twelve per
 deployment and HomeDash now uses seven. Drawing a picture takes 1–4 seconds; a
 run stops starting new pictures after 38 seconds (the function's limit is 60),
-saves what it did, and answers `"more": true`. The GitHub job and the
+saves what it did, and answers `"more": true`. The catch-up cron and the
 **Update the TV now** button then simply call it again.
 
 ### Setting it up
@@ -1302,18 +1305,14 @@ saves what it did, and answers `"more": true`. The GitHub job and the
    `https://your-project.vercel.app/api/tv/callback` (`/tv.html` shows the exact
    one for your domain).
 4. **Vercel → Settings → Environment Variables**: add `GOOGLE_CLIENT_ID` and
-   `GOOGLE_CLIENT_SECRET`. `CRON_SECRET` (from the email reminders) is used too.
-   Redeploy.
-5. **GitHub → Settings → Secrets and variables → Actions**: add `HOMEDASH_URL`
-   (`https://your-project.vercel.app`) and `CRON_SECRET` (the same value as in
-   Vercel). Until both are there the hourly workflow does nothing and stays
-   green.
-6. On the wall, press **Q** and, under *TV screensaver*, press **Connect** (or
+   `GOOGLE_CLIENT_SECRET`. `CRON_SECRET` (from the email reminders) is used too:
+   Vercel's cron sends it, and the TV endpoint checks it. Redeploy.
+5. On the wall, press **Q** and, under *TV screensaver*, press **Connect** (or
    open **`/tv.html`** on any device and press **Connect Google Photos**). At Google's warning choose **Advanced → Go to …**
    and leave all three permissions ticked: upload, see its own album, take its
    own pictures out of that album. HomeDash makes the album and uploads the
    first pictures straight away.
-7. **On the TCL**: *Settings → System → Ambient mode → Google Photos* (or the
+6. **On the TCL**: *Settings → System → Ambient mode → Google Photos* (or the
    ambient mode settings in the Google Home app) and pick **HomeDash TV**. Only
    once.
 
@@ -1342,8 +1341,8 @@ At most 40 pictures are kept in the album.
 
 ### What is not known yet
 
-- **How quickly the TV notices a new picture.** The album is kept current
-  within the hour; how soon the TCL's ambient mode picks a replacement up needs
+- **How quickly the TV notices a new picture.** The album is updated every
+  night; how soon the TCL's ambient mode picks a replacement up needs
   a test on the TV.
 - **Whether ambient mode keeps the album's order.** HomeDash places every
   picture in slideshow order (overview, the week's tasks, next week's
@@ -1366,7 +1365,7 @@ At most 40 pictures are kept in the album.
 - `api/_tv-render.js`: the slide plan (`buildTvPlan`) and the drawing
   (`renderTvSlide`, satori + resvg, JPEG via jpeg-js). Bump
   `TV_LAYOUT_VERSION` after changing the look, so every picture is redrawn.
-- `api/_tv-job.js`: the hourly sync (`runTvSync`).
+- `api/_tv-job.js`: the daily sync (`runTvSync`).
 - `api/_tv-google.js`: Google sign-in and the Photos Library calls.
 - `api/_tv-state.js`: the state file, the free CDN reads, token sealing.
 - `api/_tv-fonts.js`: Inter and Gelasio (a free face drawn to Georgia's
@@ -1374,7 +1373,7 @@ At most 40 pictures are kept in the album.
 - `api/tv/[action].js`: the endpoints. `tv.html`: the settings page. The Q
   panel's TV section is in `index.html` (`renderTvPanel`, `bindTvPanel`).
 - `scripts/test-tv.mjs`: an end-to-end test with Blob and Google faked, which
-  also counts the Blob operations of each kind of hour:
+  also counts the Blob operations of each kind of run:
 
 ```txt
 npm install

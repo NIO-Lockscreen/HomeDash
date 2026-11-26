@@ -371,7 +371,7 @@ export function buildTvPlan({ events, now = new Date(), language = tvLanguage(),
     const nextMonday = addDays(weekMonday, 7);
     const weekEnd = zonedDateTimeToUtc(nextMonday.year, nextMonday.month, nextMonday.day, 0, 0);
     // Tasks not over yet. A task that has ended leaves the album on the next
-    // hourly check.
+    // daily update.
     const tasks = occurrences.filter(item => item.startDate >= weekStart && item.startDate < weekEnd && item.until > now);
     if (week > 0) {
       if (!tasks.length) continue;

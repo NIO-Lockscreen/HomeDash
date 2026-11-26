@@ -71,7 +71,7 @@ export function authorizationUrl({ redirectUri, state }) {
     redirect_uri: redirectUri,
     response_type: 'code',
     scope: PHOTOS_SCOPES.join(' '),
-    // A refresh token, so the hourly job works with every browser closed.
+    // A refresh token, so the daily update works with every browser closed.
     access_type: 'offline',
     // Always hand out a new refresh token, also on a second connect.
     prompt: 'consent',
@@ -130,7 +130,7 @@ async function api(accessToken, path, { method = 'GET', body, headers = {}, time
       body: body === undefined ? undefined : body instanceof Buffer ? body : JSON.stringify(body)
     }, timeoutMs);
     // Google asks for at least 30 seconds after a 429; that does not fit in
-    // one run, so a 429 fails the run and the next hour tries again.
+    // one run, so a 429 fails the run and the next run tries again.
     if (response.status >= 500 && attempt < 3) {
       await sleep(800 * attempt);
       continue;

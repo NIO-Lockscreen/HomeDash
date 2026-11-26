@@ -96,7 +96,7 @@
   <main>
     <header>
       <h1>HomeDash on the TV</h1>
-      <p class="lede">The calendar as a Google Photos album for the TCL's ambient mode. You get an overview of today, a full-screen picture for every task, and an overview before each later week. Checked once an hour, and uploaded only when something on a picture changes.</p>
+      <p class="lede">The calendar as a Google Photos album for the TCL's ambient mode. You get an overview of today, a full-screen picture for every task, and an overview before each later week. Updated once a day, just after midnight, and only the pictures that changed are uploaded. Press <strong>Update the TV now</strong> to update at once.</p>
     </header>
 
     <section id="pinPanel" class="panel" hidden>
@@ -189,7 +189,6 @@
           <li>Under <strong>Google Auth platform → Audience</strong>, choose External and press <strong>Publish app</strong> (“In production”). Left in “Testing”, Google ends the sign-in after 7 days.</li>
           <li>Under <strong>Clients</strong>, make a <strong>Web application</strong> client with this redirect URI: <code>${esc(setup.redirectUri)}</code></li>
           <li>In Vercel, add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> (and <code>CRON_SECRET</code> if it is not there), then redeploy.</li>
-          <li>In GitHub, add the repository secrets <code>HOMEDASH_URL</code> and <code>CRON_SECRET</code> so the hourly update runs.</li>
           <li>Press <strong>Connect Google Photos</strong> below. Google warns that the app is unverified: choose <strong>Advanced → Go to HomeDash</strong>.</li>
         </ol>
         ${missing.length ? `<p class="warn" style="margin-top:10px">Missing in Vercel: ${missing.map(esc).join(', ')}</p>` : ''}`;
@@ -200,7 +199,7 @@
         ['In the album', `${status.slides.length} of ${status.plan.length} slides${status.pending ? ' · <span class="warn">upload unfinished</span>' : ''}`],
         ['Last run', status.lastRun ? `${esc(when(status.lastRun.at))} · ${esc(status.lastRun.reason)} · ${status.lastRun.uploaded} up, ${status.lastRun.removed} out` : '—'],
         ['Problem', status.lastError ? `<span class="warn">${esc(status.lastError.message)}</span>${status.lastError.reconnect ? ' — connect again below.' : ''}` : 'None'],
-        ['Hourly checks', setup.cheapChecks ? 'Free (CDN only)' : '<span class="warn">Cost a Blob read each (token format not recognised)</span>'],
+        ['Daily check', setup.cheapChecks ? 'Free when nothing changed (CDN only)' : '<span class="warn">Costs a Blob read (token format not recognised)</span>'],
         ['Picture', `${esc(setup.size)} · ${esc(setup.language)} · ${esc(setup.weeks)} week(s) ahead`]
       ];
       if (status.albumRecreatedAt) facts.splice(2, 0, ['Note', `<span class="warn">The album was made again on ${esc(when(status.albumRecreatedAt))}; pick it again on the TV.</span>`]);
