@@ -197,7 +197,7 @@
         ['Connection', status.connected ? `<span class="good">Connected</span> since ${esc(when(status.connectedAt))}` : '<span class="warn">Not connected</span>'],
         ['Album', status.album ? (status.album.url ? `<a href="${esc(status.album.url)}" target="_blank" rel="noopener">${esc(status.album.title)}</a>` : esc(status.album.title)) : '—'],
         ['In the album', `${status.slides.length} of ${status.plan.length} slides${status.pending ? ' · <span class="warn">upload unfinished</span>' : ''}`],
-        ['Last run', status.lastRun ? `${esc(when(status.lastRun.at))} · ${esc(status.lastRun.reason)} · ${status.lastRun.uploaded} up, ${status.lastRun.removed} out` : '—'],
+        ['Last run', status.lastRun ? `${esc(when(status.lastRun.at))} · ${esc(status.lastRun.reason)} · ${status.lastRun.uploaded} up${status.lastRun.adopted ? `, ${status.lastRun.adopted} kept from an earlier run` : ''}, ${status.lastRun.removed} out` : '—'],
         ['Problem', status.lastError ? `<span class="warn">${esc(status.lastError.message)}</span>${status.lastError.reconnect ? ' — connect again below.' : ''}` : 'None'],
         ['Daily check', setup.cheapChecks ? 'Free when nothing changed (CDN only)' : '<span class="warn">Costs a Blob read (token format not recognised)</span>'],
         ['Picture', `${esc(setup.size)} · ${esc(setup.language)} · ${esc(setup.weeks)} week(s) ahead`]

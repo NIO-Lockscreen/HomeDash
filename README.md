@@ -1253,6 +1253,15 @@ which shows how far behind the TV is.
   says "Thursday 3 December", never "tomorrow", so it is not redrawn every
   night.
 - A picture **deleted by hand** in Google Photos is noticed and uploaded again.
+- A run that is **cut off, fails half way, or uploads a picture Google does not
+  list in time** cannot leave a picture twice. Every picture's file name
+  carries the start of a fingerprint of what it shows
+  (`homedash-tv-week-1a2b3c4d5e.jpg`), so the next run recognises the pictures
+  it put up without saving them: one that is still right is kept instead of
+  being uploaded again, and any other HomeDash picture in the album is taken
+  out. A failed run still swaps in what it did get up before it reports the
+  error. The album settles on one picture per slide at the next run, or at once
+  with **Update the TV now**.
 - The album itself deleted: a new one is made on the next run; pick it again on
   the TV (`/tv.html` says so).
 

@@ -161,7 +161,14 @@ export async function getAlbum(accessToken, albumId) {
   }
 }
 
-async function uploadBytes(accessToken, bytes, mimeType) {
+// How long one upload request may take: 30 seconds, or what is left before
+// `deadline` (epoch ms), so a slow Google cannot carry a run past the point
+// where it still has time to tidy up and save.
+function timeLeft(deadline, capMs = 30000) {
+  return deadline ? Math.max(3000, Math.min(capMs, deadline - Date.now())) : capMs;
+}
+
+async function uploadBytes(accessToken, bytes, mimeType, deadline) {
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const response = await request(`${API}/uploads`, {
       method: 'POST',
@@ -172,7 +179,7 @@ async function uploadBytes(accessToken, bytes, mimeType) {
         'X-Goog-Upload-Protocol': 'raw'
       },
       body: bytes
-    }, 30000);
+    }, timeLeft(deadline));
     if (response.ok) return (await response.text()).trim();
     if (response.status >= 500 && attempt < 2) {
       await sleep(1000);
@@ -187,11 +194,11 @@ async function uploadBytes(accessToken, bytes, mimeType) {
 // Uploads one picture straight into the album, after `afterId` (or first in
 // the album without one), so the slideshow keeps its order. Returns the new
 // media item. Uploading the very same bytes again returns the same item.
-export async function uploadToAlbum(accessToken, { albumId, bytes, mimeType, fileName, description, afterId = '' }) {
-  const uploadToken = await uploadBytes(accessToken, bytes, mimeType);
+export async function uploadToAlbum(accessToken, { albumId, bytes, mimeType, fileName, description, afterId = '', deadline = 0 }) {
+  const uploadToken = await uploadBytes(accessToken, bytes, mimeType, deadline);
   const result = await api(accessToken, '/mediaItems:batchCreate', {
     method: 'POST',
-    timeoutMs: 30000,
+    timeoutMs: timeLeft(deadline),
     body: {
       albumId,
       newMediaItems: [{ description, simpleMediaItem: { uploadToken, fileName } }],
@@ -210,7 +217,7 @@ export async function uploadToAlbum(accessToken, { albumId, bytes, mimeType, fil
 }
 
 // Every picture this app has in the album (the API only ever lists the app's
-// own), newest first.
+// own), newest first, with the file name it was uploaded under.
 export async function albumItems(accessToken, albumId) {
   const items = [];
   let pageToken = '';
@@ -220,7 +227,7 @@ export async function albumItems(accessToken, albumId) {
       body: { albumId, pageSize: 100, ...(pageToken ? { pageToken } : {}) }
     });
     for (const item of result?.mediaItems || []) {
-      items.push({ id: item.id, creationTime: item.mediaMetadata?.creationTime || '' });
+      items.push({ id: item.id, filename: item.filename || '', creationTime: item.mediaMetadata?.creationTime || '' });
     }
     pageToken = result?.nextPageToken || '';
     if (!pageToken) break;

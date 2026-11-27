@@ -17,6 +17,15 @@
 // A new picture is uploaded first, confirmed in the album, and only then is
 // the one it replaces taken out, so a failed upload leaves the last good
 // slide on the TV.
+//
+// The album describes itself: every picture's file name carries the start of
+// the hash of what it shows. A run that was cut off, failed half way, or
+// uploaded a picture Google did not list in time leaves pictures the state
+// does not know about. The next full run recognises them by name - one that
+// shows a slide as it should be is taken into use instead of being drawn and
+// uploaded again, and every other HomeDash picture in the album is taken out.
+// So the album always settles on exactly one picture per slide, whatever the
+// last run went through.
 import { dateKeyInTimeZone } from './_reminders.js';
 import { buildTvPlan, renderTvSlide, tvLanguage, tvWeeks, TV_LAYOUT_VERSION } from './_tv-render.js';
 import {
@@ -40,6 +49,13 @@ import {
 // The function is cut off at 60 seconds (vercel.json). No new slide is
 // started after this much, leaving time to confirm, tidy up and save.
 const UPLOAD_BUDGET_MS = 38 * 1000;
+// Nothing waits on Google past this point (uploads are timed out, the album
+// is not listed again), so a run still gets to take old pictures out and
+// save what it did before Vercel stops it.
+const HARD_STOP_MS = 50 * 1000;
+// Google can take a moment to list a picture it has just created. Waits
+// before listing the album again, while some new pictures are missing.
+const CONFIRM_WAITS_MS = [1500, 3000];
 // After three failures in a row with the same error, try at most every six
 // hours, so a broken connection cannot keep spending Blob operations.
 const BACKOFF_AFTER_FAILURES = 3;
@@ -88,9 +104,32 @@ function backingOff(state, now) {
   return '';
 }
 
+// Every picture has carried this name since the first version, so pictures
+// already in an album are recognised too.
+const HASH_IN_NAME = 10;
 function slideFileName(slide) {
   const kind = slide.kind === 'event' ? 'task' : slide.kind;
-  return `homedash-tv-${kind}-${slide.hash.slice(0, 10)}.jpg`;
+  return `homedash-tv-${kind}-${slide.hash.slice(0, HASH_IN_NAME)}.jpg`;
+}
+
+// The hash start in a picture's file name, or '' for any other name.
+function hashInFileName(name) {
+  const match = /^homedash-tv-(?:overview|week|task)-([0-9a-f]{10})\.jpe?g$/i.exec(String(name || ''));
+  return match ? match[1].toLowerCase() : '';
+}
+
+// Only minutes old: another run may have just put it up and not saved yet.
+function justCreated(item, startedAt) {
+  const created = Date.parse(item.creationTime);
+  return Number.isFinite(created) && created >= startedAt - STRAY_GRACE_MS;
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function slideRecord(slide) {
+  return { hash: slide.hash, kind: slide.kind, until: slide.until, title: slide.kind === 'event' ? slide.model.title : slide.kind };
 }
 
 function slideDescription(slide) {
@@ -100,11 +139,17 @@ function slideDescription(slide) {
   return `HomeDash TV: calendar overview, ${model.date.heading} ${model.date.big} ${model.date.sub}`.slice(0, 1000);
 }
 
-async function failed(state, error, now) {
+// The error to store, counting repeats of the same one for the back-off.
+function errorRecord(previous, error, now) {
   const message = String(error?.message || error || 'Unknown error').slice(0, 500);
-  const previous = state.lastError;
   const count = previous && previous.message === message ? Number(previous.count || 1) + 1 : 1;
-  const lastError = { at: now.toISOString(), message, reconnect: Boolean(error?.reconnect), count };
+  return { at: now.toISOString(), message, reconnect: Boolean(error?.reconnect), count };
+}
+
+async function failed(state, error, now) {
+  const previous = state.lastError;
+  const lastError = errorRecord(previous, error, now);
+  const { message, count } = lastError;
   // A repeat of the same failure is only written while it is still counting
   // up to the back-off, so a failure that sticks does not write every run.
   if (!previous || previous.message !== message || count <= BACKOFF_AFTER_FAILURES || error?.reconnect !== previous.reconnect || count % 4 === 0) {
@@ -161,82 +206,129 @@ async function syncAlbum(state, accessToken, { events, now, rebuild, startedAt, 
   for (const [key, slide] of Object.entries(albumRecreated ? {} : state.slides || {})) {
     if (presentIds.has(slide.id)) known[key] = slide;
   }
-  const desired = new Map(plan.map(slide => [slide.key, slide]));
-  const toUpload = plan.filter(slide => rebuild || known[slide.key]?.hash !== slide.hash);
+  const knownById = new Map(Object.values(known).map(slide => [slide.id, slide]));
+
+  // What a picture in the album shows: the state's record of it, else the
+  // hash in its file name (a picture a run put up but never got to record).
+  // Google hands back the earlier picture, name and all, for the very same
+  // bytes, so the state's record goes first.
+  const shows = (item, slide) => {
+    const record = knownById.get(item.id);
+    return record ? record.hash === slide.hash : hashInFileName(item.filename) === slide.hash.slice(0, HASH_IN_NAME);
+  };
+
+  // Slides already in the album as they should be: the state's picture, or
+  // the newest one that shows it.
+  const current = {};
+  const taken = new Set();
+  let adopted = 0;
+  if (!rebuild) {
+    for (const slide of plan) {
+      const mine = known[slide.key];
+      const candidates = mine ? [inAlbum.find(item => item.id === mine.id), ...inAlbum] : inAlbum;
+      const item = candidates.find(candidate => candidate && !taken.has(candidate.id) && shows(candidate, slide));
+      if (!item) continue;
+      taken.add(item.id);
+      const record = knownById.get(item.id);
+      current[slide.key] = record
+        ? { ...record, ...slideRecord(slide) }
+        : { id: item.id, ...slideRecord(slide), uploadedAt: item.creationTime || now.toISOString() };
+      if (!record || mine?.id !== item.id) adopted += 1;
+    }
+  }
+  const toUpload = plan.filter(slide => !current[slide.key]);
 
   // Upload in slideshow order, each one placed after the slide before it.
-  const current = { ...known };
-  const replaced = [];
+  // A failure stops the uploads, but what did go up is still swapped in and
+  // saved below; the rest is left for the next run.
+  const deadline = startedAt + Math.min(HARD_STOP_MS, budgetMs + 12 * 1000);
   const uploaded = [];
   let pending = false;
+  let problem = null;
   for (const slide of toUpload) {
     if (Date.now() - startedAt > budgetMs) {
       pending = true;
       break;
     }
-    const index = plan.indexOf(slide);
-    const before = plan.slice(0, index).reverse().find(other => current[other.key]?.id);
-    const image = await renderTvSlide(slide.model, { renderedAt: now });
-    const item = await uploadToAlbum(accessToken, {
-      albumId: album.id,
-      bytes: image.jpeg,
-      mimeType: 'image/jpeg',
-      fileName: slideFileName(slide),
-      description: slideDescription(slide),
-      afterId: before ? current[before.key].id : ''
-    });
-    const previous = current[slide.key];
-    if (previous?.id && previous.id !== item.id) replaced.push({ key: slide.key, id: previous.id, newId: item.id });
-    current[slide.key] = {
-      id: item.id,
-      hash: slide.hash,
-      kind: slide.kind,
-      until: slide.until,
-      title: slide.kind === 'event' ? slide.model.title : slide.kind,
-      bytes: image.bytes,
-      uploadedAt: new Date().toISOString()
-    };
-    uploaded.push(slide.key);
+    try {
+      const index = plan.indexOf(slide);
+      // After the slide before it, as it is now or by its last picture.
+      const anchor = other => current[other.key]?.id || known[other.key]?.id || '';
+      const before = plan.slice(0, index).reverse().find(anchor);
+      const image = await renderTvSlide(slide.model, { renderedAt: now });
+      const item = await uploadToAlbum(accessToken, {
+        albumId: album.id,
+        bytes: image.jpeg,
+        mimeType: 'image/jpeg',
+        fileName: slideFileName(slide),
+        description: slideDescription(slide),
+        afterId: before ? anchor(before) : '',
+        deadline
+      });
+      current[slide.key] = { id: item.id, ...slideRecord(slide), bytes: image.bytes, uploadedAt: new Date().toISOString() };
+      uploaded.push(slide.key);
+    } catch (error) {
+      if (error?.reconnect) throw error;
+      problem = error;
+      pending = true;
+      break;
+    }
   }
 
   // Confirm the new pictures really are in the album before anything they
-  // replace is taken out.
-  const after = uploaded.length ? await albumItems(accessToken, album.id) : inAlbum;
+  // replace is taken out. Google can be a moment late listing them.
+  let after = inAlbum;
+  if (uploaded.length) {
+    after = await albumItems(accessToken, album.id);
+    for (const wait of CONFIRM_WAITS_MS) {
+      const listed = new Set(after.map(item => item.id));
+      if (uploaded.every(key => listed.has(current[key].id)) || Date.now() + wait > deadline) break;
+      await sleep(wait);
+      after = await albumItems(accessToken, album.id);
+    }
+  }
   const afterIds = new Set(after.map(item => item.id));
+  // Still not listed: the slide keeps its last good picture this time. The
+  // new one is in the album all the same, and the next run takes it into use
+  // by its name.
   const notConfirmed = uploaded.filter(key => !afterIds.has(current[key].id));
-  for (const key of notConfirmed) {
-    if (known[key]) current[key] = known[key];
-    else delete current[key];
+  for (const key of notConfirmed) delete current[key];
+  // Until its new picture is up and listed, a slide keeps its last one.
+  for (const slide of plan) {
+    if (!current[slide.key] && known[slide.key]) current[slide.key] = known[slide.key];
   }
 
-  // Gone from the plan: deleted, completed, over, or past the horizon.
-  for (const key of Object.keys(current)) {
-    if (!desired.has(key)) delete current[key];
-  }
+  // Every other HomeDash picture in the album goes: older versions of a
+  // slide, slides no longer planned (deleted, completed, over, or past the
+  // horizon), and pictures from runs that never got to save what they did.
+  // One the state does not know is left alone while only minutes old, in
+  // case another run has just put it up.
   const keepIds = new Set(Object.values(current).map(slide => slide.id));
-  const removeIds = new Set();
-  for (const [key, slide] of Object.entries(known)) {
-    if (!desired.has(key) && !keepIds.has(slide.id)) removeIds.add(slide.id);
+  const removable = after
+    .filter(item => !keepIds.has(item.id) && (knownById.has(item.id) || !justCreated(item, startedAt)))
+    .map(item => item.id);
+  let removed = 0;
+  if (removable.length) {
+    try {
+      removed = await removeFromAlbum(accessToken, album.id, removable);
+    } catch (error) {
+      if (error?.reconnect) throw error;
+      // The new pictures are recorded all the same, so the next run knows the
+      // old ones for what they are and takes them out.
+      problem = problem || error;
+      pending = true;
+    }
   }
-  for (const swap of replaced) {
-    if (!notConfirmed.includes(swap.key) && !keepIds.has(swap.id)) removeIds.add(swap.id);
-  }
-  // HomeDash pictures the state does not know (from a run that failed half
-  // way) are taken out too, unless they are only minutes old.
-  for (const item of after) {
-    const created = Date.parse(item.creationTime);
-    if (!keepIds.has(item.id) && Number.isFinite(created) && created < startedAt - STRAY_GRACE_MS) removeIds.add(item.id);
-  }
-  const removable = [...removeIds].filter(id => afterIds.has(id));
-  if (removable.length) await removeFromAlbum(accessToken, album.id, removable);
 
   return {
     album,
     albumRecreated,
     slides: current,
     pending,
+    problem,
     uploaded: uploaded.length - notConfirmed.length,
-    removed: removable.length,
+    adopted,
+    removed,
     notConfirmed: notConfirmed.length,
     planned: plan.length,
     remaining: plan.filter(slide => current[slide.key]?.hash !== slide.hash).length
@@ -295,9 +387,11 @@ async function work({ reason, now, todayKey, rebuild, startedAt, budgetMs, trigg
     }
 
     const result = await syncAlbum(state, accessToken, { events: doc.events, now, rebuild, startedAt, budgetMs });
-    const lastError = result.notConfirmed
-      ? { at: now.toISOString(), message: `${result.notConfirmed} new picture(s) did not show up in the album; the previous ones were kept.`, reconnect: false, count: 1 }
-      : null;
+    const lastError = result.problem
+      ? errorRecord(state.lastError, result.problem, now)
+      : result.notConfirmed
+        ? { at: now.toISOString(), message: `Google had not listed ${result.notConfirmed} new picture(s) yet, so the previous ones are still up; the next update swaps them.`, reconnect: false, count: 1 }
+        : null;
     await writeTvState({
       ...state,
       album: result.album,
@@ -306,12 +400,17 @@ async function work({ reason, now, todayKey, rebuild, startedAt, budgetMs, trigg
       pending: result.pending || result.notConfirmed > 0,
       seen: { sourceVersion: doc.updatedAt, dateKey: todayKey, settings: settingsKey(state) },
       lastError,
-      lastRun: { at: now.toISOString(), trigger, reason, uploaded: result.uploaded, removed: result.removed, ms: Date.now() - startedAt }
+      lastRun: { at: now.toISOString(), trigger, reason, uploaded: result.uploaded, adopted: result.adopted, removed: result.removed, ms: Date.now() - startedAt }
     });
+    if (result.problem) {
+      console.warn('TV sync stopped part way:', result.problem);
+      return { ok: false, error: lastError.message, reconnect: lastError.reconnect, failures: lastError.count, uploaded: result.uploaded, removed: result.removed, slides: Object.keys(result.slides).length };
+    }
     return {
       ok: true,
       reason,
       uploaded: result.uploaded,
+      adopted: result.adopted,
       removed: result.removed,
       slides: Object.keys(result.slides).length,
       planned: result.planned,

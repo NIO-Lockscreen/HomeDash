@@ -62,7 +62,25 @@ let photoSeq = 0;
 const albums = new Map();
 const library = new Map();
 const uploadTokens = new Map();
-const google = { refreshFails: false, uploads: 0, removes: 0 };
+const google = {
+  refreshFails: false,
+  uploads: 0,
+  removes: 0,
+  // Pictures made while this is on are left out of album listings until
+  // reveal(): Google listing a new picture a while after it was created.
+  lag: false,
+  // The nth batchCreate from now answers 429.
+  failUploadAt: 0,
+  // Taking pictures out of the album keeps failing.
+  failRemove: false
+};
+function reveal() {
+  for (const item of library.values()) item.hidden = false;
+}
+// Moves every picture's creation time back, as if that much time had passed.
+function ageLibrary(ms) {
+  for (const item of library.values()) item.creationTime = new Date(Date.parse(item.creationTime) - ms).toISOString();
+}
 
 function photo(seed) {
   const width = 160;
@@ -133,10 +151,19 @@ async function fakeFetch(input, init = {}) {
     if (path === '/mediaItems:batchCreate') {
       const album = albums.get(body.albumId);
       if (!album) return json({ error: { code: 400, message: 'Invalid album' } }, 400);
+      if (google.failUploadAt && --google.failUploadAt === 0) return json({ error: { code: 429, message: 'Quota exceeded', status: 'RESOURCE_EXHAUSTED' } }, 429);
       const bytes = uploadTokens.get(body.newMediaItems[0].simpleMediaItem.uploadToken);
-      // Google gives the same bytes the same media item.
+      // Google gives the same bytes the same media item, name and all.
       const existing = [...library.values()].find(item => item.md5 === md5(bytes));
-      const item = existing || { id: `photo-${++photoSeq}`, md5: md5(bytes), bytes, description: body.newMediaItems[0].description, creationTime: new Date(Date.now() + photoSeq).toISOString() };
+      const item = existing || {
+        id: `photo-${++photoSeq}`,
+        md5: md5(bytes),
+        bytes,
+        filename: body.newMediaItems[0].simpleMediaItem.fileName,
+        description: body.newMediaItems[0].description,
+        creationTime: new Date(Date.now() + photoSeq).toISOString(),
+        hidden: google.lag
+      };
       library.set(item.id, item);
       google.uploads += 1;
       if (!album.items.includes(item.id)) {
@@ -149,11 +176,13 @@ async function fakeFetch(input, init = {}) {
     if (path === '/mediaItems:search') {
       const album = albums.get(body.albumId);
       if (!album) return json({ error: { code: 400, message: 'Invalid album' } }, 400);
-      return json({ mediaItems: album.items.map(id => ({ id, mediaMetadata: { creationTime: library.get(id).creationTime } })) });
+      const listed = album.items.filter(id => !library.get(id).hidden);
+      return json({ mediaItems: listed.map(id => ({ id, filename: library.get(id).filename, mediaMetadata: { creationTime: library.get(id).creationTime } })) });
     }
     const remove = path.match(/^\/albums\/([^/:]+):batchRemoveMediaItems$/);
     if (remove) {
       const album = albums.get(remove[1]);
+      if (google.failRemove) return json({ error: { code: 500, message: 'Internal error' } }, 500);
       for (const id of body.mediaItemIds) assert.ok(album.items.includes(id), `removing ${id} that is not in the album`);
       album.items = album.items.filter(id => !body.mediaItemIds.includes(id));
       google.removes += body.mediaItemIds.length;
@@ -208,6 +237,10 @@ function saveEvents() {
 
 function album() {
   return [...albums.values()][0];
+}
+
+function count(prefix) {
+  return albumDescriptions().filter(text => text.startsWith(prefix)).length;
 }
 
 function albumDescriptions() {
@@ -362,6 +395,72 @@ test('a picture deleted by hand in Google Photos is put back', async () => {
   await runTvSync(at(oslo(27, 9)));
   assert.equal(new Set(album().items).size, album().items.length);
   assert.ok(albumDescriptions().some(text => text.startsWith('Fotballtrening, Friday 27 November')));
+});
+
+test('pictures Google is slow to list do not pile up: the next run picks them up', async () => {
+  // A new task next week redraws next week's overview (and today's, whose
+  // strip has a dot on that day).
+  events = [...events, { id: 'slow', title: 'Foreldremøte', start: oslo(30, 18), repeat: 'none' }];
+  saveEvents();
+  google.lag = true;
+  const first = await runTvSync(at(oslo(27, 9, 5)));
+  assert.ok(first.ok);
+  // Not listed yet, so the old pictures stay up meanwhile.
+  reveal();
+  assert.equal(count('Next week'), 2, 'the old next week stays up until the new one is listed');
+
+  // The next run (the catch-up), hours later: the new pictures are listed
+  // now. They are taken into use and the old ones go, without drawing and
+  // uploading the same thing again.
+  ageLibrary(3 * 60 * 60 * 1000);
+  const uploads = google.uploads;
+  const second = await runTvSync(at(oslo(27, 9, 10)));
+  reveal();
+  google.lag = false;
+  assert.ok(second.ok, second.error);
+  assert.equal(count('Next week'), 1, 'one next week');
+  assert.equal(count('calendar overview'), 1, 'one overview');
+  assert.equal(google.uploads, uploads, 'nothing is uploaded twice');
+  assert.ok(albumDescriptions().some(text => text.startsWith('Foreldremøte')));
+  const plan = buildTvPlan({ events, now: new Date(oslo(27, 9, 10)), language: 'en', weeks: 2 });
+  const week = album().items.map(id => library.get(id)).find(item => item.description.includes('Next week'));
+  assert.ok(week.filename.includes(plan.find(slide => slide.key === 'week:2026-11-30').hash.slice(0, 10)), 'the next week left up is the new one');
+});
+
+test('an upload that fails half way: what did go up is swapped in, the rest follows on the next run', async () => {
+  ageLibrary(60 * 60 * 1000);
+  events = [...events, { id: 'half', title: 'Halvveis', start: oslo(1, 17).replace('-11-', '-12-'), repeat: 'none' }];
+  saveEvents();
+  // Today's overview goes up; the next picture is refused.
+  google.failUploadAt = 2;
+  const first = await runTvSync(at(oslo(27, 9, 15)));
+  assert.equal(first.ok, false);
+  assert.equal(count('calendar overview'), 1, 'the new overview replaced the old one although the run failed');
+  google.failUploadAt = 0;
+  ageLibrary(60 * 60 * 1000);
+  const second = await runTvSync(at(oslo(27, 9, 20)));
+  assert.ok(second.ok, second.error);
+  const texts = albumDescriptions();
+  assert.equal(new Set(texts).size, texts.length, `no picture twice: ${texts.join(' | ')}`);
+  assert.ok(texts.some(text => text.startsWith('Halvveis')));
+});
+
+test('Google refusing to take old pictures out: they go on the next run, nothing is uploaded again', async () => {
+  ageLibrary(60 * 60 * 1000);
+  events = events.map(event => event.id === 'half' ? { ...event, title: 'Halvveis (flyttet)' } : event);
+  saveEvents();
+  google.failRemove = true;
+  const first = await runTvSync(at(oslo(27, 9, 22)));
+  assert.equal(first.ok, false);
+  google.failRemove = false;
+  ageLibrary(60 * 60 * 1000);
+  const uploads = google.uploads;
+  const second = await runTvSync(at(oslo(27, 9, 24)));
+  assert.ok(second.ok, second.error);
+  assert.equal(google.uploads, uploads, 'the pictures the failed run put up are kept');
+  const texts = albumDescriptions();
+  assert.equal(new Set(texts).size, texts.length, `no picture twice: ${texts.join(' | ')}`);
+  assert.ok(!texts.some(text => text === 'Halvveis, Tuesday 1 December · 17:00'));
 });
 
 test('the Q panel: a current status read, and language and weeks stored for the album', async () => {
