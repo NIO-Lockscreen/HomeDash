@@ -181,7 +181,7 @@ along without an extra Blob read, and the marker carries their changes too.
   elsewhere. A device without the PIN saved keeps its old edits until it has
   one.
 - **Delete all tasks/events** clears tasks only; the periods are kept, and so
-  are the to-do list and the stock pictures.
+  are the to-do list, the notes and the stock pictures.
 
 ### The schedule
 
@@ -533,7 +533,7 @@ deployment waits to reload. On the hour it wiggles loose and is thrown off at
 random, anything from a hop to a lob just under the top of the screen, coming
 down anywhere along the bottom, where it goes up in a mini nuke (see *The mini
 nuke* below). Push it back left (or press Escape) to disarm it; tapping
-**YouTube** disarms it too. Pulled on to the right until it comes off, it goes up
+**YouTube** or the **Settings** cog disarms it too. Pulled on to the right until it comes off, it goes up
 straight away.
 
 The pull does not have to start on the very edge. The grab area is 112px wide
@@ -544,13 +544,15 @@ over the clock, so a tap there (no pull) is handed on to the clock, and its tap
 and double tap still work right up to its edge. Only a tap on the grip itself
 peeks the panel.
 
-The panel has one button, **YouTube**, which shows a QR code. Scan it and the
-phone opens a small page (this same site with `?ytsend=<session>`) with a field
-for a link. Paste a YouTube link — watch, youtu.be share, Shorts, live or
-playlist, with any `t=` start time kept — and tap **Play on the wall screen**. The
-wall closes the QR code and plays the video in YouTube's own player. **Another
-video** shows a fresh QR code while the current video keeps playing underneath;
-the × closes the player.
+The panel has two buttons: **YouTube**, which shows a QR code, and under it
+**Settings**, a cog that opens the calendar settings (see *Calendar settings*
+below). Only the YouTube icon smoulders while the panel is armed: it is the
+fuse. Scan the QR code and the phone opens a small page (this same site with
+`?ytsend=<session>`) with a field for a link. Paste a YouTube link — watch,
+youtu.be share, Shorts, live or playlist, with any `t=` start time kept — and
+tap **Play on the wall screen**. The wall closes the QR code and plays the
+video in YouTube's own player. **Another video** shows a fresh QR code while
+the current video keeps playing underneath; the × closes the player.
 
 - **How the link travels.** Through [ntfy.sh](https://ntfy.sh), a free, no-signup
   pub/sub relay — the same one the car lockscreen uses. The phone posts the link
@@ -723,8 +725,9 @@ screen, and with reduced motion the glow is steady and the hearts stand still.
 
 ### Event borders
 
-The **Event borders** switch, in the month view's footer (for touch screens
-with no Q key) and in the Q panel, draws a thin ring with a soft glow, like
+The **Event borders** switch, in the calendar settings (*Blue Sofia frame*,
+behind the cog in the pull-out panel), in the month view's footer and in the Q
+panel, draws a thin ring with a soft glow, like
 Sofia's pink one, around every task card on the wall: the Upcoming cards, the
 big task photo and the picked-task panel. It is **blue** when the task starts
 on one of Sofia's days (the blue days in the month view, hand edits included)
@@ -831,6 +834,75 @@ states its result (*done*, not *toggle*), so a retried write lands the same way,
 and a deleted item is remembered for 30 days so a slow phone retrying its *add*
 cannot bring it back. Ticked-off items are dropped from the store 30 days after
 the tick. The rules live in `api/_todos.js`.
+
+## Calendar settings
+
+The **Settings** cog in the pull-out panel by the clock (see *YouTube from your
+phone*) opens one sheet with three parts. The first two belong to that one
+screen, like Event borders always has; the notes are shared with every screen
+and phone.
+
+- **Event frame** — *Blue Sofia frame* is the Event borders switch (see
+  *Event borders*). The Q panel and the month view's footer show the same
+  setting.
+- **Birthdays** — *Show birthdays* and *All birthdays*.
+- **Notes** — notes kept in the cloud.
+
+The sheet closes from its ×, a tap beside it, Escape, or the five-minute idle
+reset.
+
+### Birthdays
+
+A task is a birthday when its **name** says so, and nothing has to be added by
+hand: *Bursdag mormor*, *Sofias bursdag*, *Bursdagen til Ola*, *Bursdagsfest hos
+Kari*, *Ola fyller 40*, *Mormor 80-årsdag*, *Fødselsdag farfar*, *John's
+birthday*, *B-day*, or a 🎂 anywhere in it. Only the title counts and only whole
+words, so errands such as *Kjøpe bursdagsgave* or *Bursdagskort til Ola* are not
+birthdays. The rule is `BIRTHDAY_TITLE` in `index.html`.
+
+- **All birthdays** lists every one, soonest first, by month, with the weekday
+  and how many days are left; today's is marked with a 🎂. A birthday comes
+  round every year even when its task does not repeat, so a one-off *Bursdag
+  mormor* from last May is listed for next May, marked *not yearly in the
+  calendar* (set the task to repeat yearly to see it in the calendar too). The
+  same name on the same date is listed once. Like every view, the list follows
+  the screen's mode: work birthdays only show in work mode.
+- **Show birthdays** (on until it is turned off) takes birthday tasks out of
+  every view on that screen: Upcoming, the big task photo, the day selector,
+  the week dots and the month view. The list still has them all. It is filtered
+  in `expandEventsInRange`, where work mode filters, so no view can miss it. The
+  phone's admin list always shows them, so they can still be edited.
+
+The list is worked out from the tasks each time it is shown, so a birthday task
+saved on the phone is in it within the minute. Nothing extra is stored.
+
+### Notes
+
+**+ New note** opens a title and a text box; line breaks are kept. Tap a note
+to read or change it; **Save** sends it, **Delete** asks for a second tap. The
+same notes are under **Notes** on the phone, between the to-do list and the
+stock pictures. Like the to-do list, writing needs the admin PIN saved on the
+device; reading does not.
+
+- **Stored** in `events.json` as `notes`, like the to-do list: no extra Blob
+  read, and the version marker carries a change to every screen within the
+  minute. Each save is queued on the device first, so it survives a reload and
+  waits out a busy server. A deleted note is remembered for 30 days, so a slow
+  phone retrying its *add* cannot bring it back. The rules live in
+  `api/_notes.js` (up to 100 notes, a title of 80 characters, 4,000 characters
+  of text) and are tested by `node --test scripts/test-notes.mjs`.
+- **Two screens at once.** The last save wins. A note open on one screen
+  follows an edit made elsewhere as long as nothing has been typed into it;
+  once somebody is typing it keeps their text and says *Changed on another
+  screen meanwhile*. A note deleted elsewhere while open can still be saved, as
+  a new note.
+- **Half written.** If the idle reset closes the sheet in the middle of a note,
+  the note is still open, as it was, the next time the sheet is opened. A page
+  reload loses it (the wall reloads itself after a deploy once it is idle), so
+  save before walking away.
+- **Not secret.** `/api/events` is public to read (the car lockscreen's widget
+  reads it), and it carries the notes like it carries the tasks and the to-do
+  list. Keep passwords and door codes out of them; the sheet says so too.
 
 ## The phone app on the wall
 

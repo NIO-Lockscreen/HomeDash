@@ -4105,6 +4105,11 @@
     .edge-app-icon svg { width: 46px; height: 46px; display: block; }
     .edge-app:active .edge-app-icon { transform: scale(.93); }
 
+    /* The cog under YouTube opens the calendar settings. It never smoulders:
+       only the YouTube icon is the fuse. */
+    .edge-app-settings .edge-app-icon { color: #4d463f; }
+    .edge-app-settings .edge-app-icon svg { width: 38px; height: 38px; }
+
     /* A panel left open, or pulled off to the right, hops off its dock and
        falls off the bottom of the screen, where it goes up in a tiny
        mushroom cloud. JS moves the tray frame by frame and builds the cloud
@@ -4132,11 +4137,11 @@
 
     /* Armed, the YouTube icon smoulders: a slow, faint glow while it waits
        for the hour. Coming loose, it glows hot and pulses like a lit fuse. */
-    .edge-panel.is-open .edge-app-icon {
+    .edge-panel.is-open .edge-app-youtube .edge-app-icon {
       animation: edge-panel-armed 1.8s ease-in-out infinite alternate;
     }
 
-    .edge-panel.is-falling .edge-app-icon {
+    .edge-panel.is-falling .edge-app-youtube .edge-app-icon {
       animation: edge-nuke-arm .22s ease-in-out infinite alternate;
     }
 
@@ -4460,11 +4465,187 @@
 
     @media (prefers-reduced-motion: reduce) {
       .edge-panel-tray { transition: none; }
-      .edge-panel.is-open .edge-app-icon {
+      .edge-panel.is-open .edge-app-youtube .edge-app-icon {
         animation: none;
         box-shadow: 0 10px 22px rgba(70, 58, 44, 0.12), 0 0 0 1px rgba(255, 90, 40, 0.3), 0 0 12px rgba(255, 100, 40, 0.25);
       }
     }
+
+    /* Calendar settings, from the cog in the pull-out panel. One sheet with
+       three views: the settings themselves, the birthday list, and a note
+       open for editing (the other sections step aside for it). */
+    .cal-settings-modal { width: min(560px, 100%); }
+    .cal-settings-modal .config-title { font-size: clamp(32px, 5.4vw, 46px); }
+
+    .cs-back {
+      display: inline-flex;
+      align-items: center;
+      margin: 0 0 10px;
+      padding: 8px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.82);
+      color: var(--ink);
+      font-weight: 900;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .cal-settings-modal[data-view="main"] .cs-back,
+    .cal-settings-modal[data-view="note"] .cs-back { display: none; }
+    .cal-settings-modal[data-view="birthdays"] .cs-view-main { display: none; }
+    .cal-settings-modal:not([data-view="birthdays"]) .cs-view-birthdays { display: none; }
+    .cal-settings-modal[data-view="note"] .cs-frame-section,
+    .cal-settings-modal[data-view="note"] .cs-birthday-section,
+    .cal-settings-modal[data-view="note"] .cs-notes-section > .config-section-title { display: none; }
+
+    .cs-row {
+      width: 100%;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--ink);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .cs-row:active { background: rgba(255, 255, 255, 0.6); }
+    .cs-row-text { display: grid; gap: 3px; min-width: 0; }
+    .cs-row-label { font-size: 16px; font-weight: 900; }
+    .cs-row-end { display: inline-flex; align-items: center; gap: 10px; flex: none; }
+    .cs-chevron { color: var(--muted); font-size: 26px; font-weight: 700; line-height: 1; }
+
+    .cs-switch-row.is-on .month-ring-switch { background: rgb(46, 138, 212); }
+    .cs-switch-row.is-on .month-ring-switch::after { transform: translateX(14px); }
+    #csBirthdaysBtn.is-on .month-ring-switch { background: #d0673c; }
+
+    /* The birthday list: by the month of each one's next birthday, soonest
+       first. */
+    .cs-birthday-list { display: grid; gap: 8px; }
+
+    .cs-bday-month {
+      margin: 10px 2px 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+
+    .cs-bday-month:first-child { margin-top: 0; }
+
+    .cs-bday {
+      display: grid;
+      grid-template-columns: 40px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px 10px 10px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .cs-bday-date {
+      display: grid;
+      place-items: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: rgba(208, 103, 60, 0.1);
+      color: #9c4a29;
+      font-size: 17px;
+      font-weight: 950;
+      line-height: 1;
+    }
+
+    .cs-bday-text { display: grid; gap: 2px; min-width: 0; }
+    .cs-bday-title { font-weight: 900; overflow-wrap: anywhere; }
+    .cs-bday-sub { color: var(--muted); font-size: 13px; font-weight: 750; }
+    .cs-bday-when { color: var(--muted); font-size: 13px; font-weight: 900; white-space: nowrap; }
+
+    .cs-bday.is-today {
+      border-color: rgba(208, 103, 60, 0.45);
+      background: rgba(255, 240, 230, 0.95);
+    }
+
+    .cs-bday.is-today .cs-bday-date { background: #d0673c; color: #fff; }
+    .cs-bday.is-today .cs-bday-when { color: #9c4a29; }
+
+    .cs-empty {
+      padding: 14px;
+      border: 1px dashed rgba(87, 78, 67, 0.24);
+      border-radius: 18px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 750;
+      line-height: 1.4;
+    }
+
+    /* Notes: the same list and editor on the wall's settings sheet and in the
+       phone's Notes section. */
+    .cs-notes { display: grid; gap: 10px; }
+    .cs-note-list { display: grid; gap: 8px; }
+
+    .cs-note {
+      width: 100%;
+      display: grid;
+      gap: 4px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--ink);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .cs-note:active { background: rgba(255, 255, 255, 0.6); }
+    .cs-note-title { font-weight: 900; overflow-wrap: anywhere; }
+
+    .cs-note-preview {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      overflow: hidden;
+      color: #5f574f;
+      font-size: 14px;
+      font-weight: 650;
+      line-height: 1.38;
+      white-space: pre-line;
+      overflow-wrap: anywhere;
+    }
+
+    .cs-note-meta { color: var(--muted); font-size: 12px; font-weight: 800; }
+    .cs-note-meta .is-pending { color: #9c4a29; }
+
+    .cs-note-new {
+      justify-self: start;
+      touch-action: manipulation;
+    }
+
+    .cs-note-editor { display: grid; gap: 10px; }
+    .cs-note-editor input { font-weight: 900; font-size: 17px; }
+
+    .cs-note-editor textarea {
+      min-height: 190px;
+      font: inherit;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+
+    .cs-note-status { min-height: 18px; }
+    .cs-note-status.is-error { color: #8d4138; }
+    .cs-note-editor .button-row { display: flex; gap: 8px; flex-wrap: wrap; }
 
     /* QR code and player for a YouTube link sent from a phone. */
     .video-overlay {
@@ -5869,6 +6050,16 @@
         </button>
         <div id="adminTodoBody" class="admin-fold-body"></div>
       </section>
+      <section id="adminNotesFold" class="admin-fold is-collapsed hidden" aria-label="Notes">
+        <button id="adminNotesToggle" class="reminder-menu-toggle" type="button" aria-expanded="false" aria-controls="adminNotesBody">
+          <span class="reminder-menu-toggle-text">
+            <span class="phone-reminder-menu-title">Notes</span>
+            <span class="reminder-menu-toggle-subtitle">Shared with the wall and every phone.</span>
+          </span>
+          <span class="fold-head-right"><span id="adminNotesCount" class="fold-count"></span><span class="reminder-menu-chevron" aria-hidden="true">⌄</span></span>
+        </button>
+        <div id="adminNotesBody" class="admin-fold-body"></div>
+      </section>
       <section id="adminStockFold" class="admin-fold is-collapsed hidden" aria-label="Stock pictures">
         <button id="adminStockToggle" class="reminder-menu-toggle" type="button" aria-expanded="false" aria-controls="adminStockBody">
           <span class="reminder-menu-toggle-text">
@@ -6300,9 +6491,13 @@
   <div id="edgePanel" class="edge-panel hidden">
     <div class="edge-panel-dock">
       <div id="edgePanelTray" class="edge-panel-tray">
-        <button id="edgeYoutubeBtn" class="edge-app" type="button" tabindex="-1">
+        <button id="edgeYoutubeBtn" class="edge-app edge-app-youtube" type="button" tabindex="-1">
           <span class="edge-app-icon"><svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="14" width="56" height="36" rx="11" fill="#ff0000"/><path d="M27 24.5v15l13-7.5z" fill="#fff"/></svg></span>
           YouTube
+        </button>
+        <button id="edgeSettingsBtn" class="edge-app edge-app-settings" type="button" tabindex="-1" aria-label="Calendar settings">
+          <span class="edge-app-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" stroke="currentColor" stroke-width=".9" stroke-linejoin="round" d="M10.14 4.53 L10.48 1.91 L13.52 1.91 L13.86 4.53 L15.97 5.40 L18.06 3.80 L20.20 5.94 L18.60 8.03 L19.47 10.14 L22.09 10.48 L22.09 13.52 L19.47 13.86 L18.60 15.97 L20.20 18.06 L18.06 20.20 L15.97 18.60 L13.86 19.47 L13.52 22.09 L10.48 22.09 L10.14 19.47 L8.03 18.60 L5.94 20.20 L3.80 18.06 L5.40 15.97 L4.53 13.86 L1.91 13.52 L1.91 10.48 L4.53 10.14 L5.40 8.03 L3.80 5.94 L5.94 3.80 L8.03 5.40Z M15.30 12.00 A3.3 3.3 0 1 0 8.70 12.00 A3.3 3.3 0 1 0 15.30 12.00Z"/></svg></span>
+          Settings
         </button>
       </div>
       <div id="edgePanelHandle" class="edge-panel-handle" role="button" tabindex="0" aria-label="Pull out the side panel" aria-expanded="false"></div>
@@ -6336,6 +6531,56 @@
       </div>
       <div id="videoQrCode" class="video-qr-code" role="img" aria-label="QR code for sending a video"></div>
       <div id="videoQrStatus" class="status-line video-qr-status" role="status"></div>
+    </section>
+  </div>
+
+  <!-- Calendar settings, from the cog in the pull-out panel (display only).
+       The event frame and the birthdays switch belong to this screen; the
+       notes are shared with every screen. -->
+  <div id="calSettingsOverlay" class="config-overlay cal-settings-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="calSettingsTitle">
+    <section id="calSettingsModal" class="config-modal cal-settings-modal" data-view="main">
+      <div class="config-head">
+        <div>
+          <button id="calSettingsBackBtn" class="cs-back" type="button">‹ Settings</button>
+          <h2 id="calSettingsTitle" class="config-title">Calendar settings</h2>
+          <div id="calSettingsSubtitle" class="config-subtitle">The frame and birthdays are for this screen. Notes are shared with every screen.</div>
+        </div>
+        <button id="calSettingsCloseBtn" class="config-close" type="button" aria-label="Close">×</button>
+      </div>
+      <div class="config-grid cs-view-main">
+        <section class="config-section cs-frame-section">
+          <h3 class="config-section-title">Event frame</h3>
+          <button id="csDayRingsBtn" class="cs-row cs-switch-row" type="button" role="switch" aria-checked="false">
+            <span class="cs-row-text">
+              <span class="cs-row-label">Blue Sofia frame</span>
+              <span class="config-help">A ring round every task: blue on Sofia's days, black on the others.</span>
+            </span>
+            <span class="month-ring-switch" aria-hidden="true"></span>
+          </button>
+        </section>
+        <section class="config-section cs-birthday-section">
+          <h3 class="config-section-title">Birthdays</h3>
+          <button id="csBirthdaysBtn" class="cs-row cs-switch-row is-on" type="button" role="switch" aria-checked="true">
+            <span class="cs-row-text">
+              <span class="cs-row-label">Show birthdays</span>
+              <span id="csBirthdaysHelp" class="config-help">Birthday tasks show in this screen's calendar.</span>
+            </span>
+            <span class="month-ring-switch" aria-hidden="true"></span>
+          </button>
+          <button id="csBirthdayListBtn" class="cs-row cs-nav-row" type="button">
+            <span class="cs-row-text">
+              <span class="cs-row-label">All birthdays</span>
+              <span id="csBirthdayNext" class="config-help"></span>
+            </span>
+            <span class="cs-row-end"><span id="csBirthdayCount" class="fold-count"></span><span class="cs-chevron" aria-hidden="true">›</span></span>
+          </button>
+        </section>
+        <section class="config-section cs-notes-section">
+          <h3 class="config-section-title">Notes</h3>
+          <div id="csNotesRoot" class="cs-notes"></div>
+        </section>
+      </div>
+      <div id="csBirthdayList" class="cs-view-birthdays cs-birthday-list"></div>
     </section>
   </div>
 
@@ -6442,6 +6687,11 @@
     // tasks, like the daughter periods; these hold this screen's last copy.
     const TODOS_CACHE_KEY = 'homeOrganizerTodosV1';
     const STOCK_CACHE_KEY = 'homeOrganizerStockV1';
+    // The notes ride there too (see api/_notes.js, whose limits these mirror).
+    const NOTES_CACHE_KEY = 'homeOrganizerNotesV1';
+    const NOTES_MENU_EXPANDED_KEY = 'homeOrganizerNotesMenuExpanded';
+    const NOTE_MAX_TITLE = 80;
+    const NOTE_MAX_TEXT = 4000;
     // Ticks and additions wait this long for more before they are sent, so a
     // burst of taps on the wall costs one write rather than one each.
     const TODO_FLUSH_DELAY_MS = 2500;
@@ -6534,6 +6784,9 @@
       // brings the library.
       serverTodos: { items: {}, deleted: {} },
       serverStock: null,
+      // The server's notes; what is shown is these plus queued changes.
+      serverNotes: { items: {}, deleted: {} },
+      notesMenuExpanded: localStorage.getItem(NOTES_MENU_EXPANDED_KEY) === '1',
       renderedSharedListsJson: '',
       todoFlushTimer: null,
       // Which panel the weather card shows when it is not the day selector:
@@ -6711,6 +6964,21 @@
       edgePanelTray: document.getElementById('edgePanelTray'),
       edgePanelHandle: document.getElementById('edgePanelHandle'),
       edgeYoutubeBtn: document.getElementById('edgeYoutubeBtn'),
+      edgeSettingsBtn: document.getElementById('edgeSettingsBtn'),
+      calSettingsOverlay: document.getElementById('calSettingsOverlay'),
+      calSettingsModal: document.getElementById('calSettingsModal'),
+      calSettingsTitle: document.getElementById('calSettingsTitle'),
+      calSettingsSubtitle: document.getElementById('calSettingsSubtitle'),
+      calSettingsBackBtn: document.getElementById('calSettingsBackBtn'),
+      calSettingsCloseBtn: document.getElementById('calSettingsCloseBtn'),
+      csDayRingsBtn: document.getElementById('csDayRingsBtn'),
+      csBirthdaysBtn: document.getElementById('csBirthdaysBtn'),
+      csBirthdaysHelp: document.getElementById('csBirthdaysHelp'),
+      csBirthdayListBtn: document.getElementById('csBirthdayListBtn'),
+      csBirthdayNext: document.getElementById('csBirthdayNext'),
+      csBirthdayCount: document.getElementById('csBirthdayCount'),
+      csBirthdayList: document.getElementById('csBirthdayList'),
+      csNotesRoot: document.getElementById('csNotesRoot'),
       videoQrOverlay: document.getElementById('videoQrOverlay'),
       videoQrCode: document.getElementById('videoQrCode'),
       videoQrStatus: document.getElementById('videoQrStatus'),
@@ -7869,8 +8137,11 @@
       // strip, the week dots, the day selector, the month view, the tent view
       // and the admin list all take their tasks from this function. Code that
       // reads state.events directly sees every task on purpose (editing by id,
-      // the stock picture counts, the card-drop bookkeeping).
-      const visibleEvents = options.allScopes ? state.events : state.events.filter(eventScopeVisible);
+      // the stock picture counts, the card-drop bookkeeping, the birthday
+      // list). The Show birthdays switch filters here too, on the wall only.
+      const visibleEvents = options.allScopes
+        ? state.events
+        : state.events.filter(event => eventScopeVisible(event) && (birthdaysShown() || !isBirthdayEvent(event)));
       visibleEvents.forEach(event => {
         const repeat = event.repeat || 'none';
         const start = parseEventDate(event.start);
@@ -8600,8 +8871,9 @@
       // No storage: off.
     }
 
-    // The switch sits in the Q panel and, for touch screens with no Q key, in
-    // the month view's footer; both show the same setting.
+    // The switch sits in the Q panel, in the calendar settings (the cog in the
+    // pull-out panel) and in the month view's footer; all show the same
+    // setting.
     function applyDayRings() {
       els.displayView?.classList.toggle('show-day-rings', dayRings.on);
       if (els.wxDebugDayRings) {
@@ -8611,6 +8883,10 @@
       if (els.monthDayRingsBtn) {
         els.monthDayRingsBtn.classList.toggle('is-on', dayRings.on);
         els.monthDayRingsBtn.setAttribute('aria-pressed', String(dayRings.on));
+      }
+      if (els.csDayRingsBtn) {
+        els.csDayRingsBtn.classList.toggle('is-on', dayRings.on);
+        els.csDayRingsBtn.setAttribute('aria-checked', String(dayRings.on));
       }
     }
 
@@ -8625,6 +8901,120 @@
     }
 
     applyDayRings();
+
+    // --- Birthdays ---------------------------------------------------------------
+    //
+    // A task is a birthday when its name says so: "Bursdag mormor", "Sofias
+    // bursdag", "Bursdagsfest hos Kari", "Ola fyller 40", "Mormor 80-årsdag",
+    // "John's birthday", or a 🎂. Only the title counts, and only whole words:
+    // "bursdagsgave" and "bursdagskort" are errands, not birthdays. The list is
+    // worked out afresh from the tasks whenever it is shown, so a birthday task
+    // saved on any device is in it at once, with nothing extra stored.
+    //
+    // The Show birthdays switch in the calendar settings belongs to this screen
+    // and is on until it is turned off. Off, birthday tasks are left out of
+    // every view on this screen (Upcoming, the big photo, the day selector, the
+    // month view); the birthday list still has them all. The phone's admin list
+    // always shows them, so they can still be edited there.
+    const SHOW_BIRTHDAYS_KEY = 'homedash.showBirthdays';
+    const birthdays = { show: true };
+    try {
+      birthdays.show = localStorage.getItem(SHOW_BIRTHDAYS_KEY) !== '0';
+    } catch {
+      // No storage: shown.
+    }
+
+    const BIRTHDAY_TITLE = new RegExp([
+      '(?:^|[^\\p{L}\\p{N}])(?:',
+      'bursdag(?:en|er|ene)?',
+      '|bursdags(?:fest|feiring|selskap|party|middag|lunsj|frokost|brunsj|kaffe)(?:en|et|er)?',
+      '|fødselsdag(?:en|er)?',
+      '|birthdays?',
+      '|b-?day',
+      '|\\d{1,3} ?-? ?årsdag(?:en)?',
+      '|fyller +\\d{1,3}(?: *år)?',
+      ')(?=$|[^\\p{L}\\p{N}])',
+      '|🎂'
+    ].join(''), 'iu');
+
+    function isBirthdayEvent(event) {
+      return Boolean(event) && BIRTHDAY_TITLE.test(String(event.title || ''));
+    }
+
+    function birthdaysShown() {
+      return adminMode || birthdays.show;
+    }
+
+    function applyBirthdaySetting() {
+      if (els.csBirthdaysBtn) {
+        els.csBirthdaysBtn.classList.toggle('is-on', birthdays.show);
+        els.csBirthdaysBtn.setAttribute('aria-checked', String(birthdays.show));
+      }
+      if (els.csBirthdaysHelp) {
+        els.csBirthdaysHelp.textContent = birthdays.show
+          ? 'Birthday tasks show in this screen\'s calendar.'
+          : 'Hidden from this screen\'s calendar. They are all still in the list below.';
+      }
+    }
+
+    function setShowBirthdays(on) {
+      birthdays.show = on;
+      try {
+        localStorage.setItem(SHOW_BIRTHDAYS_KEY, on ? '1' : '0');
+      } catch {
+        // Kept for this visit only.
+      }
+      applyBirthdaySetting();
+      renderDisplay();
+      if (els.monthOverlay && !els.monthOverlay.classList.contains('hidden')) renderMonthView();
+    }
+
+    // The next time a birthday comes round, from today on. It comes round
+    // every year whether or not the task repeats, so a one-off "Bursdag
+    // mormor" last May is listed for next May. 29 February only comes round
+    // in leap years, as in the calendar, and a year taken out of a yearly task
+    // is skipped.
+    function nextBirthdayDate(event, start, today) {
+      const yearly = (event.repeat || 'none') === 'yearly';
+      for (let year = today.getFullYear(); year <= today.getFullYear() + 8; year += 1) {
+        const date = new Date(year, start.getMonth(), start.getDate());
+        if (date.getMonth() !== start.getMonth() || date < today) continue;
+        if (yearly && isOccurrenceExcluded(event, date)) continue;
+        return date;
+      }
+      return null;
+    }
+
+    // Every birthday this screen's mode shows (work birthdays only in work
+    // mode), once per name and date, soonest first.
+    function birthdayList(now = new Date()) {
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const byKey = new Map();
+      state.events.filter(eventScopeVisible).filter(isBirthdayEvent).forEach(event => {
+        const start = parseEventDate(event.start);
+        if (!start) return;
+        const next = nextBirthdayDate(event, start, today);
+        if (!next) return;
+        const title = String(event.title || '').replace(/\s+/g, ' ').trim();
+        const key = `${title.toLocaleLowerCase()}|${start.getMonth()}-${start.getDate()}`;
+        const entry = {
+          id: String(event.id || ''),
+          title,
+          next,
+          days: Math.round((next - today) / 86400000),
+          yearly: (event.repeat || 'none') === 'yearly'
+        };
+        const known = byKey.get(key);
+        if (!known || (entry.yearly && !known.yearly)) byKey.set(key, entry);
+      });
+      return [...byKey.values()].sort((a, b) => a.next - b.next || a.title.localeCompare(b.title));
+    }
+
+    function birthdayWhenLabel(days) {
+      if (days === 0) return 'Today';
+      if (days === 1) return 'Tomorrow';
+      return `In ${days} days`;
+    }
 
     function isOnSofiaDay(event) {
       const start = event?.start ? new Date(event.start) : null;
@@ -8785,6 +9175,7 @@
         || isOverlayOpen(els.dangerOverlay)
         || isOverlayOpen(els.videoQrOverlay)
         || isOverlayOpen(els.videoPlayerOverlay)
+        || isOverlayOpen(els.calSettingsOverlay)
         || (phoneApp.open && !phoneApp.docked);
     }
 
@@ -8812,6 +9203,8 @@
       if (isOverlayOpen(els.configOverlay)) closeConfigMenu();
       if (isOverlayOpen(els.dangerOverlay)) closeDangerMenu();
       if (isOverlayOpen(els.videoQrOverlay)) closeVideoQr();
+      // A note half written in the settings stays open in them for next time.
+      if (isOverlayOpen(els.calSettingsOverlay)) closeCalSettings();
       closePhoneApp();
       // A playing video keeps the watchdog fed (setVideoPlaying) and is never
       // idle; a paused or finished one is.
@@ -9418,7 +9811,7 @@
       state.lastWriteError = {
         status: Number(error?.status) || 0,
         message: String(error?.message || 'Unknown error.'),
-        title: String(op?.event?.title || ({ PERIOD: 'Daughter period', TODO: 'To-do list', STOCK: 'Stock pictures' }[op?.method] || '')),
+        title: String(op?.event?.title || ({ PERIOD: 'Daughter period', TODO: 'To-do list', NOTE: 'Notes', STOCK: 'Stock pictures' }[op?.method] || '')),
         at: new Date().toISOString()
       };
     }
@@ -9548,6 +9941,10 @@
         options.method = 'PATCH';
         options.headers['Content-Type'] = 'application/json';
         options.body = JSON.stringify({ todos: op.changes || [] });
+      } else if (op.method === 'NOTE') {
+        options.method = 'PATCH';
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify({ notes: op.changes || [] });
       } else if (op.method === 'STOCK') {
         options.method = 'PATCH';
         options.headers['Content-Type'] = 'application/json';
@@ -9606,9 +10003,12 @@
               ? `period:${op.change?.key || op.change?.action || ''}`
               : op.method === 'TODO'
                 ? 'todo'
-                : op.method === 'STOCK'
-                  ? 'stock'
-                  : String(op.event?.id || op.id || '');
+                : op.method === 'NOTE'
+                  // Each note waits only for its own earlier saves.
+                  ? `note:${op.changes?.[0]?.id || ''}`
+                  : op.method === 'STOCK'
+                    ? 'stock'
+                    : String(op.event?.id || op.id || '');
             if (opEventId && blockedEventIds.has(opEventId)) continue;
             // To-do changes go out together: every queued to-do op, read fresh
             // (more taps may have landed while an earlier save was in flight),
@@ -9663,6 +10063,7 @@
               if (!isRetryableError(error)) {
                 removeQueuedWrite(op.opId);
                 if (op.method === 'TODO') batchedOpIds.forEach(removeQueuedWrite);
+                if (op.method === 'NOTE') noteSaveRefused(op, error);
                 if (op.event?.id) forgetLocalEvent(op.event.id);
                 refreshEventsFromServerEvents();
                 // A non-retryable failure means the save is permanently rejected and
@@ -10053,6 +10454,7 @@
       renderDailyCalendarPanel();
       renderTodoPanel();
       renderClockChips();
+      if (isOverlayOpen(els.calSettingsOverlay)) renderCalSettingsBirthdays();
 
       if (!hasMainEvent) {
         renderWeekView();
@@ -10417,7 +10819,7 @@
       // have to re-blur a moving canvas every frame.
       const observer = new MutationObserver(() => weatherFxSync());
       [document.body, els.displayView, els.weatherCard, els.weatherOverlay, els.monthOverlay, els.configOverlay,
-        els.dangerOverlay, els.videoQrOverlay, els.videoPlayerOverlay]
+        els.dangerOverlay, els.videoQrOverlay, els.videoPlayerOverlay, els.calSettingsOverlay]
         .filter(Boolean)
         .forEach(element => observer.observe(element, { attributes: true, attributeFilter: ['class'] }));
       document.addEventListener('visibilitychange', weatherFxSync);
@@ -15520,7 +15922,7 @@
       });
 
       const startHold = event => {
-        if (event.target.closest?.('.month-modal, .config-modal, .weather-modal, .danger-modal, .task-action-sheet, .edge-panel, .video-overlay, .tent-view, .wx-debug, .todo-panel, .clock-chips, .phone-app-overlay, input, textarea, button, select, a')) return;
+        if (event.target.closest?.('.month-modal, .config-modal, .cal-settings-overlay, .weather-modal, .danger-modal, .task-action-sheet, .edge-panel, .video-overlay, .tent-view, .wx-debug, .todo-panel, .clock-chips, .phone-app-overlay, input, textarea, button, select, a')) return;
         if (els.monthOverlay && !els.monthOverlay.classList.contains('hidden')) return;
         state.longPressOpened = false;
         clearTimeout(state.longPressTimer);
@@ -17205,6 +17607,7 @@ Cancel = choose whether to delete the whole series.`);
       els.edgePanel.classList.toggle('is-open', open);
       els.edgePanelHandle?.setAttribute('aria-expanded', String(open));
       els.edgeYoutubeBtn?.setAttribute('tabindex', open ? '0' : '-1');
+      els.edgeSettingsBtn?.setAttribute('tabindex', open ? '0' : '-1');
       // The picture cards lifted while it was pulled settle back while it
       // waits (an hour of primed cards would cost layers for nothing); they
       // are primed again as it goes off.
@@ -20613,6 +21016,10 @@ Cancel = choose whether to delete the whole series.`);
         state.serverStock = normalizeStockShape(data.stock);
         try { localStorage.setItem(STOCK_CACHE_KEY, JSON.stringify(state.serverStock)); } catch {}
       }
+      if (data.notes && typeof data.notes === 'object') {
+        state.serverNotes = normalizeNotesShape(data.notes);
+        try { localStorage.setItem(NOTES_CACHE_KEY, JSON.stringify(state.serverNotes)); } catch {}
+      }
     }
 
     function hydrateSharedListsFromCache() {
@@ -20623,6 +21030,10 @@ Cancel = choose whether to delete the whole series.`);
       try {
         const stock = JSON.parse(localStorage.getItem(STOCK_CACHE_KEY) || 'null');
         if (stock) state.serverStock = normalizeStockShape(stock);
+      } catch {}
+      try {
+        const notes = JSON.parse(localStorage.getItem(NOTES_CACHE_KEY) || 'null');
+        if (notes) state.serverNotes = normalizeNotesShape(notes);
       } catch {}
     }
 
@@ -20716,9 +21127,10 @@ Cancel = choose whether to delete the whole series.`);
     // shows them, only when something really changed, and never the part
     // somebody is typing into.
     function refreshSharedListsView() {
-      const json = JSON.stringify([effectiveTodos(), effectiveStock(), workMode]);
+      const json = JSON.stringify([effectiveTodos(), effectiveStock(), workMode, effectiveNotes(), [...pendingNoteIds()]]);
       if (json === state.renderedSharedListsJson) return;
       state.renderedSharedListsJson = json;
+      renderNotes(adminMode ? 'admin' : 'wall');
       if (adminMode) {
         renderAdminTodos();
         renderAdminStock();
@@ -21076,6 +21488,526 @@ Cancel = choose whether to delete the whole series.`);
       fold?.classList.toggle('is-collapsed', !expanded);
       toggle?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
       try { localStorage.setItem(key, expanded ? '1' : '0'); } catch {}
+    }
+
+    // ---------------------------------------------------------------------
+    // Notes: free text in the cloud, shared by every screen and phone. They
+    // ride in events.json like the to-do list (the rules are in
+    // api/_notes.js), so every refresh brings them along and the version
+    // marker carries their changes. The same list and editor show on the
+    // wall, in the calendar settings, and on the phone, under Notes.
+
+    function normalizeNotesShape(value) {
+      const source = value && typeof value === 'object' ? value : {};
+      const items = source.items && typeof source.items === 'object' && !Array.isArray(source.items) ? { ...source.items } : {};
+      const deleted = source.deleted && typeof source.deleted === 'object' && !Array.isArray(source.deleted) ? { ...source.deleted } : {};
+      return { items, deleted };
+    }
+
+    function cleanNoteTitle(value) {
+      return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, NOTE_MAX_TITLE);
+    }
+
+    // Line breaks stay (a note is often a list); trailing spaces and blank
+    // lines at either end do not.
+    function cleanNoteText(value) {
+      return String(value ?? '')
+        .replace(/\r\n?/g, '\n')
+        .replace(/[^\S\n]+$/gm, '')
+        .replace(/^\n+|\n+$/g, '')
+        .slice(0, NOTE_MAX_TEXT);
+    }
+
+    // Mirrors applyNoteChanges in api/_notes.js, so a save shows at once and a
+    // refresh that lands before the server has it does not undo it.
+    function applyNoteChangeLocally(notes, change, nowIso) {
+      const action = String(change?.action || '');
+      const id = String(change?.id || '');
+      if (!id) return;
+      if (action === 'add') {
+        if (notes.items[id] || notes.deleted[id]) return;
+        const title = cleanNoteTitle(change.title);
+        const text = cleanNoteText(change.text);
+        if (!title && !text) return;
+        notes.items[id] = { title, text, createdAt: nowIso, updatedAt: nowIso };
+      } else if (action === 'set') {
+        const item = notes.items[id];
+        if (!item) return;
+        const title = change.title === undefined ? String(item.title || '') : cleanNoteTitle(change.title);
+        const text = change.text === undefined ? String(item.text || '') : cleanNoteText(change.text);
+        if (!title && !text) return;
+        if (title === item.title && text === item.text) return;
+        notes.items[id] = { ...item, title, text, updatedAt: nowIso };
+      } else if (action === 'delete') {
+        delete notes.items[id];
+        notes.deleted[id] = nowIso;
+      }
+    }
+
+    function effectiveNotes() {
+      const notes = normalizeNotesShape(state.serverNotes);
+      const nowIso = new Date().toISOString();
+      getPendingWrites()
+        .filter(op => op.method === 'NOTE')
+        .forEach(op => (Array.isArray(op.changes) ? op.changes : []).forEach(change => applyNoteChangeLocally(notes, change, op.createdAt || nowIso)));
+      return notes;
+    }
+
+    // Notes with a save from this screen still on its way.
+    function pendingNoteIds() {
+      const ids = new Set();
+      getPendingWrites()
+        .filter(op => op.method === 'NOTE')
+        .forEach(op => (Array.isArray(op.changes) ? op.changes : []).forEach(change => {
+          if (change?.id) ids.add(String(change.id));
+        }));
+      return ids;
+    }
+
+    function newNoteId() {
+      return `note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    }
+
+    // Newest edit first.
+    function sortedNotes() {
+      return Object.entries(effectiveNotes().items)
+        .map(([id, item]) => ({
+          id,
+          title: String(item?.title || ''),
+          text: String(item?.text || ''),
+          createdAt: String(item?.createdAt || ''),
+          updatedAt: String(item?.updatedAt || item?.createdAt || '')
+        }))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.createdAt.localeCompare(a.createdAt));
+    }
+
+    // A note is saved with a tap on Save, not on every key, so each save is
+    // queued at once (a reload loses nothing) and sent straight away. Like a
+    // to-do, it needs the admin PIN saved on the device.
+    function queueNoteChange(change) {
+      if (!adminMode && !ensureDisplayActionPin()) return false;
+      if (adminMode && !getPin().trim()) return false;
+      queueWrite({
+        opId: `note-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+        method: 'NOTE',
+        changes: [change],
+        createdAt: new Date().toISOString()
+      });
+      refreshSharedListsView();
+      updateLocalQueueStatus();
+      processPendingWrites({ silent: true }).catch(() => {});
+      return true;
+    }
+
+    // The server refused a note for good (too many notes, say): the change has
+    // left the queue, so it has to be said where the notes are.
+    function noteSaveRefused(op, error) {
+      const message = `A note was not saved: ${error?.message || 'the server refused it.'}`;
+      Object.values(notesUi).forEach(ui => {
+        ui.notice = message;
+      });
+    }
+
+    // What each place showing the notes has open. The wall and the phone are
+    // never the same page, but the code is shared.
+    const notesUi = {
+      wall: { editing: false, id: '', isNew: false, baseTitle: '', baseText: '', status: '', statusError: false, deleteArmedUntil: 0, deleteTimer: null, notice: '' },
+      admin: { editing: false, id: '', isNew: false, baseTitle: '', baseText: '', status: '', statusError: false, deleteArmedUntil: 0, deleteTimer: null, notice: '' }
+    };
+
+    function notesRoot(kind) {
+      return kind === 'admin' ? document.getElementById('adminNotesBody') : els.csNotesRoot;
+    }
+
+    function noteStampLabel(iso) {
+      const date = parseEventDate(iso);
+      if (!date) return '';
+      const now = new Date();
+      const time = formatTime(date, false);
+      if (sameDay(date, now)) return `Today ${time}`;
+      if (sameDay(date, new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))) return `Yesterday ${time}`;
+      const options = date.getFullYear() === now.getFullYear()
+        ? { day: 'numeric', month: 'short' }
+        : { day: 'numeric', month: 'short', year: 'numeric' };
+      return new Intl.DateTimeFormat(undefined, options).format(date);
+    }
+
+    function noteRowHtml(note, pending) {
+      const lines = note.text.split('\n');
+      const firstLine = lines.findIndex(line => line.trim());
+      // A note with no title is headed by its first line.
+      const title = note.title || (firstLine >= 0 ? lines[firstLine].trim() : 'Note');
+      const preview = (note.title ? note.text : lines.slice(firstLine + 1).join('\n')).trim();
+      const meta = [htmlEscape(noteStampLabel(note.updatedAt)), pending ? '<span class="is-pending">Not sent yet</span>' : '']
+        .filter(Boolean)
+        .join(' · ');
+      return `
+        <button class="cs-note" type="button" data-note-open="${htmlEscape(note.id)}">
+          <span class="cs-note-title">${htmlEscape(title)}</span>
+          ${preview ? `<span class="cs-note-preview">${htmlEscape(preview)}</span>` : ''}
+          ${meta ? `<span class="cs-note-meta">${meta}</span>` : ''}
+        </button>`;
+    }
+
+    function noteEditorHtml(ui) {
+      return `
+        <div class="cs-note-editor">
+          <input type="text" data-note-title maxlength="${NOTE_MAX_TITLE}" placeholder="Title" autocomplete="off" enterkeyhint="next" aria-label="Note title" />
+          <textarea data-note-text maxlength="${NOTE_MAX_TEXT}" rows="8" placeholder="Write the note…" aria-label="Note"></textarea>
+          <div class="cs-note-status config-help" data-note-status role="status"></div>
+          <div class="button-row">
+            <button class="btn" type="button" data-note-save>Save</button>
+            <button class="btn secondary" type="button" data-note-cancel>Cancel</button>
+            ${ui.isNew ? '' : '<button class="btn danger" type="button" data-note-delete>Delete</button>'}
+          </div>
+        </div>`;
+    }
+
+    function noteEditorFields(kind) {
+      const editor = notesRoot(kind)?.querySelector('.cs-note-editor');
+      return {
+        editor,
+        title: editor?.querySelector('[data-note-title]') || null,
+        text: editor?.querySelector('[data-note-text]') || null,
+        status: editor?.querySelector('[data-note-status]') || null
+      };
+    }
+
+    function readNoteEditor(kind) {
+      const fields = noteEditorFields(kind);
+      return { title: cleanNoteTitle(fields.title?.value), text: cleanNoteText(fields.text?.value) };
+    }
+
+    // Has anything been typed since the note was opened?
+    function noteEditorDirty(kind) {
+      const ui = notesUi[kind];
+      if (!ui.editing || !noteEditorFields(kind).editor) return false;
+      const { title, text } = readNoteEditor(kind);
+      return title !== ui.baseTitle || text !== ui.baseText;
+    }
+
+    function setNoteEditorStatus(kind, message, isError = false) {
+      const ui = notesUi[kind];
+      ui.status = message;
+      ui.statusError = isError;
+      syncNoteEditor(kind);
+    }
+
+    // Keeps an open note in step with the other screens without touching
+    // what somebody is typing: an edit made elsewhere is taken in only while
+    // nothing has been typed here, and otherwise only mentioned.
+    function syncNoteEditor(kind) {
+      const ui = notesUi[kind];
+      const fields = noteEditorFields(kind);
+      if (!fields.editor) return;
+      const item = effectiveNotes().items[ui.id];
+      const dirty = noteEditorDirty(kind);
+      let message = ui.status;
+      let isError = ui.statusError;
+      if (!message && !ui.isNew) {
+        if (!item) {
+          message = 'Deleted on another screen. Save to keep it as a new note.';
+          isError = true;
+        } else if (String(item.title || '') !== ui.baseTitle || String(item.text || '') !== ui.baseText) {
+          if (dirty) {
+            message = 'Changed on another screen meanwhile. Save keeps your version.';
+            isError = true;
+          } else {
+            ui.baseTitle = String(item.title || '');
+            ui.baseText = String(item.text || '');
+            fields.title.value = ui.baseTitle;
+            fields.text.value = ui.baseText;
+            message = 'Updated from another screen.';
+          }
+        } else if (pendingNoteIds().has(ui.id)) {
+          message = 'Saved here, still sending…';
+        } else if (item.updatedAt) {
+          message = `Last saved ${noteStampLabel(item.updatedAt)}`;
+        }
+      }
+      fields.status.textContent = message || '';
+      fields.status.classList.toggle('is-error', Boolean(message) && isError);
+      const cancel = fields.editor.querySelector('[data-note-cancel]');
+      // Closing a note nobody changed loses nothing, so it says Close.
+      if (cancel) cancel.textContent = ui.isNew || noteEditorDirty(kind) ? 'Cancel' : 'Close';
+    }
+
+    function renderNotes(kind) {
+      const ui = notesUi[kind];
+      const root = notesRoot(kind);
+      if (!ui || !root) return;
+      if (kind === 'admin') renderAdminNotesHead();
+      if (ui.editing) {
+        // Built once when the note is opened, then only kept in step.
+        if (!noteEditorFields(kind).editor) {
+          root.innerHTML = noteEditorHtml(ui);
+          const fields = noteEditorFields(kind);
+          fields.title.value = ui.baseTitle;
+          fields.text.value = ui.baseText;
+        }
+        syncNoteEditor(kind);
+        return;
+      }
+      const notes = sortedNotes();
+      const pending = pendingNoteIds();
+      root.innerHTML = `
+        <button class="btn cs-note-new" type="button" data-note-new>+ New note</button>
+        ${ui.notice ? `<div class="cs-note-status config-help is-error" role="status">${htmlEscape(ui.notice)}</div>` : ''}
+        ${notes.length
+          ? `<div class="cs-note-list">${notes.map(note => noteRowHtml(note, pending.has(note.id))).join('')}</div>`
+          : '<div class="cs-empty">No notes yet. A note made here shows on every screen and phone.</div>'}
+        <div class="config-help">Kept in the cloud with the calendar. Like the calendar it is not secret, so leave passwords and door codes out.</div>`;
+    }
+
+    function openNote(kind, id) {
+      const ui = notesUi[kind];
+      const item = id ? effectiveNotes().items[id] : null;
+      if (id && !item) return;
+      clearTimeout(ui.deleteTimer);
+      Object.assign(ui, {
+        editing: true,
+        id: id || newNoteId(),
+        isNew: !id,
+        baseTitle: String(item?.title || ''),
+        baseText: String(item?.text || ''),
+        status: '',
+        statusError: false,
+        deleteArmedUntil: 0,
+        notice: ''
+      });
+      const root = notesRoot(kind);
+      if (root) root.innerHTML = '';
+      renderNotes(kind);
+      if (kind === 'wall') setCalSettingsView('note');
+      // Only a new note brings the keyboard up: one opened to be read should
+      // not have the touch keyboard cover it.
+      if (!id) noteEditorFields(kind).title?.focus({ preventScroll: true });
+    }
+
+    function closeNote(kind) {
+      const ui = notesUi[kind];
+      clearTimeout(ui.deleteTimer);
+      Object.assign(ui, { editing: false, id: '', isNew: false, baseTitle: '', baseText: '', status: '', statusError: false, deleteArmedUntil: 0 });
+      const root = notesRoot(kind);
+      if (root) root.innerHTML = '';
+      renderNotes(kind);
+      if (kind === 'wall' && els.calSettingsModal?.dataset.view === 'note') setCalSettingsView('main');
+    }
+
+    function notePinMessage() {
+      return adminMode ? 'Save the admin PIN on this phone first.' : 'Notes need the admin PIN on this screen.';
+    }
+
+    function saveNote(kind) {
+      const ui = notesUi[kind];
+      const { title, text } = readNoteEditor(kind);
+      if (!title && !text) {
+        setNoteEditorStatus(kind, 'Write something in the note first.', true);
+        return;
+      }
+      const item = effectiveNotes().items[ui.id];
+      let change;
+      if (item) {
+        if (title === String(item.title || '') && text === String(item.text || '')) {
+          closeNote(kind);
+          return;
+        }
+        change = { action: 'set', id: ui.id, title, text };
+      } else {
+        // A deleted note's id stays deleted on the server, so one brought
+        // back after another screen deleted it is saved under a new one.
+        change = { action: 'add', id: ui.isNew ? ui.id : newNoteId(), title, text };
+      }
+      if (!queueNoteChange(change)) {
+        setNoteEditorStatus(kind, notePinMessage(), true);
+        return;
+      }
+      closeNote(kind);
+    }
+
+    // Delete asks twice: the first tap arms it for a few seconds.
+    function deleteNote(kind, button) {
+      const ui = notesUi[kind];
+      if (Date.now() > ui.deleteArmedUntil) {
+        ui.deleteArmedUntil = Date.now() + 4000;
+        button.textContent = 'Tap again to delete';
+        clearTimeout(ui.deleteTimer);
+        ui.deleteTimer = setTimeout(() => {
+          ui.deleteArmedUntil = 0;
+          if (button.isConnected) button.textContent = 'Delete';
+        }, 4000);
+        return;
+      }
+      if (effectiveNotes().items[ui.id] && !queueNoteChange({ action: 'delete', id: ui.id })) {
+        setNoteEditorStatus(kind, notePinMessage(), true);
+        return;
+      }
+      closeNote(kind);
+    }
+
+    function bindNotes(kind) {
+      const root = notesRoot(kind);
+      if (!root) return;
+      root.addEventListener('click', event => {
+        if (event.target.closest('[data-note-new]')) return openNote(kind, '');
+        const open = event.target.closest('[data-note-open]')?.dataset.noteOpen;
+        if (open) return openNote(kind, open);
+        if (event.target.closest('[data-note-save]')) return saveNote(kind);
+        if (event.target.closest('[data-note-cancel]')) return closeNote(kind);
+        const remove = event.target.closest('[data-note-delete]');
+        if (remove) return deleteNote(kind, remove);
+      });
+      root.addEventListener('input', () => {
+        const ui = notesUi[kind];
+        if (!ui.editing) return;
+        ui.status = '';
+        ui.statusError = false;
+        syncNoteEditor(kind);
+      });
+      root.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        // Ctrl+Enter saves; Enter in the title moves on to the note itself.
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          saveNote(kind);
+        } else if (event.target.matches?.('[data-note-title]')) {
+          event.preventDefault();
+          noteEditorFields(kind).text?.focus();
+        }
+      });
+    }
+
+    function renderAdminNotesHead() {
+      const fold = document.getElementById('adminNotesFold');
+      if (!adminMode || !fold) return;
+      fold.classList.remove('hidden');
+      setFoldExpanded(fold, document.getElementById('adminNotesToggle'), NOTES_MENU_EXPANDED_KEY, state.notesMenuExpanded);
+      const count = document.getElementById('adminNotesCount');
+      const total = Object.keys(effectiveNotes().items).length;
+      if (count) count.textContent = total ? `${total} note${total === 1 ? '' : 's'}` : '';
+    }
+
+    function bindAdminNotes() {
+      if (!adminMode) return;
+      const fold = document.getElementById('adminNotesFold');
+      const toggle = document.getElementById('adminNotesToggle');
+      toggle?.addEventListener('click', () => {
+        state.notesMenuExpanded = !state.notesMenuExpanded;
+        setFoldExpanded(fold, toggle, NOTES_MENU_EXPANDED_KEY, state.notesMenuExpanded);
+      });
+      bindNotes('admin');
+      renderNotes('admin');
+    }
+
+    // ---------------------------------------------------------------------
+    // Calendar settings: the cog under YouTube in the pull-out panel. The
+    // event frame (Event borders) and the birthdays switch belong to this
+    // screen; the notes are the shared ones above.
+
+    const CAL_SETTINGS_VIEWS = {
+      main: ['Calendar settings', 'The frame and birthdays are for this screen. Notes are shared with every screen.'],
+      birthdays: ['Birthdays', 'Every task named as a birthday, soonest first.'],
+      note: ['Note', 'Shared with every screen and phone.']
+    };
+
+    function setCalSettingsView(view) {
+      const modal = els.calSettingsModal;
+      if (!modal) return;
+      const key = CAL_SETTINGS_VIEWS[view] ? view : 'main';
+      modal.dataset.view = key;
+      const [title, subtitle] = CAL_SETTINGS_VIEWS[key];
+      els.calSettingsTitle.textContent = key === 'note' && notesUi.wall.isNew ? 'New note' : title;
+      els.calSettingsSubtitle.textContent = subtitle;
+      if (key === 'birthdays') renderBirthdayList();
+      modal.scrollTop = 0;
+    }
+
+    function renderBirthdayList(list = birthdayList()) {
+      if (!els.csBirthdayList) return;
+      if (!list.length) {
+        els.csBirthdayList.innerHTML = '<div class="cs-empty">No birthdays yet. A task whose name says it is a birthday, like “Bursdag mormor”, “Sofias bursdag” or “Ola fyller 40”, is listed here by itself. Set it to repeat yearly to see it in the calendar every year.</div>';
+        return;
+      }
+      const monthFormat = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' });
+      const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+      let lastMonth = '';
+      const parts = [];
+      list.forEach(entry => {
+        const month = monthFormat.format(entry.next);
+        if (month !== lastMonth) {
+          parts.push(`<div class="cs-bday-month">${htmlEscape(month)}</div>`);
+          lastMonth = month;
+        }
+        // A one-off task is only in the calendar the once; the list still
+        // counts it every year.
+        const sub = [dayFormat.format(entry.next), entry.yearly ? '' : 'not yearly in the calendar'].filter(Boolean).join(' · ');
+        parts.push(`
+          <div class="cs-bday${entry.days === 0 ? ' is-today' : ''}">
+            <span class="cs-bday-date" aria-hidden="true">${entry.days === 0 ? '🎂' : entry.next.getDate()}</span>
+            <span class="cs-bday-text">
+              <span class="cs-bday-title">${htmlEscape(entry.title)}</span>
+              <span class="cs-bday-sub">${htmlEscape(sub)}</span>
+            </span>
+            <span class="cs-bday-when">${birthdayWhenLabel(entry.days)}</span>
+          </div>`);
+      });
+      els.csBirthdayList.innerHTML = parts.join('');
+    }
+
+    // The Birthdays section's summary, and the list when it is up. The wall
+    // redraws every minute and on every sync, so a birthday task saved on the
+    // phone shows here within the minute.
+    function renderCalSettingsBirthdays() {
+      if (!els.csBirthdayListBtn) return;
+      const list = birthdayList();
+      els.csBirthdayCount.textContent = list.length ? String(list.length) : '';
+      const next = list[0];
+      els.csBirthdayNext.textContent = next
+        ? `Next: ${next.title} · ${birthdayWhenLabel(next.days).toLowerCase()}`
+        : 'None found in the calendar yet.';
+      if (els.calSettingsModal?.dataset.view === 'birthdays') renderBirthdayList(list);
+    }
+
+    function openCalSettings() {
+      setEdgePanelOpen(false);
+      closeVideoQr();
+      // A note left open with nothing typed in it goes back to the list; one
+      // with typing in it is still there, whatever closed the sheet (the idle
+      // reset, say).
+      if (notesUi.wall.editing && !noteEditorDirty('wall')) closeNote('wall');
+      notesUi.wall.notice = '';
+      setCalSettingsView(notesUi.wall.editing ? 'note' : 'main');
+      applyDayRings();
+      applyBirthdaySetting();
+      renderCalSettingsBirthdays();
+      renderNotes('wall');
+      els.calSettingsOverlay.classList.remove('hidden');
+      // Notes edited on a phone a moment ago: check now rather than at the
+      // next timed look.
+      pollSyncVersion('settings').catch?.(() => {});
+    }
+
+    function closeCalSettings() {
+      els.calSettingsOverlay?.classList.add('hidden');
+    }
+
+    function bindCalSettings() {
+      if (adminMode || !els.calSettingsOverlay) return;
+      els.edgeSettingsBtn?.addEventListener('click', openCalSettings);
+      els.calSettingsCloseBtn.addEventListener('click', closeCalSettings);
+      els.calSettingsBackBtn.addEventListener('click', () => setCalSettingsView('main'));
+      els.calSettingsOverlay.addEventListener('click', event => {
+        if (event.target === els.calSettingsOverlay) closeCalSettings();
+      });
+      els.csDayRingsBtn.addEventListener('click', () => setDayRings(!dayRings.on));
+      els.csBirthdaysBtn.addEventListener('click', () => setShowBirthdays(!birthdays.show));
+      els.csBirthdayListBtn.addEventListener('click', () => setCalSettingsView('birthdays'));
+      document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || !isOverlayOpen(els.calSettingsOverlay)) return;
+        if (els.calSettingsModal.dataset.view === 'birthdays') setCalSettingsView('main');
+        else closeCalSettings();
+      });
+      bindNotes('wall');
     }
 
     function renderAdminTodos() {
@@ -22093,10 +23025,12 @@ Cancel = choose whether to delete the whole series.`);
       bindMotionDimmer();
       bindEdgePanel();
       bindVideoOverlays();
+      bindCalSettings();
       bindWeatherDebug();
       bindQPanelHolds();
       bindTodoPanel();
       bindAdminTodos();
+      bindAdminNotes();
       bindAdminStock();
       bindPhoneApp();
       applyWorkModeChrome();

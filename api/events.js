@@ -19,6 +19,7 @@ import {
   daughterPeriodChangeSurvived
 } from './_daughter-periods.js';
 import { normalizeTodos, applyTodoChanges, todoChangesSurvived } from './_todos.js';
+import { normalizeNotes, applyNoteChanges, noteChangesSurvived } from './_notes.js';
 import {
   normalizeStockLibrary,
   seedStockLibrary,
@@ -46,7 +47,7 @@ const VERSION_CACHE_MAX_AGE_S = 30 * 24 * 60 * 60;
 const VERSION_MARKER_RECHECK_MS = 60 * 60 * 1000;
 // Reported on every GET so the live server build can be read straight from
 // /api/events, rather than inferred from whether a save worked.
-const API_BUILD = '2026-11-21-a';
+const API_BUILD = '2026-11-27-a';
 // Which deployment answered. A wall display runs the same page for days; this
 // is how it notices a deploy and reloads itself.
 const DEPLOYMENT_ID = String(process.env.VERCEL_DEPLOYMENT_ID || process.env.VERCEL_GIT_COMMIT_SHA || '').trim();
@@ -60,7 +61,7 @@ const VERIFY_RETRY_DELAY_MS = 250;
 // confirming in time to answer.
 const WRITE_BUDGET_MS = 7000;
 // The last confirmed document: { updatedAt, events, daughterPeriods, todos,
-// stock, extras }.
+// notes, stock, extras }.
 let eventsCache = null;
 let eventsCacheAt = 0;
 // Where screens read the version marker. Derived from events.json's own URL,
@@ -383,7 +384,7 @@ function storedMd5(meta) {
 // Top-level keys this build reads and writes itself. Anything else found in
 // events.json is carried through every write untouched, so a newer build's
 // data survives a save made by this one.
-const DOCUMENT_KEYS = new Set(['updatedAt', 'events', 'daughterPeriods', 'todos', 'stock']);
+const DOCUMENT_KEYS = new Set(['updatedAt', 'events', 'daughterPeriods', 'todos', 'notes', 'stock']);
 
 function documentExtras(parsed) {
   const extras = {};
@@ -402,6 +403,7 @@ function emptyDocument() {
     events: [],
     daughterPeriods: normalizeDaughterPeriods(null),
     todos: normalizeTodos(null),
+    notes: normalizeNotes(null),
     stock: null,
     extras: {}
   };
@@ -481,6 +483,7 @@ async function readEventsDocument({ attempts = MAX_READ_ATTEMPTS } = {}) {
     events: Array.isArray(parsed?.events) ? parsed.events : [],
     daughterPeriods: normalizeDaughterPeriods(parsed?.daughterPeriods),
     todos: normalizeTodos(parsed?.todos),
+    notes: normalizeNotes(parsed?.notes),
     stock: parsed?.stock && typeof parsed.stock === 'object' ? normalizeStockLibrary(parsed.stock) : null,
     extras: documentExtras(parsed),
     fresh
@@ -527,6 +530,7 @@ function rememberEventsCache(document) {
     events: sortEvents(Array.isArray(document?.events) ? document.events : []),
     daughterPeriods: normalizeDaughterPeriods(document?.daughterPeriods),
     todos: normalizeTodos(document?.todos),
+    notes: normalizeNotes(document?.notes),
     stock: document?.stock ? normalizeStockLibrary(document.stock) : null,
     extras: document?.extras && typeof document.extras === 'object' ? document.extras : {}
   };
@@ -538,12 +542,13 @@ function rememberEventsCache(document) {
 // MD5 - so the write can be confirmed against the store's own metadata after.
 //
 // Everything in the document is written back on every save - the tasks, the
-// daughter periods, the to-do list, the stock library and any key this build
-// does not know - so no kind of save can drop another kind's data.
-async function saveEvents({ events, daughterPeriods, todos, stock, extras }) {
+// daughter periods, the to-do list, the notes, the stock library and any key
+// this build does not know - so no kind of save can drop another kind's data.
+async function saveEvents({ events, daughterPeriods, todos, notes, stock, extras }) {
   const sorted = sortEvents(events);
   const periods = normalizeDaughterPeriods(daughterPeriods);
   const todoList = normalizeTodos(todos);
+  const noteList = normalizeNotes(notes);
   const library = stock ? normalizeStockLibrary(stock) : null;
   const stamp = new Date().toISOString();
   const body = JSON.stringify({
@@ -552,6 +557,7 @@ async function saveEvents({ events, daughterPeriods, todos, stock, extras }) {
     events: sorted,
     daughterPeriods: periods,
     todos: todoList,
+    notes: noteList,
     ...(library ? { stock: library } : {})
   }, null, 2);
   const stored = await put(EVENTS_PATH, body, {
@@ -561,7 +567,7 @@ async function saveEvents({ events, daughterPeriods, todos, stock, extras }) {
     cacheControlMaxAge: 0
   });
   rememberVersionUrl(stored?.url);
-  const document = rememberEventsCache({ updatedAt: stamp, events: sorted, daughterPeriods: periods, todos: todoList, stock: library, extras });
+  const document = rememberEventsCache({ updatedAt: stamp, events: sorted, daughterPeriods: periods, todos: todoList, notes: noteList, stock: library, extras });
   return { stamp, bytes: Buffer.byteLength(body, 'utf8'), md5: md5(body), document };
 }
 
@@ -667,11 +673,11 @@ async function settleWrite(document) {
 // winner's snapshot when ours did not survive.
 //
 // `apply(events, attempt, document)` receives the freshest snapshot and returns
-// { events, verify, daughterPeriods?, todos?, stock? }, where
+// { events, verify, daughterPeriods?, todos?, notes?, stock? }, where
 // verify(savedEvents, savedDocument) reports whether this change is present in
-// what the store actually kept. A change that leaves `daughterPeriods`, `todos`
-// or `stock` out keeps the stored ones. It may run more than once, so it must
-// not have side effects.
+// what the store actually kept. A change that leaves `daughterPeriods`,
+// `todos`, `notes` or `stock` out keeps the stored ones. It may run more than
+// once, so it must not have side effects.
 //
 // The stock library is stored on the first write of any kind: until then it is
 // the seed made from the fysio/lege/MR photos, and `document.stock` already
@@ -690,6 +696,7 @@ async function mutateEvents(apply) {
         events: next.events,
         daughterPeriods: next.daughterPeriods ?? current.daughterPeriods,
         todos: next.todos ?? current.todos,
+        notes: next.notes ?? current.notes,
         stock: next.stock ?? current.stock,
         extras: current.extras
       });
@@ -814,6 +821,7 @@ function syncFields(document) {
     versionUrl,
     daughterPeriods: normalizeDaughterPeriods(document?.daughterPeriods),
     todos: normalizeTodos(document?.todos),
+    notes: normalizeNotes(document?.notes),
     stock: effectiveStockLibrary(document?.stock, document?.events)
   };
 }
@@ -1019,8 +1027,8 @@ export default async function handler(req, res) {
           return;
         }
         const reminderSync = await safeSyncReminders([], { all: true });
-        // Clears the tasks only; the daughter periods, the to-do list and the
-        // stock pictures are kept.
+        // Clears the tasks only; the daughter periods, the to-do list, the
+        // notes and the stock pictures are kept.
         send(res, 200, { ...syncFields(outcome), events: [], localDeleted: true, synced: true, imageCleanup: IMAGE_CLEANUP, reminderSync });
         return;
       }
@@ -1049,9 +1057,9 @@ export default async function handler(req, res) {
       return;
     }
 
-    // One change to the daughter periods, a batch of to-do changes, or one
-    // change to the stock pictures - each applied onto whatever the store holds,
-    // so edits to different items from two screens all survive.
+    // One change to the daughter periods, a batch of to-do or note changes, or
+    // one change to the stock pictures - each applied onto whatever the store
+    // holds, so edits to different items from two screens all survive.
     if (req.method === 'PATCH') {
       const payload = parsePayload(await readBody(req));
 
@@ -1063,6 +1071,24 @@ export default async function handler(req, res) {
             events: currentEvents,
             todos: expected,
             verify: (savedEvents, saved) => todoChangesSurvived(saved?.todos, changes, expected)
+          };
+        });
+        if (!outcome.verified) {
+          sendUnverified(res);
+          return;
+        }
+        send(res, 200, { ...syncFields(outcome), events: outcome.events, synced: true });
+        return;
+      }
+
+      if (payload.notes !== undefined) {
+        const changes = Array.isArray(payload.notes) ? payload.notes : [payload.notes];
+        const outcome = await mutateEvents(async (currentEvents, attempt, current) => {
+          const expected = applyNoteChanges(current.notes, changes, new Date());
+          return {
+            events: currentEvents,
+            notes: expected,
+            verify: (savedEvents, saved) => noteChangesSurvived(saved?.notes, changes, expected)
           };
         });
         if (!outcome.verified) {
