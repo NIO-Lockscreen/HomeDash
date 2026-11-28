@@ -945,6 +945,41 @@ swapped, so the strip ended up on the left. The sides are now the right way
 round, and in portrait the page ignores the side insets (other iPhones report
 none upright). On its side, the insets still keep the page clear of the island.
 
+### Folding or opening with the page open
+
+The page chooses between the wall and the phone app only once, when it loads,
+based on the window size. The Duo keeps the same page open when it moves
+between screens. The wall opened on the inner screen (about 890 × 626) used to
+stay the wall when the phone was folded. On the outer screen held upright
+(about 466 × 678), the phone-size CSS hides the wall, and the phone app had
+never been set up, so the screen was empty apart from the edge handle and the
+weather. On its side the tent slideshow covered the problem.
+
+Now, when the window settles at the other kind of size, the page reloads and
+shows what a fresh load on that screen would show. Folded upright you get the
+phone calendar, and opened you get the wall again. The rule is the same one
+that hides the wall: under 781 px wide, or a touch screen under 521 px tall.
+Rotating an ordinary iPhone, or the folded Duo, never changes the kind of
+size, so neither reloads. Turning the opened Duo upright does reload, because
+the wall cannot be shown that narrow. The switch waits:
+
+- until the window size has held for 1 s, so a fold cannot reload it twice;
+- while something is being typed, because an on-screen keyboard can shrink
+  the window on some browsers;
+- in the phone app, while a task, a daughter period or a stock picture is open
+  for editing. The phone app still works on the wide screen, and a reload
+  would throw the edit away. It switches as soon as the editor is closed;
+- on the wall, while the phone app is open on it;
+- while the tent slideshow is up or about to come up. Turned upright, the
+  switch follows.
+
+Two switches are always at least 5 s apart, so a screen that keeps changing
+its mind cannot keep reloading the page. A page opened with `?admin` or
+`?display` stays what it was asked to be. This covers the phone app inside the
+wall, which is always `?admin=1`. Each switch is a fresh page load, so it
+spends one Blob read for the newest tasks, like any other load. Saves that are
+still on their way stay in the phone's queue and are sent after the reload.
+
 ## Weather effects
 
 The whole dashboard lives in `index.html` — the `<style>` and `<script>` blocks inside it are what the browser runs. There is no separate bundle to edit. (Two exported copies, `script.js` and `inline.js`, used to sit next to it; nothing loaded them, and two bug fixes were accidentally applied only to those copies and never reached the app. They have been deleted — put dashboard changes in `index.html`.)

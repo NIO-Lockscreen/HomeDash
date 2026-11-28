@@ -6741,7 +6741,11 @@
     const initialEditEventId = params.get('edit');
     const forceAdmin = params.has('admin');
     const forceDisplay = params.has('display');
-    const isPhoneLike = matchMedia('(max-width: 780px), ((pointer: coarse) and (max-height: 520px))').matches;
+    // The same test as the CSS that hides the wall on a phone-sized window.
+    // Read once: a page that later finds itself on a screen of the other kind
+    // (the iPhone Duo folded or opened) reloads, see watchLayoutSwitch().
+    const PHONE_LIKE_QUERY = '(max-width: 780px), ((pointer: coarse) and (max-height: 520px))';
+    const isPhoneLike = matchMedia(PHONE_LIKE_QUERY).matches;
     const adminMode = forceAdmin || (!forceDisplay && isPhoneLike);
     if (adminMode && !isPhoneLike) document.body.classList.add('desktop-admin');
     if (adminMode && isPhoneLike) document.body.classList.add('phone-admin');
@@ -22074,6 +22078,111 @@ Cancel = choose whether to delete the whole series.`);
       });
     }
 
+    // ---------------------------------------------------------------------
+    // Wall or phone app, again after a fold.
+    //
+    // Whether the page is the wall or the phone app (adminMode) is decided
+    // once, at load, from the window's size. The iPhone Duo moves a page that
+    // is already open from one screen to the other. Opened, the inner screen
+    // (about 890 x 626) gets the wall; folded, the outer screen held upright
+    // (about 466 x 678) should get the phone app. The CSS for a phone-sized
+    // window hid the wall, but the phone app had never been set up on that
+    // page, so folding the wall left an empty screen with only the edge
+    // handle and the weather spilling over it. On its side the tent slideshow
+    // covered it.
+    //
+    // Now, once the window has settled at the other kind of size, the page
+    // reloads and comes up as a fresh load on that screen would. It waits:
+    //   - LAYOUT_SWITCH_SETTLE_MS of unchanged window size, so the burst of
+    //     sizes during a fold or a turn cannot reload it twice;
+    //   - while text is being typed: an on-screen keyboard can shrink the
+    //     window on some browsers;
+    //   - in the phone app, while a task, a period or a stock picture is open
+    //     for editing: the phone app still works on the wider screen, and a
+    //     reload would throw the edit away;
+    //   - while the phone app is open on the wall;
+    //   - while the tent slideshow is up or about to come up. It covers the
+    //     page anyway, and a reload would restart it. Turned upright, the
+    //     switch follows.
+    // A page forced with ?admin or ?display stays what it was asked to be.
+    // Two switches are at least LAYOUT_SWITCH_MIN_GAP_MS apart, so a screen
+    // that keeps changing its mind cannot keep reloading the page.
+    // ---------------------------------------------------------------------
+    const LAYOUT_SWITCH_SETTLE_MS = 1000;
+    const LAYOUT_SWITCH_RETRY_MS = 1000;
+    const LAYOUT_SWITCH_MIN_GAP_MS = 5000;
+    const LAYOUT_SWITCH_KEY = 'homeOrganizerLayoutSwitchAt';
+    const layoutSwitch = { timer: null, candidate: null };
+
+    function isTypingIntoField(element) {
+      if (!element || element === document.body) return false;
+      if (element.isContentEditable || element.tagName === 'TEXTAREA' || element.tagName === 'SELECT') return true;
+      return element.tagName === 'INPUT'
+        && !/^(checkbox|radio|button|submit|reset|range|color|file|image|hidden)$/i.test(element.type || '');
+    }
+
+    function isShown(element) {
+      return Boolean(element && !element.classList.contains('hidden'));
+    }
+
+    function layoutSwitchOnHold() {
+      if (tentView.active || tentView.candidate) return true;
+      if (isTypingIntoField(document.activeElement)) return true;
+      if (!adminMode) return phoneApp.open;
+      return Boolean(els.adminView?.classList.contains('editor-open')
+        || isShown(els.daughterPeriodEditor)
+        || isShown(document.getElementById('stockSheetOverlay')));
+    }
+
+    function lastLayoutSwitchAt() {
+      try { return Number(sessionStorage.getItem(LAYOUT_SWITCH_KEY)) || 0; } catch { return 0; }
+    }
+
+    function checkLayoutSwitch() {
+      clearTimeout(layoutSwitch.timer);
+      layoutSwitch.timer = null;
+      if (matchMedia(PHONE_LIKE_QUERY).matches === isPhoneLike) {
+        layoutSwitch.candidate = null;
+        return;
+      }
+      const now = Date.now();
+      const reading = `${window.innerWidth}x${window.innerHeight}`;
+      if (layoutSwitch.candidate?.reading !== reading) layoutSwitch.candidate = { reading, since: now };
+      const sinceLastSwitch = now - lastLayoutSwitchAt();
+      let wait = Math.max(
+        layoutSwitch.candidate.since + LAYOUT_SWITCH_SETTLE_MS - now,
+        sinceLastSwitch >= 0 ? LAYOUT_SWITCH_MIN_GAP_MS - sinceLastSwitch : 0
+      );
+      if (wait <= 0 && layoutSwitchOnHold()) wait = LAYOUT_SWITCH_RETRY_MS;
+      if (wait > 0) {
+        layoutSwitch.timer = setTimeout(checkLayoutSwitch, wait);
+        return;
+      }
+      try { sessionStorage.setItem(LAYOUT_SWITCH_KEY, String(now)); } catch {}
+      location.reload();
+    }
+
+    function watchLayoutSwitch() {
+      if (forceAdmin || forceDisplay) return;
+      const query = matchMedia(PHONE_LIKE_QUERY);
+      if (query.addEventListener) query.addEventListener('change', checkLayoutSwitch);
+      else query.addListener?.(checkLayoutSwitch);
+      window.addEventListener('resize', checkLayoutSwitch);
+      window.addEventListener('orientationchange', checkLayoutSwitch);
+      window.addEventListener('pageshow', checkLayoutSwitch);
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkLayoutSwitch();
+      });
+      // A fold can come without its events, as the tent view found; a Duo
+      // also looks every second. A reading costs nothing.
+      if (isIphoneDuo()) {
+        setInterval(() => {
+          if (!document.hidden) checkLayoutSwitch();
+        }, TENT_CHECK_MS);
+      }
+      checkLayoutSwitch();
+    }
+
     function init() {
       loadWorkMode();
       setMode();
@@ -22310,6 +22419,7 @@ Cancel = choose whether to delete the whole series.`);
       }
       // Last, so a first load with nothing cached shows "Loading" rather than an empty calendar.
       bindTentView();
+      watchLayoutSwitch();
     }
 
     // A phone that scanned the wall's YouTube QR code gets the send page
